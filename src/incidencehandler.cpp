@@ -362,6 +362,14 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
 
     KCalCore::Incidence::Ptr incidence = QSharedPointer<KCalCore::Incidence>(sourceIncidence->clone());
     KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
+
+    // check to see if the UID is of the special form: NBUID:NotebookUid:EventUid.  If so, trim it.
+    if (event->uid().startsWith(QStringLiteral("NBUID:"))) {
+        QString oldUid = event->uid();
+        QString trimmedUid = oldUid.mid(oldUid.indexOf(':', 6)+1); // remove NBUID:NotebookUid:
+        event->setUid(trimmedUid); // leaving just the EventUid.
+    }
+
     bool eventIsAllDay = event->allDay();
     if (eventIsAllDay) {
         bool sendWithoutDtEnd = !event->customProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART).isEmpty()
