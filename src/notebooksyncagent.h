@@ -129,6 +129,7 @@ private:
     QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host.
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
+    bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
     bool mFinished;
 
     // these are used only in slow-sync mode.
