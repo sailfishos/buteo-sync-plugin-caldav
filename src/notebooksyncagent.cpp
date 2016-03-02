@@ -161,6 +161,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mRemoteCalendarPath(remoteCalendarPath)
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
+    , mNotebookNeedsDeletion(false)
     , mFinished(false)
 {
 }
@@ -342,6 +343,16 @@ void NotebookSyncAgent::reportRequestFinished()
         mRetriedReport = true;
         sendReportRequest();
         return;
+    } else if (mSyncMode == SlowSync
+               && report->networkError() == QNetworkReply::ContentNotFoundError) {
+        // The remote calendar resource was removed after we created the account but before first sync.
+        // We don't perform resource discovery in CalDAV during each sync cycle,
+        // so we can have local calendar metadata for remotely removed calendars.
+        // In this case, we just skip sync of this calendar, as it was deleted.
+        mNotebookNeedsDeletion = true;
+        LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, skipping sync locally.");
+        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        return;
     }
 
     LOG_DEBUG("emitting report request finished with result:" << report->errorCode() << report->errorString());
@@ -424,6 +435,15 @@ void NotebookSyncAgent::processETags()
         LOG_WARNING("Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
         mRetriedReport = true;
         fetchRemoteChanges(mFromDateTime, mToDateTime);
+        return;
+    } else if (report->networkError() == QNetworkReply::ContentNotFoundError) {
+        // The remote calendar resource was removed.
+        // We don't perform resource discovery in CalDAV during each sync cycle,
+        // so we can have local calendars which mirror remotely-removed calendars.
+        // In this situation, we need to delete the local calendar.
+        mNotebookNeedsDeletion = true;
+        LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, marking for deletion locally:" << mNotebook->name());
+        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
         return;
     }
 
@@ -680,6 +700,12 @@ bool NotebookSyncAgent::applyRemoteChanges()
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     if (mSyncMode == SlowSync) {
+        if (mNotebookNeedsDeletion) {
+            // the calendar was deleted remotely prior to being synced locally.
+            // simply don't create a local notebook for the nonexistent calendar.
+            return true;
+        }
+
         // delete the existing notebook associated with this calendar path, if it exists
         // TODO: if required.  Currently we don't support per-notebook clean sync.
 
@@ -693,6 +719,10 @@ bool NotebookSyncAgent::applyRemoteChanges()
             LOG_DEBUG("Unable to (re)create notebook" << mNotebookName << "during slow sync for account" << mNotebookAccountId << ":" << mCalendarPath);
             return false;
         }
+    } else if (mNotebookNeedsDeletion) {
+        // delete the notebook from local database
+        mStorage->deleteNotebook(mNotebook);
+        return true;
     }
 
     if (!updateIncidences(mReceivedCalendarResources)) {
