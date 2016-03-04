@@ -39,9 +39,9 @@ static const QString DateTimeFormatUTC = DateTimeFormat + QStringLiteral("Z");
 static QString dateTimeToString(const QDateTime &dt)
 {
     if (dt.timeSpec() == Qt::UTC) {
-        return dt.toString(DateTimeFormatUTC);
+        return QLocale::c().toString(dt, DateTimeFormatUTC);
     } else {
-        return dt.toString(DateTimeFormat);
+        return QLocale::c().toString(dt, DateTimeFormat);
     }
 }
 
