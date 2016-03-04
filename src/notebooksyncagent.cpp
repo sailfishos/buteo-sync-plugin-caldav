@@ -1188,7 +1188,11 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence, KCal
     if (matchingIncidenceIdx >= 0) {
         LOG_DEBUG("found matching local incidence uid:" << notebookIncidences[matchingIncidenceIdx]->uid() <<
                   "for remote incidence:" << incidence->uid() << "from resource:" << resource.href << resource.etag);
-        incidence->setUid(notebookIncidences[matchingIncidenceIdx]->uid()); // should not be different...
+        if (notebookIncidences[matchingIncidenceIdx]->uid() != incidence->uid()) {
+            // the uid of the updated incidence changed remotely.  when storing locally,
+            // use the local notebook incidence's uid.
+            incidence->setUid(notebookIncidences[matchingIncidenceIdx]->uid());
+        }
     }
 
     KCalCore::Incidence::Ptr storedIncidence;
@@ -1260,6 +1264,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence, KCal
 
             IncidenceHandler::prepareImportedIncidence(incidence);
             IncidenceHandler::copyIncidenceProperties(occurrence, incidence);
+            incidence->setUid(QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid()));
             setIncidenceHrefUri(occurrence, resource.href);
             setIncidenceETag(occurrence, resource.etag);
             if (!mCalendar->addEvent(occurrence.staticCast<KCalCore::Event>(), mNotebook->uid())) {
@@ -1272,6 +1277,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence, KCal
 
         // just a new event without needing detach.
         IncidenceHandler::prepareImportedIncidence(incidence);
+        incidence->setUid(QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid()));
         setIncidenceHrefUri(incidence, resource.href);
         setIncidenceETag(incidence, resource.etag);
 
