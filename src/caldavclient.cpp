@@ -295,6 +295,10 @@ bool CalDavClient::initConfig()
         LOG_CRITICAL("cannot find account" << accountId);
         return false;
     }
+    if (!account->enabled()) {
+        LOG_CRITICAL("Account" << accountId << "is disabled!");
+        return false;
+    }
     Accounts::Service srv;
     Q_FOREACH (const Accounts::Service &currService, account->services()) {
         account->selectService(currService);
@@ -309,6 +313,10 @@ bool CalDavClient::initConfig()
     }
 
     account->selectService(srv);
+    if (!account->enabled()) {
+        LOG_CRITICAL("Account" << accountId << "service:" << srv.name() << "is disabled!");
+        return false;
+    }
     mSettings.setServerAddress(account->value("server_address").toString());
     if (mSettings.serverAddress().isEmpty()) {
         LOG_CRITICAL("remote_address not found in service settings");
