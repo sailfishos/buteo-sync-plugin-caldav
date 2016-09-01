@@ -860,12 +860,12 @@ bool NotebookSyncAgent::calculateDelta(
     // now determine local deletions.  Note that we combine deletions reported since
     // the from date and since the last sync date, due to mKCal API semantics.
     KCalCore::Incidence::List deleted, deletedSyncDate;
-    uniteIncidenceLists(deletedSyncDate, &deleted);
     if (!mStorage->deletedIncidences(&deleted, fromDate, mNotebook->uid()) ||
         !mStorage->deletedIncidences(&deletedSyncDate, syncDateTime, mNotebook->uid())) {
         LOG_CRITICAL("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
+    uniteIncidenceLists(deletedSyncDate, &deleted);
     QSet<QString> deletedSeriesUids;
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, deleted) {
         bool uriWasEmpty = false;
