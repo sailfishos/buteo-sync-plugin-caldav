@@ -1,0 +1,31 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.ics/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Radicale//NONSGML Radicale Server//EN
+VERSION:2.0
+BEGIN:VEVENT
+DTSTAMP:20160930T132609Z
+CREATED:20160930T132609Z
+X-RADICALE-NAME:972a7c13-bbd6-4fce-9ebb-03a808111828.ics
+UID:972a7c13-bbd6-4fce-9ebb-03a808111828
+LAST-MODIFIED:20160930T132609Z
+SUMMARY:Test
+DTSTART;TZID=Europe/Paris:20160930T160000
+DTEND;TZID=Europe/Paris:20160930T170000
+TRANSP:OPAQUE
+BEGIN:VALARM
+ACTION:
+TRIGGER;VALUE=DURATION:-PT30M
+X-KDE-KCALCORE-ENABLED:TRUE
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>

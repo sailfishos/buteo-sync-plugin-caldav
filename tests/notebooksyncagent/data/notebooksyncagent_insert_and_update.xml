@@ -1,0 +1,58 @@
+<d:multistatus xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:card="urn:ietf:params:xml:ns:carddav" xmlns:cs="http://calendarserver.org/ns/" xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:s="http://sabredav.org/ns">
+ <d:response>
+  <d:href>/remote.php/dav/calendars/benjamin/privatbenjamin/1416147359.R649.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>"78f7040fc1d488f57e1ea7a551c70d14"</d:getetag>
+    <cal:calendar-data>BEGIN:VCALENDAR
+PRODID:-//K Desktop Environment//NONSGML libkcal 4.3//EN
+VERSION:2.0
+X-KDE-ICAL-IMPLEMENTATION-VERSION:1.0
+BEGIN:VEVENT
+DTSTAMP:20150915T040805Z
+CREATED:20150821T211132Z
+UID:7d145c8e-0f34-45a0-b8ca-d9c86093bc12
+SEQUENCE:1
+LAST-MODIFIED:20150915T040805Z
+SUMMARY:My Event
+CATEGORIES:CatA,CatB,Persönlich
+RRULE:FREQ=YEARLY;BYMONTHDAY=9;BYMONTH=11
+DTSTART;VALUE=DATE:20121109
+DTEND;VALUE=DATE:20121110
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR
+</cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+ <d:response>
+  <d:href>/remote.php/dav/calendars/benjamin/privatbenjamin/1416147706.R693.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>"7b5b64da5d4b7e6d5dd7a011298333a5"</d:getetag>
+    <cal:calendar-data>BEGIN:VCALENDAR
+PRODID:-//K Desktop Environment//NONSGML libkcal 4.3//EN
+VERSION:2.0
+X-KDE-ICAL-IMPLEMENTATION-VERSION:1.0
+BEGIN:VEVENT
+DTSTAMP:20160416T164159Z
+CREATED:20160413T003504Z
+UID:7d145c8e-0f34-45a0-b8ca-d9c86093bc12
+SEQUENCE:1
+LAST-MODIFIED:20160416T164159Z
+SUMMARY:My Event 2
+CATEGORIES:CatA,CatB,Persönlich
+RRULE:FREQ=YEARLY;BYMONTHDAY=9;BYMONTH=11
+DTSTART;VALUE=DATE:20121109
+DTEND;VALUE=DATE:20121110
+TRANSP:TRANSPARENT
+END:VEVENT
+END:VCALENDAR
+</cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>

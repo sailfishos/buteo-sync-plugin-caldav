@@ -1,0 +1,15 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.ics/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Radicale//NONSGML Radicale Server//EN
+VERSION:2.0
+END:VCALENDAR
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>

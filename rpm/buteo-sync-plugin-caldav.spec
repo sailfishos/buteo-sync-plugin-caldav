@@ -25,6 +25,15 @@ Requires: mkcal-qt5
 %description
 A Buteo plugin which syncs calendar data from CalDAV services
 
+%package tests
+Summary: Unit tests for buteo-sync-plugin-caldav
+Group: System/Libraries
+BuildRequires: pkgconfig(Qt5Test)
+Requires: blts-tools
+Requires: %{name} = %{version}-%{release}
+%description tests
+This package contains unit tests for the CalDAV Buteo sync plugin.
+
 %files
 %defattr(-,root,root,-)
 #out-of-process-plugin
@@ -33,6 +42,20 @@ A Buteo plugin which syncs calendar data from CalDAV services
 #/usr/lib/buteo-plugins-qt5/libcaldav-client.so
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
+
+%files tests
+%defattr(-,root,root,-)
+/opt/tests/buteo/plugins/caldav/tst_reader
+/opt/tests/buteo/plugins/caldav/tst_notebooksyncagent
+/opt/tests/buteo/plugins/caldav/data/notebooksyncagent_insert_and_update.xml
+/opt/tests/buteo/plugins/caldav/data/notebooksyncagent_recurring.xml
+/opt/tests/buteo/plugins/caldav/data/notebooksyncagent_simple.xml
+/opt/tests/buteo/plugins/caldav/data/reader_CR_description.xml
+/opt/tests/buteo/plugins/caldav/data/reader_UID.xml
+/opt/tests/buteo/plugins/caldav/data/reader_UTF8_description.xml
+/opt/tests/buteo/plugins/caldav/data/reader_base.xml
+/opt/tests/buteo/plugins/caldav/data/reader_noevent.xml
+/opt/tests/buteo/plugins/caldav/data/reader_missing.xml
 
 %prep
 %setup -q -n %{name}-%{version}

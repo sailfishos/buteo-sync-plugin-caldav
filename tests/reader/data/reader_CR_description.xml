@@ -1,0 +1,29 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.ics/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//ownCloud calendar v1.2.2
+VERSION:2.0
+BEGIN:VEVENT
+DTSTART:20160626T190000Z
+DTEND:20160626T210000Z
+DTSTAMP:20160606T193516Z
+UID:123-456@789%369$258*147
+CREATED:20151216T030251Z
+DESCRIPTION:description\nmultilines\n
+LAST-MODIFIED:20160531T063923Z
+LOCATION:Toulouse
+SEQUENCE:0
+STATUS:CONFIRMED
+SUMMARY:Sieger F - Zweiter E
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
