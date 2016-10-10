@@ -1,18 +1,17 @@
 TEMPLATE = app
 TARGET = tst_reader
 
-QT       -= gui
-QT       += network dbus testlib
+QT += testlib
 
-CONFIG += link_pkgconfig debug console
-PKGCONFIG += buteosyncfw5 libkcalcoren-qt5
+CONFIG += debug
 
-SOURCES += tst_reader.cpp
+include($$PWD/../../src/src.pri)
 
-INCLUDEPATH += ../../src
+HEADERS =
+SOURCES = tst_reader.cpp
 
-LIBS += ../../src/reader.o \
-        ../../src/moc_reader.o
+LIBS += $$PWD/../../src/reader.o \
+        $$PWD/../../src/moc_reader.o
 
 OTHER_FILES += data/*xml
 

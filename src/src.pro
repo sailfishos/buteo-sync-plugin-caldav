@@ -1,11 +1,6 @@
 TARGET = caldav-client
 
-QT       -= gui
-QT       += network dbus
-
-CONFIG += link_pkgconfig debug console
-PKGCONFIG += buteosyncfw5 libsignon-qt5 accounts-qt5 signon-oauth2plugin \
-             libsailfishkeyprovider libkcalcoren-qt5 libmkcal-qt5
+include(src.pri)
 
 VER_MAJ = 0
 VER_MIN = 1
@@ -17,35 +12,6 @@ QMAKE_CXXFLAGS = -Wall \
     -O2 -finline-functions
 
 DEFINES += BUTEOCALDAVPLUGIN_LIBRARY
-
-HEADERS += \
-    caldavclient.h \
-    buteo-caldav-plugin.h \
-    report.h \
-    put.h \
-    delete.h \
-    reader.h \
-    settings.h \
-    request.h \
-    authhandler.h \
-    incidencehandler.h \
-    notebooksyncagent.h
-
-SOURCES += \
-    caldavclient.cpp \
-    report.cpp \
-    put.cpp \
-    delete.cpp \
-    reader.cpp \
-    settings.cpp \
-    request.cpp \
-    authhandler.cpp \
-    incidencehandler.cpp \
-    notebooksyncagent.cpp
-
-OTHER_FILES += \
-    xmls/client/caldav.xml \
-    xmls/sync/caldav-sync.xml
 
 !contains (DEFINES, BUTEO_OUT_OF_PROCESS_SUPPORT) {
     TEMPLATE = lib
