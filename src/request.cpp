@@ -66,6 +66,11 @@ void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
     mNetworkError = error;
     if (error == QNetworkReply::NoError) {
         finishedWithSuccess();
+    } else if (error == QNetworkReply::ContentOperationNotPermittedError) {
+        // Gracefully continue when the operation fails for permission
+        // reasons (like pushing to a read-only resource).
+        qWarning() << "the operation requested on the remote content is not permitted";
+        finishedWithSuccess();
     } else {
         int errorCode = Buteo::SyncResults::INTERNAL_ERROR;
         if (error == QNetworkReply::SslHandshakeFailedError || error == QNetworkReply::ContentAccessDenied ||
