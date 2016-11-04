@@ -125,10 +125,15 @@ void Put::requestFinished()
     }
     debugReplyAndReadAll(reply);
 
-    // Server may update the etag as soon as the modification is received and send back a new etag
-    Q_FOREACH (const QNetworkReply::RawHeaderPair &header, reply->rawHeaderPairs()) {
-        if (header.first.toLower() == QStringLiteral("etag")) {
-            mUpdatedETags.insert(reply->property(PROP_INCIDENCE_URI).toString(), header.second);
+    // If the put was denied by server (e.g. read-only calendar), the etag
+    // is not updated, so NotebookSyncAgent::finalizeSendingLocalChanges()
+    // will emit a rollback report for this incidence.
+    if (reply->error() != QNetworkReply::ContentOperationNotPermittedError) {
+        // Server may update the etag as soon as the modification is received and send back a new etag
+        Q_FOREACH (const QNetworkReply::RawHeaderPair &header, reply->rawHeaderPairs()) {
+            if (header.first.toLower() == QStringLiteral("etag")) {
+                mUpdatedETags.insert(reply->property(PROP_INCIDENCE_URI).toString(), header.second);
+            }
         }
     }
 
