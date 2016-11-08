@@ -155,6 +155,8 @@ private:
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;
+
+    friend class tst_NotebookSyncAgent;
 };
 
 #endif // NOTEBOOKSYNCAGENT_P_H
