@@ -34,11 +34,48 @@
 #include <LogMacros.h>
 
 namespace {
+    QString ensureUidInVEvent(const QString &data) {
+        // Ensure UID is in VEVENT section for single-event VCALENDAR blobs.
+        int eventCount = 0; // a value of 1 specifies that we should use the fixed data.
+        QStringList fixed;
+        QString storedUidLine;
+        const char separator = '\n';
+        QStringList original = data.split(separator);
+        bool inVEventSection = false;
+        for (QStringList::const_iterator it = original.constBegin(); it != original.constEnd(); it++) {
+            const QString &line(*it);
+            if (line.startsWith("END:VEVENT")) {
+                inVEventSection = false;
+            } else if (line.startsWith("BEGIN:VEVENT")) {
+                ++eventCount;
+                inVEventSection = true;
+                fixed.append(line);
+                if (!storedUidLine.isEmpty()) {
+                    fixed.append(storedUidLine);
+                    LOG_DEBUG("The UID was before VEVENT data! Report a bug to the application that generated this file.");
+                    continue; // BEGIN:VEVENT line already appended
+                }
+                eventCount = -1;
+                break; // use original iCalData if got to VEVENT without finding UID
+            } else if (line.startsWith("UID")) {
+                if (!inVEventSection) {
+                    storedUidLine = line;
+                    continue; // do not append UID line yet
+                }
+            }
+            fixed.append(line);
+        }
+        // if we found exactly one event and were able to set its UID, return the fixed data.
+        // otherwise, return the original data.
+        return eventCount == 1 ? fixed.join(separator) : data;
+    }
+
     QString preprocessIcsData(const QString &data) {
         QString temp = data.trimmed();
         temp.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
         temp.replace(QStringLiteral("\n"), QStringLiteral("\r\n"));
         temp = temp.append(QStringLiteral("\r\n\r\n"));
+        temp = ensureUidInVEvent(temp);
         return temp;
     }
 }
@@ -109,7 +146,6 @@ void Reader::readResponse()
                 parsed = false;
             }
         }
-
         if (parsed) {
             KCalCore::Event::List events = cal->events(); // TODO: incidences() not just events()
             LOG_DEBUG("iCal data contains" << cal->events().count() << "VEVENT instances");
@@ -118,7 +154,7 @@ void Reader::readResponse()
                 if (isVCalFormat && events.count() == 1) {
                     resource.incidences = KCalCore::Incidence::List() << events.first();
                 } else {
-                    KCalCore::Incidence::Ptr incidence = iCalFormat.fromString(resource.iCalData);
+                    KCalCore::Incidence::Ptr incidence = iCalFormat.fromString(icsData);
                     if (!incidence.isNull()) {
                         resource.incidences = KCalCore::Incidence::List() << incidence;
                     } else {
