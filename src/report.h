@@ -48,7 +48,7 @@ public:
                      const QDateTime &toDateTime = QDateTime());
     void multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList);
 
-    QMultiHash<QString, Reader::CalendarResource> receivedCalendarResources() const;
+    QList<Reader::CalendarResource> receivedCalendarResources() const;
 
 private Q_SLOTS:
     void processResponse();
@@ -60,7 +60,7 @@ private:
                            const QDateTime &toDateTime,
                            bool getCalendarData);
     QString mRemoteCalendarPath;
-    QMultiHash<QString, Reader::CalendarResource> mReceivedResources;
+    QList<Reader::CalendarResource> mReceivedResources;
 };
 
 #endif // REPORT_H

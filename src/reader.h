@@ -25,7 +25,6 @@
 #define READER_H
 
 #include <QObject>
-#include <QMultiHash>
 
 #include <incidence.h>
 
@@ -48,7 +47,7 @@ public:
 
     void read(const QByteArray &data);
     bool hasError() const;
-    const QMultiHash<QString, CalendarResource>& results() const;
+    const QList<CalendarResource>& results() const;
 
 private:
     void readMultiStatus();
@@ -59,7 +58,7 @@ private:
 private:
     QXmlStreamReader *mReader;
     bool mValidResponse;
-    QMultiHash<QString, CalendarResource> mResults;
+    QList<CalendarResource> mResults;
 };
 
 #endif // READER_H

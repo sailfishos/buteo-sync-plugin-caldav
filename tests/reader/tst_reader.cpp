@@ -207,11 +207,12 @@ void tst_Reader::readICal()
         return;
 
     QCOMPARE(rd.results().size(), expectedNResponses);
-    QCOMPARE(rd.results().values()[0].incidences.length(), expectedNIncidences);
+    if (!rd.results().isEmpty())
+        QCOMPARE(rd.results().first().incidences.length(), expectedNIncidences);
 
     if (!expectedNIncidences)
         return;
-    KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(rd.results().values()[0].incidences[0]);
+    KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(rd.results().first().incidences[0]);
     
     QCOMPARE(ev->uid(), expectedUID);
     QCOMPARE(ev->summary(), expectedSummary);

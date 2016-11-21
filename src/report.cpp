@@ -197,7 +197,7 @@ void Report::processResponse()
     }
 }
 
-QMultiHash<QString, Reader::CalendarResource> Report::receivedCalendarResources() const
+QList<Reader::CalendarResource> Report::receivedCalendarResources() const
 {
     return mReceivedResources;
 }

@@ -140,7 +140,7 @@ void tst_NotebookSyncAgent::insertEvent()
     Reader rd;
     rd.read(f.readAll());
 
-    QVERIFY(m_agent->updateIncidences(rd.results().values()));
+    QVERIFY(m_agent->updateIncidences(rd.results()));
 
     KCalCore::Incidence::List incidences = m_agent->mCalendar->incidences();
 

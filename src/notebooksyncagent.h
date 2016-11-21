@@ -113,7 +113,7 @@ private:
                         KCalCore::Incidence::List *remoteDeletions);
     void removePossibleLocalModificationIfIdentical(const QString &remoteUri,
                                                     const QList<KDateTime> &recurrenceIds,
-                                                    const QList<Reader::CalendarResource> &remoteResources,
+                                                    const Reader::CalendarResource &remoteResource,
                                                     const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
                                                     KCalCore::Incidence::List *localModifications);
 

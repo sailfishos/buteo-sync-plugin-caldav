@@ -290,7 +290,7 @@ void NotebookSyncAgent::reportRequestFinished()
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         if (mPossibleLocalModificationIncidenceIds.isEmpty()) {
             // every received resource was from m_remoteAdditions or m_remoteModifications.
-            mReceivedCalendarResources = report->receivedCalendarResources().values();
+            mReceivedCalendarResources = report->receivedCalendarResources();
         } else {
             // From the received resources, some will have been fetched so that we can perform a more detailed
             // per-event delta calculation (ie, the "possible" local modifications).
@@ -299,20 +299,19 @@ void NotebookSyncAgent::reportRequestFinished()
             // In either case, we will remove that resource from the receivedResources list because
             // we don't want to store the remote version of it (instead we probably want to upsync the local mod).
             int originalLocalModificationsCount = mLocalModifications.size(), discardedLocalModifications = 0;
-            QMultiHash<QString, Reader::CalendarResource> receivedResources = report->receivedCalendarResources();
-            Q_FOREACH (const QString &hrefUri, receivedResources.keys()) {
-                QList<Reader::CalendarResource> resources = receivedResources.values(hrefUri);
-                if (mPossibleLocalModificationIncidenceIds.contains(hrefUri)) {
+            Q_FOREACH (const Reader::CalendarResource &resource,
+                       report->receivedCalendarResources()) {
+                if (mPossibleLocalModificationIncidenceIds.contains(resource.href)) {
                     // this resource was fetched so that we could perform a field-by-field delta detection
                     // just in case the only change was the ETAG/URI value (due to previous sync).
-                    removePossibleLocalModificationIfIdentical(hrefUri,
-                                                               mPossibleLocalModificationIncidenceIds.values(hrefUri),
-                                                               resources,
+                    removePossibleLocalModificationIfIdentical(resource.href,
+                                                               mPossibleLocalModificationIncidenceIds.values(resource.href),
+                                                               resource,
                                                                mAddedPersistentExceptionOccurrences,
                                                                &mLocalModifications);
                 } else {
                     // these were resources fetched from m_remoteAdditions or m_remoteModifications
-                    mReceivedCalendarResources.append(resources);
+                    mReceivedCalendarResources.append(resource);
                 }
             }
             discardedLocalModifications = originalLocalModificationsCount - mLocalModifications.size();
@@ -321,8 +320,8 @@ void NotebookSyncAgent::reportRequestFinished()
         }
 
         LOG_DEBUG("Report request finished: received:"
-                  << report->receivedCalendarResources().size() << "iCal blobs containing a total of"
-                  << report->receivedCalendarResources().values().count() << "incidences"
+                  << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
+                  << report->receivedCalendarResources().count() << "incidences"
                   << "of which" << mReceivedCalendarResources.size() << "incidences were remote additions/modifications");
 
         if (mSyncMode == QuickSync) {
@@ -370,18 +369,15 @@ void NotebookSyncAgent::processETags()
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         LOG_DEBUG("Process tags for server path" << mRemoteCalendarPath);
         // we have a hash from resource href-uri to resource info (including etags).
-        QMultiHash<QString, Reader::CalendarResource> map = report->receivedCalendarResources();
         QHash<QString, QString> remoteHrefUriToEtags;
-        Q_FOREACH (const QString &href, map.keys()) {
-            if (!href.contains(mRemoteCalendarPath)) {
-                LOG_WARNING("href does not contain server path:" << href << ":" << mRemoteCalendarPath);
+        Q_FOREACH (const Reader::CalendarResource &resource,
+                   report->receivedCalendarResources()) {
+            if (!resource.href.contains(mRemoteCalendarPath)) {
+                LOG_WARNING("href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath);
                 emitFinished(Buteo::SyncResults::INTERNAL_ERROR, "unable to calculate remote resource uids");
                 return;
             }
-            QList<Reader::CalendarResource> resources = map.values(href);
-            if (resources.size()) {
-                remoteHrefUriToEtags.insert(href, resources[0].etag);
-            }
+            remoteHrefUriToEtags.insert(resource.href, resource.etag);
         }
 
         // calculate the local and remote delta.
@@ -684,10 +680,10 @@ void NotebookSyncAgent::additionalReportRequestFinished()
     report->deleteLater();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        mReceivedCalendarResources.append(report->receivedCalendarResources().values());
+        mReceivedCalendarResources.append(report->receivedCalendarResources());
         LOG_DEBUG("Additional report request finished: received:"
-                  << report->receivedCalendarResources().size() << "iCal blobs containing a total of"
-                  << report->receivedCalendarResources().values().count() << "incidences");
+                  << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
+                  << report->receivedCalendarResources().count() << "incidences");
         LOG_DEBUG("Have received" << mReceivedCalendarResources.count() << "incidences in total!");
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
         return;
@@ -1040,11 +1036,11 @@ bool NotebookSyncAgent::calculateDelta(
 void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         const QString &remoteUri,
         const QList<KDateTime> &recurrenceIds,
-        const QList<Reader::CalendarResource> &remoteResources,
+        const Reader::CalendarResource &remoteResource,
         const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
         KCalCore::Incidence::List *localModifications)
 {
-    // the remoteResources list contains all of the ical resources fetched from the remote URI.
+    // the remoteResource contains one ical resource fetched from the remote URI.
     bool foundMatch = false;
     Q_FOREACH (const KDateTime &rid, recurrenceIds) {
         // find the possible local modification associated with this recurrenceId.
@@ -1072,27 +1068,22 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
 
                 // not a persistent exception occurrence addition, must be a "normal" local modification.
                 // found the local incidence.  now find the copy received from the server and detect changes.
-                Q_FOREACH (const Reader::CalendarResource &resource, remoteResources) {
-                    if (resource.href != remoteUri) {
-                        LOG_WARNING("error while removing spurious possible local modifications: resource uri mismatch:" << resource.href << "->" << remoteUri);
-                    } else {
-                        Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, resource.incidences) {
-                            const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
-                            if (exportRInc->recurrenceId() == rid) {
-                                // found the remote incidence.  compare it to the local.
-                                LOG_DEBUG("comparing:" << pLMod->uid() << "(" << remoteUri << ") to:" << exportRInc->uid() << "(" << resource.href << ")");
-                                foundMatch = true;
-                                if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
-                                    removeIdx = i;  // this is a spurious local modification which needs to be removed.
-                                } else {
-                                    removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                                }
-                                break;
+                if (remoteResource.href != remoteUri) {
+                    LOG_WARNING("error while removing spurious possible local modifications: resource uri mismatch:" << remoteResource.href << "->" << remoteUri);
+                } else {
+                    Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
+                        const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
+                        if (exportRInc->recurrenceId() == rid) {
+                            // found the remote incidence.  compare it to the local.
+                            LOG_DEBUG("comparing:" << pLMod->uid() << "(" << remoteUri << ") to:" << exportRInc->uid() << "(" << remoteResource.href << ")");
+                            foundMatch = true;
+                            if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
+                                removeIdx = i;  // this is a spurious local modification which needs to be removed.
+                            } else {
+                                removeIdx = -1; // this is a real local modification. no-op, but for completeness.
                             }
+                            break;
                         }
-                    }
-                    if (foundMatch) {
-                        break;
                     }
                 }
             }
