@@ -1,0 +1,25 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.vcs/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Radicale//NONSGML Radicale Server//EN
+VERSION:1.0
+BEGIN:VEVENT
+UID:572a7c13-bbd6-4fce-9ebb-03a808111828
+CATEGORIES:MEETING
+STATUS:TENTATIVE
+DTSTART:19960401T033000Z
+DTEND:19960401T043000Z
+SUMMARY:Test
+DESCRIPTION:Test description
+CLASS:PRIVATE
+END:VEVENT
+END:VCALENDAR
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
