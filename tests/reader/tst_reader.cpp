@@ -97,15 +97,6 @@ void tst_Reader::readICal_data()
         << QStringLiteral("")
         << false
         << 1;
-    QTest::newRow("missing version response")
-        << QStringLiteral("data/reader_missing.xml")
-        << 1
-        << 1
-        << QStringLiteral("972a7c13-bbd6-4fce-9ebb-03a808111828")
-        << QStringLiteral("Test")
-        << QStringLiteral("")
-        << false
-        << 0;
     QTest::newRow("UTF8 description response")
         << QStringLiteral("data/reader_UTF8_description.xml")
         << 1
@@ -131,6 +122,24 @@ void tst_Reader::readICal_data()
         << QStringLiteral("123-456@789%369$258*147")
         << QStringLiteral("Sieger F - Zweiter E")
         << QStringLiteral("description\nmultilines\n")
+        << false
+        << 0;
+    QTest::newRow("basic vcalendar response")
+        << QStringLiteral("data/reader_basic_vcal.xml")
+        << 1
+        << 1
+        << QStringLiteral("572a7c13-bbd6-4fce-9ebb-03a808111828")
+        << QStringLiteral("Test")
+        << QStringLiteral("Test description")
+        << false
+        << 0;
+    QTest::newRow("missing version response")
+        << QStringLiteral("data/reader_missing.xml")
+        << 1
+        << 1
+        << QStringLiteral("123456789")
+        << QStringLiteral("Sieger F - Zweiter E")
+        << QStringLiteral("Achtelfinale")
         << false
         << 0;
 }

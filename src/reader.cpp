@@ -28,9 +28,20 @@
 #include <QXmlStreamReader>
 
 #include <icalformat.h>
+#include <vcalformat.h>
 #include <memorycalendar.h>
 
 #include <LogMacros.h>
+
+namespace {
+    QString preprocessIcsData(const QString &data) {
+        QString temp = data.trimmed();
+        temp.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+        temp.replace(QStringLiteral("\n"), QStringLiteral("\r\n"));
+        temp = temp.append(QStringLiteral("\r\n\r\n"));
+        return temp;
+    }
+}
 
 Reader::Reader(QObject *parent)
     : QObject(parent)
@@ -82,21 +93,37 @@ void Reader::readResponse()
         LOG_WARNING("Ignoring received calendar object data, is missing href value");
         return;
     }
-    if (!resource.iCalData.isEmpty()) {
+    if (!resource.iCalData.trimmed().isEmpty()) {
+        bool parsed = true;
+        bool isVCalFormat = false;
+        QString icsData = preprocessIcsData(resource.iCalData);
         KCalCore::ICalFormat iCalFormat;
         KCalCore::MemoryCalendar::Ptr cal(new KCalCore::MemoryCalendar(KDateTime::UTC));
-        if (!iCalFormat.fromString(cal, resource.iCalData)) {
-            LOG_WARNING("unable to parse iCal data");
-        } else {
+        if (!iCalFormat.fromString(cal, icsData)) {
+            LOG_WARNING("unable to parse iCal data, trying vCal");
+            KCalCore::VCalFormat vCalFormat;
+            if (vCalFormat.fromString(cal, icsData)) {
+                isVCalFormat = true;
+            } else {
+                LOG_WARNING("unable to parse vCal data");
+                parsed = false;
+            }
+        }
+
+        if (parsed) {
             KCalCore::Event::List events = cal->events(); // TODO: incidences() not just events()
             LOG_DEBUG("iCal data contains" << cal->events().count() << "VEVENT instances");
             if (events.count() <= 1) {
                 // single event, or journal/todos
-                KCalCore::Incidence::Ptr incidence = iCalFormat.fromString(resource.iCalData);
-                if (!incidence.isNull()) {
-                    resource.incidences = KCalCore::Incidence::List() << incidence;
+                if (isVCalFormat && events.count() == 1) {
+                    resource.incidences = KCalCore::Incidence::List() << events.first();
                 } else {
-                    LOG_WARNING("iCal data doesn't contain a valid incidence");
+                    KCalCore::Incidence::Ptr incidence = iCalFormat.fromString(resource.iCalData);
+                    if (!incidence.isNull()) {
+                        resource.incidences = KCalCore::Incidence::List() << incidence;
+                    } else {
+                        LOG_WARNING("iCal data doesn't contain a valid incidence");
+                    }
                 }
             } else {
                 // contains some recurring event information, with exception / RECURRENCE-ID defined.
