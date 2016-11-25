@@ -115,6 +115,15 @@ void tst_Reader::readICal_data()
         << QStringLiteral("description")
         << false
         << 0;
+    QTest::newRow("early UID, before VEVENT")
+        << QStringLiteral("data/reader_earlyUID.xml")
+        << 1
+        << 1
+        << QStringLiteral("1234567890abcdef")
+        << QStringLiteral("early UID test")
+        << QStringLiteral("")
+        << false
+        << 0;
     QTest::newRow("description with CR response")
         << QStringLiteral("data/reader_CR_description.xml")
         << 1

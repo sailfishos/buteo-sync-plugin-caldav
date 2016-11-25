@@ -1,0 +1,25 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.ics/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data>
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:ownCloud Calendar 0.6.4
+UID:1234567890abcdef
+BEGIN:VEVENT
+DTSTAMP:20121021T150000Z
+DTSTART:20161201T000000
+DTEND;VALUE=DATE-TIME:20161202T000000
+TRANSP:TRANSPARENT
+SEQUENCE:0
+SUMMARY:early UID test
+CLASS:PUBLIC
+END:VEVENT
+END:VCALENDAR
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
