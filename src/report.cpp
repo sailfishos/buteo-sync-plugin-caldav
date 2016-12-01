@@ -186,8 +186,12 @@ void Report::processResponse()
     if (!data.isNull() && !data.isEmpty()) {
         Reader reader;
         reader.read(data);
-        mReceivedResources = reader.results();
-        finishedWithSuccess();
+        if (reader.hasError()) {
+            finishedWithError(Buteo::SyncResults::INTERNAL_ERROR, QString("Malformed response body for REPORT"));
+        } else {
+            mReceivedResources = reader.results();
+            finishedWithSuccess();
+        }
     } else {
         finishedWithError(Buteo::SyncResults::INTERNAL_ERROR, QString("Empty response body for REPORT"));
     }

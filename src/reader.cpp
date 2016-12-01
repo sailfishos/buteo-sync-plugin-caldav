@@ -83,6 +83,7 @@ namespace {
 Reader::Reader(QObject *parent)
     : QObject(parent)
     , mReader(0)
+    , mValidResponse(false)
 {
 }
 
@@ -95,11 +96,21 @@ void Reader::read(const QByteArray &data)
 {
     delete mReader;
     mReader = new QXmlStreamReader(data);
+
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "multistatus") {
+            mValidResponse = true;
             readMultiStatus();
         }
     }
+}
+
+bool Reader::hasError() const
+{
+    if (!mReader)
+        return false;
+
+    return !mValidResponse;
 }
 
 const QMultiHash<QString, Reader::CalendarResource>& Reader::results() const

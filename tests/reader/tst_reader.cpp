@@ -71,6 +71,7 @@ void tst_Reader::cleanup()
 void tst_Reader::readICal_data()
 {
     QTest::addColumn<QString>("xmlFilename");
+    QTest::addColumn<bool>("expectedNoError");
     QTest::addColumn<int>("expectedNResponses");
     QTest::addColumn<int>("expectedNIncidences");
     QTest::addColumn<QString>("expectedUID");
@@ -79,8 +80,29 @@ void tst_Reader::readICal_data()
     QTest::addColumn<bool>("expectedRecurs");
     QTest::addColumn<int>("expectedNAlarms");
 
+    QTest::newRow("no XML stream")
+        << QStringLiteral("data/reader_noxml.xml")
+        << false
+        << 0
+        << 0
+        << QString()
+        << QString()
+        << QString()
+        << false
+        << 0;
+    QTest::newRow("malformed XML stream")
+        << QStringLiteral("data/reader_nodav.xml")
+        << false
+        << 0
+        << 0
+        << QString()
+        << QString()
+        << QString()
+        << false
+        << 0;
     QTest::newRow("no incidence response")
         << QStringLiteral("data/reader_noevent.xml")
+        << true
         << 1
         << 0
         << QString()
@@ -90,6 +112,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("basic one incidence response")
         << QStringLiteral("data/reader_base.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("972a7c13-bbd6-4fce-9ebb-03a808111828")
@@ -99,6 +122,7 @@ void tst_Reader::readICal_data()
         << 1;
     QTest::newRow("UTF8 description response")
         << QStringLiteral("data/reader_UTF8_description.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("123456789")
@@ -108,6 +132,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("funny character in UID response")
         << QStringLiteral("data/reader_UID.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("123-456@789%369$258*147")
@@ -117,6 +142,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("early UID, before VEVENT")
         << QStringLiteral("data/reader_earlyUID.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("1234567890abcdef")
@@ -126,6 +152,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("description with CR response")
         << QStringLiteral("data/reader_CR_description.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("123-456@789%369$258*147")
@@ -135,6 +162,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("basic vcalendar response")
         << QStringLiteral("data/reader_basic_vcal.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("572a7c13-bbd6-4fce-9ebb-03a808111828")
@@ -144,6 +172,7 @@ void tst_Reader::readICal_data()
         << 0;
     QTest::newRow("missing version response")
         << QStringLiteral("data/reader_missing.xml")
+        << true
         << 1
         << 1
         << QStringLiteral("123456789")
@@ -156,6 +185,7 @@ void tst_Reader::readICal_data()
 void tst_Reader::readICal()
 {
     QFETCH(QString, xmlFilename);
+    QFETCH(bool, expectedNoError);
     QFETCH(int, expectedNResponses);
     QFETCH(int, expectedNIncidences);
     QFETCH(QString, expectedUID);
@@ -171,6 +201,10 @@ void tst_Reader::readICal()
 
     Reader rd;
     rd.read(f.readAll());
+
+    QCOMPARE(rd.hasError(), !expectedNoError);
+    if (!expectedNoError)
+        return;
 
     QCOMPARE(rd.results().size(), expectedNResponses);
     QCOMPARE(rd.results().values()[0].incidences.length(), expectedNIncidences);

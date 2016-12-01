@@ -58,6 +58,8 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 /opt/tests/buteo/plugins/caldav/data/reader_noevent.xml
 /opt/tests/buteo/plugins/caldav/data/reader_missing.xml
 /opt/tests/buteo/plugins/caldav/data/reader_basic_vcal.xml
+/opt/tests/buteo/plugins/caldav/data/reader_noxml.xml
+/opt/tests/buteo/plugins/caldav/data/reader_nodav.xml
 
 %prep
 %setup -q -n %{name}-%{version}

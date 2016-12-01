@@ -47,6 +47,7 @@ public:
     ~Reader();
 
     void read(const QByteArray &data);
+    bool hasError() const;
     const QMultiHash<QString, CalendarResource>& results() const;
 
 private:
@@ -57,6 +58,7 @@ private:
 
 private:
     QXmlStreamReader *mReader;
+    bool mValidResponse;
     QMultiHash<QString, CalendarResource> mResults;
 };
 
