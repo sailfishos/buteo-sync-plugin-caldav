@@ -1,0 +1,17 @@
+<pre>ErrorException: Array to string conversion in /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/CalendarQueryValidator.php:62
+Stack trace:
+#0 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/CalendarQueryValidator.php(62): Baikal\Framework::exception_error_handler(8, 'Array to string...', '/var/www/html/c...', 62, Array)
+#1 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/CalendarQueryValidator.php(41): Sabre\CalDAV\CalendarQueryValidator->validateCompFilters(Object(Sabre\VObject\Component\VCalendar), Array)
+#2 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/Backend/AbstractBackend.php(150): Sabre\CalDAV\CalendarQueryValidator->validate(Object(Sabre\VObject\Component\VCalendar), Array)
+#3 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/Backend/PDO.php(680): Sabre\CalDAV\Backend\AbstractBackend->validateFilterForObject(Array, Array)
+#4 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/Calendar.php(372): Sabre\CalDAV\Backend\PDO->calendarQuery('1', Array)
+#5 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/Plugin.php(591): Sabre\CalDAV\Calendar->calendarQuery(Array)
+#6 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/CalDAV/Plugin.php(265): Sabre\CalDAV\Plugin->calendarQueryReport(Object(DOMDocument))
+#7 [internal function]: Sabre\CalDAV\Plugin->report('{urn:ietf:param...', Object(DOMDocument), 'calendars/kas/d...')
+#8 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/DAV/Server.php(433): call_user_func_array(Array, Array)
+#9 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/DAV/Server.php(1063): Sabre\DAV\Server->broadcastEvent('report', Array)
+#10 [internal function]: Sabre\DAV\Server->httpReport('calendars/kas/d...')
+#11 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/DAV/Server.php(474): call_user_func(Array, 'calendars/kas/d...')
+#12 /var/www/html/cal/vendor/sabre/dav/lib/Sabre/DAV/Server.php(214): Sabre\DAV\Server->invokeMethod('REPORT', 'calendars/kas/d...')
+#13 /var/www/html/cal/cal.php(82): Sabre\DAV\Server->exec()
+#14 {main}</pre>
