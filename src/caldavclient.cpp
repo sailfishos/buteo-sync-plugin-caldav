@@ -24,6 +24,10 @@
 #include "caldavclient.h"
 #include "notebooksyncagent.h"
 
+#include <sailfishkeyprovider_iniparser.h>
+
+#include <string.h>
+
 #include <extendedcalendar.h>
 #include <extendedstorage.h>
 #include <notebook.h>
@@ -31,7 +35,6 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QDateTime>
-#include <QSettings>
 
 #include <Accounts/Manager>
 #include <Accounts/Account>
@@ -57,6 +60,8 @@ CalDavClient::CalDavClient(const QString& aPluginName,
                             const Buteo::SyncProfile& aProfile,
                             Buteo::PluginCbInterface *aCbInterface)
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
+    , mCleanSyncMarkersFileDir(QStringLiteral("/home/nemo/.local/share/system/privileged/Sync/"))
+    , mCleanSyncMarkersFile(QStringLiteral("/home/nemo/.local/share/system/privileged/Sync/caldav.ini"))
     , mManager(0)
     , mAuth(0)
     , mCalendar(0)
@@ -177,9 +182,18 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalen
 
 bool CalDavClient::cleanSyncRequired(int accountId)
 {
-    QString settingsFileName = QString::fromLatin1("/home/nemo/.local/share/system/privileged/Sync/caldav.ini");
-    QSettings settingsFile(settingsFileName, QSettings::IniFormat);
-    bool alreadyClean = settingsFile.value(QStringLiteral("%1-cleaned").arg(accountId), QVariant::fromValue<bool>(false)).toBool();
+    // multiple CalDavClient processes might be spawned (e.g. sync with different accounts)
+    // so use a process mutex to ensure that only one will access the clean sync marker file at any time.
+    ProcessMutex *mutex(ProcessMutex::instance(mProcessMutex, mCleanSyncMarkersFile));
+    mutex->lock();
+
+    char *cleaned_value = SailfishKeyProvider_ini_read(
+            mCleanSyncMarkersFile.toLatin1(),
+            "General",
+            QStringLiteral("%1-cleaned").arg(accountId).toLatin1());
+    bool alreadyClean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
+    free(cleaned_value);
+
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
         LOG_WARNING("Deleting caldav notebooks associated with this account:" << accountId << "due to clean sync");
@@ -219,12 +233,23 @@ bool CalDavClient::cleanSyncRequired(int accountId)
             }
         }
 
+        // mark this account as having been cleaned.
+        if (SailfishKeyProvider_ini_write(
+                mCleanSyncMarkersFileDir.toLatin1(),
+                mCleanSyncMarkersFile.toLatin1(),
+                "General",
+                QStringLiteral("%1-cleaned").arg(accountId).toLatin1(),
+                "true") != 0) {
+            LOG_WARNING("Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!");
+        }
+
         // finished; return true because this will be a clean sync.
         LOG_WARNING("Finished pre-sync cleanup with caldav account" << accountId);
-        settingsFile.setValue(QStringLiteral("%1-cleaned").arg(accountId), QVariant::fromValue<bool>(true));
+        mutex->unlock();
         return true;
     }
 
+    mutex->unlock();
     return false;
 }
 

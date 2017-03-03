@@ -28,9 +28,11 @@
 #include "authhandler.h"
 #include "settings.h"
 #include "notebooksyncagent.h"
+#include "semaphore_p.h"
 
 #include <QList>
 #include <QSet>
+#include <QScopedPointer>
 
 #include <incidence.h>
 #include <extendedstorage.h>
@@ -156,6 +158,9 @@ private:
 
     void setCredentialsNeedUpdate(int accountId);
 
+    QString                     mCleanSyncMarkersFileDir;
+    QString                     mCleanSyncMarkersFile;
+    mutable QScopedPointer<ProcessMutex> mProcessMutex;
     QList<NotebookSyncAgent *>  mNotebookSyncAgents;
     QNetworkAccessManager*      mNAManager;
     Accounts::Manager*          mManager;
