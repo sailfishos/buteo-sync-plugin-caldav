@@ -31,6 +31,7 @@
 
 #include <QList>
 #include <QSet>
+#include <QScopedPointer>
 
 #include <incidence.h>
 #include <extendedstorage.h>
@@ -40,6 +41,8 @@
 #include <SyncCommonDefs.h>
 
 #include <Accounts/Manager>
+
+#include <sailfishkeyprovider_processmutex.h>
 
 class QNetworkAccessManager;
 class Request;
@@ -156,6 +159,7 @@ private:
 
     void setCredentialsNeedUpdate(int accountId);
 
+    mutable QScopedPointer<Sailfish::KeyProvider::ProcessMutex> mProcessMutex;
     QList<NotebookSyncAgent *>  mNotebookSyncAgents;
     QNetworkAccessManager*      mNAManager;
     Accounts::Manager*          mManager;
