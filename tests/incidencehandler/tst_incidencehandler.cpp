@@ -4,6 +4,7 @@
 #include <todo.h>
 #include <journal.h>
 #include <alarm.h>
+#include <attachment.h>
 #include <incidencehandler.h>
 
 using namespace KCalCore;
@@ -315,6 +316,22 @@ void tst_IncidenceHandler::changedEventAlarmsMakesDifferent()
     event2->clearAlarms();
     Alarm::Ptr alarm2 = event2->newAlarm();
     alarm2->setDisplayAlarm("Alarm 2");
+    QVERIFY(!IncidenceHandler::copiedPropertiesAreEqual(event1, event2));
+}
+
+void tst_IncidenceHandler::changedEventAttachmentsMakesDifferent()
+{
+    Event::Ptr event1 = Event::Ptr(new Event);
+    QString uri1("http://example.com/resource/one/");
+    Attachment::Ptr attachment1 = Attachment::Ptr(new Attachment(uri1));
+    event1->addAttachment(attachment1);
+    Event::Ptr event2 = Event::Ptr(new Event);
+    IncidenceHandler::copyIncidenceProperties(event2, event1);
+    QVERIFY(IncidenceHandler::copiedPropertiesAreEqual(event1, event2));
+    event2->clearAttachments();
+    QString uri2("http://example.com/resource/two/");
+    Attachment::Ptr attachment2 = Attachment::Ptr(new Attachment(uri2));
+    event2->addAttachment(attachment2);
     QVERIFY(!IncidenceHandler::copiedPropertiesAreEqual(event1, event2));
 }
 

@@ -92,7 +92,6 @@ bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &
 
     // Do not compare created() or lastModified() because we don't update these fields when
     // an incidence is updated by copyIncidenceProperties(), so they are guaranteed to be unequal.
-    // TODO compare attachment lists to compare them also.
     // Don't compare resources() for now because KCalCore may insert QStringList("") as the resources
     // when in fact it should be QStringList(), which causes the comparison to fail.
     RETURN_FALSE_IF_NOT_EQUAL(a, b, type(), "type");
@@ -132,6 +131,8 @@ bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &
     RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(personA != personB, "organizer", (personA.fullName() + " != " + personB.fullName()));
 
     if (!pointerDataEqual(a->alarms(), b->alarms()))
+        return false;
+    if (!pointerDataEqual(a->attachments(), b->attachments()))
         return false;
 
     switch (a->type()) {
