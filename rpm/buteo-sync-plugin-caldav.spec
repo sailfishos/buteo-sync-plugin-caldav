@@ -47,6 +47,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %defattr(-,root,root,-)
 /opt/tests/buteo/plugins/caldav/tst_reader
 /opt/tests/buteo/plugins/caldav/tst_notebooksyncagent
+/opt/tests/buteo/plugins/caldav/tst_incidencehandler
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_insert_and_update.xml
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_recurring.xml
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_simple.xml

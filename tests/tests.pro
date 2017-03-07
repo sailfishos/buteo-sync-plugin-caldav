@@ -1,2 +1,2 @@
 TEMPLATE = subdirs
-SUBDIRS += notebooksyncagent reader
+SUBDIRS += notebooksyncagent reader incidencehandler
