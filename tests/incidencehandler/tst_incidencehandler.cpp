@@ -368,6 +368,17 @@ void tst_IncidenceHandler::changedTodoCompletionDateMakesDifferent()
     QVERIFY(!IncidenceHandler::copiedPropertiesAreEqual(todo1, todo2));
 }
 
+void tst_IncidenceHandler::changedTodoDueDateMakesDifferent()
+{
+    Todo::Ptr todo1 = Todo::Ptr(new Todo);
+    todo1->setDtDue(KDateTime(QDate(2009, 1, 2), QTime(3, 4, 5), KDateTime::Spec(KDateTime::UTC)));
+    Todo::Ptr todo2 = Todo::Ptr(new Todo);
+    IncidenceHandler::copyIncidenceProperties(todo2, todo1);
+    QVERIFY(IncidenceHandler::copiedPropertiesAreEqual(todo1, todo2));
+    todo2->setDtDue(KDateTime(QDate(2010, 12, 13), QTime(12, 13, 14), KDateTime::Spec(KDateTime::UTC)));
+    QVERIFY(!IncidenceHandler::copiedPropertiesAreEqual(todo1, todo2));
+}
+
 void tst_IncidenceHandler::changedTodoRecurrenceDueDateMakesDifferent()
 {
     Todo::Ptr todo1 = Todo::Ptr(new Todo);

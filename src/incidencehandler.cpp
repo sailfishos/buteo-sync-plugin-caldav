@@ -263,6 +263,7 @@ void IncidenceHandler::copyIncidenceProperties(KCalCore::Incidence::Ptr dest, co
         KCalCore::Todo::Ptr destTodo = dest.staticCast<KCalCore::Todo>();
         KCalCore::Todo::Ptr srcTodo = src.staticCast<KCalCore::Todo>();
         COPY_IF_NOT_EQUAL(destTodo, srcTodo, completed(), setCompleted);
+        COPY_IF_NOT_EQUAL(destTodo, srcTodo, dtDue(), setDtDue);
         COPY_IF_NOT_EQUAL(destTodo, srcTodo, dtRecurrence(), setDtRecurrence);
         COPY_IF_NOT_EQUAL(destTodo, srcTodo, percentComplete(), setPercentComplete);
     }
