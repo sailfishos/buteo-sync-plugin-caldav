@@ -2,7 +2,6 @@
 
 #include <event.h>
 #include <todo.h>
-#include <journal.h>
 #include <alarm.h>
 #include <attachment.h>
 #include <incidencehandler.h>
