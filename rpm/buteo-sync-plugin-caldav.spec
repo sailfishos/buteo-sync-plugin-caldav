@@ -69,8 +69,8 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 make %{?jobs:-j%jobs}
 
 %pre
-rm -f /home/nemo/.cache/msyncd/sync/client/caldav.xml
-rm -f /home/nemo/.cache/msyncd/sync/caldav-sync.xml
+rm -f /home/nemo/.cache/msyncd/sync/client/caldav.xml || :
+rm -f /home/nemo/.cache/msyncd/sync/caldav-sync.xml || :
 
 %install
 rm -rf %{buildroot}
