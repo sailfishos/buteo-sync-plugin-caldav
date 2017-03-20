@@ -21,6 +21,8 @@
 #include <QtTest>
 #include <QObject>
 
+#include <incidence.h>
+#include <event.h>
 #include <notebooksyncagent.h>
 #include <extendedcalendar.h>
 #include <settings.h>
@@ -46,9 +48,14 @@ private slots:
     void insertEvent_data();
     void insertEvent();
 
+    void removePossibleLocal_data();
+    void removePossibleLocal();
+
 private:
     Settings m_settings;
     NotebookSyncAgent *m_agent;
+
+    typedef QMap<QString, QString> IncidenceDescr;
 };
 
 tst_NotebookSyncAgent::tst_NotebookSyncAgent()
@@ -84,7 +91,6 @@ void tst_NotebookSyncAgent::init()
     mKCal::Notebook *notebook = new mKCal::Notebook("123456789", "test1", "test 1", "red", true, false, false, false, false);
 
     m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
-
 }
 
 void tst_NotebookSyncAgent::cleanup()
@@ -140,7 +146,7 @@ void tst_NotebookSyncAgent::insertEvent()
     Reader rd;
     rd.read(f.readAll());
 
-    QVERIFY(m_agent->updateIncidences(rd.results().values()));
+    QVERIFY(m_agent->updateIncidences(rd.results()));
 
     KCalCore::Incidence::List incidences = m_agent->mCalendar->incidences();
 
@@ -155,6 +161,105 @@ void tst_NotebookSyncAgent::insertEvent()
     QCOMPARE(ev->summary(), expectedSummary);
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
+}
+
+void tst_NotebookSyncAgent::removePossibleLocal_data()
+{
+    QTest::addColumn<IncidenceDescr>("remoteIncidence");
+    QTest::addColumn<QList<IncidenceDescr> >("localIncidences");
+    QTest::addColumn<bool>("expectedRemoval");
+    
+    IncidenceDescr remote;
+    remote.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
+    remote.insert("recurrenceId", QStringLiteral("Wed Mar 15 14:46:08 UTC 2017"));
+
+    {
+        QList<IncidenceDescr> locals;
+        IncidenceDescr event;
+        event.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
+        event.insert("recurrenceId", QStringLiteral("Wed Mar 15 14:46:08 UTC 2017"));
+        locals << event;
+        event.clear();
+        event.insert("uri", QStringLiteral("/alice/calendar/147852369.ics"));
+        event.insert("recurrenceId", QStringLiteral("Thu Mar 16 05:12:45 UTC 2017"));
+        locals << event;
+        QTest::newRow("not a local modification")
+            << remote
+            << locals
+            << true;
+    }
+
+    {
+        QList<IncidenceDescr> locals;
+        IncidenceDescr event;
+        event.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
+        event.insert("recurrenceId", QStringLiteral("Wed Mar 15 14:46:08 UTC 2017"));
+        event.insert("description", QStringLiteral("modified description"));
+        locals << event;
+        event.clear();
+        event.insert("uri", QStringLiteral("/alice/calendar/147852369.ics"));
+        event.insert("recurrenceId", QStringLiteral("Thu Mar 16 05:12:45 UTC 2017"));
+        locals << event;
+        QTest::newRow("a valid local modification")
+            << remote
+            << locals
+            << false;
+    }
+}
+
+static QString fetchUri(KCalCore::Incidence::Ptr incidence)
+{
+    Q_FOREACH (const QString &comment, incidence->comments()) {
+        if (comment.startsWith("buteo:caldav:uri:")) {
+            QString uri = comment.mid(17);
+            return uri;
+        }
+    }
+    return QString();
+}
+
+void tst_NotebookSyncAgent::removePossibleLocal()
+{
+    QFETCH(IncidenceDescr, remoteIncidence);
+    QFETCH(QList<IncidenceDescr>, localIncidences);
+    QFETCH(bool, expectedRemoval);
+
+    KCalCore::Incidence::List localModifications;
+    Q_FOREACH (const IncidenceDescr &descr, localIncidences) {
+        KCalCore::Incidence::Ptr local = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        local->setRecurrenceId(KDateTime::fromString(descr["recurrenceId"]));
+        local->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(descr["uri"]));
+        if (descr.contains("description"))
+            local->setDescription(descr["description"]);
+        localModifications << local;
+    }
+
+    Reader::CalendarResource resource;
+    resource.href = remoteIncidence["uri"];
+    KCalCore::Incidence::Ptr remote = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    remote->setRecurrenceId(KDateTime::fromString(remoteIncidence["recurrenceId"]));
+    remote->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(remoteIncidence["uri"]));
+    resource.incidences << remote;
+
+    QList<KDateTime> recurrenceIds;
+    recurrenceIds << KDateTime::fromString(remoteIncidence["recurrenceId"]);
+    QMultiHash<QString, KDateTime> addedPersistentExceptionOccurrences;
+
+    m_agent->removePossibleLocalModificationIfIdentical
+        (resource.href, recurrenceIds, resource,
+         addedPersistentExceptionOccurrences, &localModifications);
+
+    /* Check if remote is still or not in localModifications. */
+    bool found = false;
+    Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, localModifications) {
+        if (fetchUri(incidence) == fetchUri(remote)) {
+            found = true;
+            if (expectedRemoval)
+                QFAIL("Expected removal but still present.");
+        }
+    }
+    if (!expectedRemoval && !found)
+        QFAIL("Local modification not found anymore.");
 }
 
 #include "tst_notebooksyncagent.moc"

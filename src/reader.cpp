@@ -113,7 +113,7 @@ bool Reader::hasError() const
     return !mValidResponse;
 }
 
-const QMultiHash<QString, Reader::CalendarResource>& Reader::results() const
+const QList<Reader::CalendarResource>& Reader::results() const
 {
     return mResults;
 }
@@ -192,7 +192,7 @@ void Reader::readResponse()
         }
     }
 
-    mResults.insert(resource.href, resource); // multihash insert.
+    mResults.append(resource);
 }
 
 void Reader::readPropStat(CalendarResource *resource)
