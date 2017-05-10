@@ -23,6 +23,7 @@
 #include <QFile>
 
 #include <reader.h>
+#include <event.h>
 
 class tst_Reader : public QObject
 {
@@ -41,6 +42,9 @@ public slots:
 private slots:
     void readICal_data();
     void readICal();
+
+    void readDate_data();
+    void readDate();
 };
 
 tst_Reader::tst_Reader()
@@ -220,6 +224,64 @@ void tst_Reader::readICal()
 
     QCOMPARE(ev->recurs(), expectedRecurs);
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
+}
+
+void tst_Reader::readDate_data()
+{
+    QTest::addColumn<QString>("xmlFilename");
+    QTest::addColumn<bool>("expectedNoError");
+    QTest::addColumn<int>("expectedNResponses");
+    QTest::addColumn<int>("expectedNIncidences");
+    QTest::addColumn<QDate>("expectedStartDate");
+    QTest::addColumn<QDate>("expectedEndDate");
+
+    QTest::newRow("full day event")
+        << QStringLiteral("data/reader_fullday.xml")
+        << true
+        << 1
+        << 1
+        << QDate(2017, 03, 24)
+        << QDate(2017, 03, 24);
+    QTest::newRow("vcalendar full days")
+        << QStringLiteral("data/reader_fullday_vcal.xml")
+        << true
+        << 1
+        << 1
+        << QDate(2017, 03, 24)
+        << QDate(2017, 03, 24);
+}
+
+void tst_Reader::readDate()
+{
+    QFETCH(QString, xmlFilename);
+    QFETCH(bool, expectedNoError);
+    QFETCH(int, expectedNResponses);
+    QFETCH(int, expectedNIncidences);
+    QFETCH(QDate, expectedStartDate);
+    QFETCH(QDate, expectedEndDate);
+
+    QFile f(QStringLiteral("%1/%2").arg(QCoreApplication::applicationDirPath(), xmlFilename));
+    if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
+        QFAIL("Data file does not exist or cannot be opened for reading!");
+    }
+
+    Reader rd;
+    rd.read(f.readAll());
+
+    QCOMPARE(rd.hasError(), !expectedNoError);
+    if (!expectedNoError)
+        return;
+
+    QCOMPARE(rd.results().size(), expectedNResponses);
+    if (!rd.results().isEmpty())
+        QCOMPARE(rd.results().first().incidences.length(), expectedNIncidences);
+
+    if (!expectedNIncidences)
+        return;
+    KCalCore::Event::Ptr ev = rd.results().first().incidences[0].staticCast<KCalCore::Event>();
+
+    QCOMPARE(ev->dtStart().date(), expectedStartDate);
+    QCOMPARE(ev->dtEnd().date(), expectedEndDate);
 }
 
 #include "tst_reader.moc"
