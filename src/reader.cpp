@@ -29,6 +29,7 @@
 
 #include <icalformat.h>
 #include <vcalformat.h>
+#include <exceptions.h>
 #include <memorycalendar.h>
 
 #include <LogMacros.h>
@@ -77,6 +78,23 @@ namespace {
         temp = temp.append(QStringLiteral("\r\n\r\n"));
         temp = ensureUidInVEvent(temp);
         return temp;
+    }
+
+    QString ensureICalVersion(const QString &data) {
+        // Add VERSION:2.0 after the VCALENDAR tag to force iCal parsing.
+        const char separator = '\n';
+        QStringList original = data.split(separator);
+        QStringList fixed;
+
+        for (QStringList::const_iterator it = original.constBegin(); it != original.constEnd(); it++) {
+            const QString &line(*it);
+
+            fixed.append(line);
+            if (line.startsWith("BEGIN:VCALENDAR")) {
+                fixed.append(QStringLiteral("VERSION:2.0\r"));
+            }
+        }
+        return fixed.join(separator);
     }
 }
 
@@ -148,12 +166,28 @@ void Reader::readResponse()
         KCalCore::ICalFormat iCalFormat;
         KCalCore::MemoryCalendar::Ptr cal(new KCalCore::MemoryCalendar(KDateTime::UTC));
         if (!iCalFormat.fromString(cal, icsData)) {
-            LOG_WARNING("unable to parse iCal data, trying vCal");
-            KCalCore::VCalFormat vCalFormat;
-            if (vCalFormat.fromString(cal, icsData)) {
-                isVCalFormat = true;
+            if (iCalFormat.exception() && iCalFormat.exception()->code()
+                == KCalCore::Exception::CalVersion1) {
+                KCalCore::VCalFormat vCalFormat;
+                isVCalFormat = vCalFormat.fromString(cal, icsData);
+                if (!isVCalFormat) {
+                    LOG_WARNING("unable to parse vCal data");
+                    parsed = false;
+                }
+            } else if (iCalFormat.exception()
+                       && (iCalFormat.exception()->code()
+                           == KCalCore::Exception::CalVersionUnknown
+                           || iCalFormat.exception()->code()
+                           == KCalCore::Exception::VersionPropertyMissing)) {
+                iCalFormat.setException(0);
+                LOG_WARNING("unknown or missing version, trying iCal 2.0");
+                icsData = ensureICalVersion(icsData);
+                if (!iCalFormat.fromString(cal, icsData)) {
+                    LOG_WARNING("unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1));
+                    parsed = false;
+                }
             } else {
-                LOG_WARNING("unable to parse vCal data");
+                LOG_WARNING("unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1));
                 parsed = false;
             }
         }
