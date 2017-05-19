@@ -6,7 +6,7 @@ VER_MAJ = 0
 VER_MIN = 1
 VER_PAT = 0
 
-QMAKE_CXXFLAGS = -Wall \
+QMAKE_CXXFLAGS += -Wall \
     -g \
     -Wno-cast-align \
     -O2 -finline-functions
