@@ -34,5 +34,8 @@ HEADERS += \
         $$PWD/notebooksyncagent.h
 
 OTHER_FILES += \
-            $$PWD/xmls/client/caldav.xml \
-            $$PWD/xmls/sync/caldav-sync.xml
+        $$PWD/xmls/client/caldav.xml \
+        $$PWD/xmls/sync/caldav-sync.xml
+
+MOC_DIR=$$PWD/.moc/
+OBJECTS_DIR=$$PWD/.obj/
