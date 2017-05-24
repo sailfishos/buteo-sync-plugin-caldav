@@ -1356,7 +1356,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
     // we find the resource which includes that change and promote it
     // in the list (so that we deal with it before the other).
     QList<Reader::CalendarResource> orderedResources;
-    for (int i = 0; i < resources.count(); ++i) {
+    for (int i = resources.count() - 1; i >= 0; --i) {
         bool prependedResource = false;
         for (int j = 0; j < resources[i].incidences.count(); ++j) {
             if (!resources[i].incidences[j]->hasRecurrenceId()) {
