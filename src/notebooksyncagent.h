@@ -88,7 +88,7 @@ private:
     void fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime);
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
     bool updateIncidence(KCalCore::Incidence::Ptr incidence, const QString &resourceHref,
-                         const QString &resourceEtag, bool *criticalError);
+                         const QString &resourceEtag, bool isKnownOrphan, bool *criticalError);
     bool deleteIncidences(KCalCore::Incidence::List deletedIncidences);
 
     void sendLocalChanges();
