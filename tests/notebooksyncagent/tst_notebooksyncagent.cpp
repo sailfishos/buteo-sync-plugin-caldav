@@ -48,6 +48,9 @@ private slots:
     void insertEvent_data();
     void insertEvent();
 
+    void insertMultipleEvents_data();
+    void insertMultipleEvents();
+
     void removePossibleLocal_data();
     void removePossibleLocal();
 
@@ -76,7 +79,7 @@ void tst_NotebookSyncAgent::initTestCase()
 }
 
 void tst_NotebookSyncAgent::cleanupTestCase()
-{    
+{
 }
 
 void tst_NotebookSyncAgent::init()
@@ -95,6 +98,11 @@ void tst_NotebookSyncAgent::init()
 
 void tst_NotebookSyncAgent::cleanup()
 {
+    mKCal::Notebook::List notebookList = m_agent->mStorage->notebooks();
+    Q_FOREACH (mKCal::Notebook::Ptr notebook, notebookList) {
+        m_agent->mStorage->deleteNotebook(notebook);
+    }
+
     m_agent->mStorage->save();
     m_agent->mStorage->close();
 
@@ -161,6 +169,64 @@ void tst_NotebookSyncAgent::insertEvent()
     QCOMPARE(ev->summary(), expectedSummary);
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
+}
+
+void tst_NotebookSyncAgent::insertMultipleEvents_data()
+{
+    QTest::addColumn<QString>("xmlFilename");
+    QTest::addColumn<QStringList>("expectedUIDs");
+    QTest::addColumn<QStringList>("expectedSummaries");
+    QTest::addColumn<QStringList>("expectedRecurrenceIDs");
+
+    QTest::newRow("singleA, orphan1, singleB, orphan2")
+        << "data/notebooksyncagent_orphanexceptions.xml"
+        << (QStringList() << QStringLiteral("NBUID:123456789:aaaaaaaaaa")
+                          << QStringLiteral("NBUID:123456789:d1158dac-5a63-49d5-83b8-176bb792a088")
+                          << QStringLiteral("NBUID:123456789:bbbbbbbbbb")
+                          << QStringLiteral("NBUID:123456789:d1158dac-5a63-49d5-83b8-176bb792a088"))
+        << (QStringList() << QStringLiteral("Test a")
+                          << QStringLiteral("Test orphan one")
+                          << QStringLiteral("Test b")
+                          << QStringLiteral("Test orphan two"))
+        << (QStringList() << QString()
+                          << QStringLiteral("20170323T110000Z")
+                          << QString()
+                          << QStringLiteral("20170330T110000Z"));
+}
+
+void tst_NotebookSyncAgent::insertMultipleEvents()
+{
+    QFETCH(QString, xmlFilename);
+    QFETCH(QStringList, expectedUIDs);
+    QFETCH(QStringList, expectedSummaries);
+    QFETCH(QStringList, expectedRecurrenceIDs);
+
+    QVERIFY(expectedUIDs.size() == expectedSummaries.size());
+    QVERIFY(expectedSummaries.size() == expectedRecurrenceIDs.size());
+
+    QFile f(QStringLiteral("%1/%2").arg(QCoreApplication::applicationDirPath(), xmlFilename));
+    if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
+        QFAIL("Data file does not exist or cannot be opened for reading!");
+    }
+
+    Reader rd;
+    rd.read(f.readAll());
+
+    QVERIFY(m_agent->updateIncidences(rd.results()));
+    KCalCore::Incidence::List incidences = m_agent->mCalendar->incidences();
+    for (int i = 0; i < expectedUIDs.size(); ++i) {
+        KCalCore::Incidence::Ptr ev;
+        if (expectedRecurrenceIDs[i].isEmpty()) {
+            ev = m_agent->mCalendar->event(expectedUIDs[i]);
+        } else {
+            KDateTime recId = KDateTime::fromString(expectedRecurrenceIDs[i]);
+            ev = m_agent->mCalendar->event(expectedUIDs[i], recId);
+        }
+        qWarning() << "Trying to find event:" << expectedUIDs[i] << expectedRecurrenceIDs[i];
+        QVERIFY(ev);
+        QCOMPARE(ev->uid(), expectedUIDs[i]);
+        QCOMPARE(ev->summary(), expectedSummaries[i]);
+    }
 }
 
 void tst_NotebookSyncAgent::removePossibleLocal_data()

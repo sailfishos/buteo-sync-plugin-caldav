@@ -1169,6 +1169,7 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
 bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                                         const QString &resourceHref,
                                         const QString &resourceEtag,
+                                        bool isKnownOrphan,
                                         bool *criticalError)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
@@ -1254,28 +1255,62 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             // no dissociated occurrence exists already (ie, it's not an update), so create a new one.
             // need to detach, and then copy the properties into the detached occurrence.
             KCalCore::Incidence::Ptr recurringIncidence = mCalendar->event(incidence->uid(), KDateTime());
-            if (!recurringIncidence)
+            if (!recurringIncidence) {
                 recurringIncidence = mCalendar->event(nbuid, KDateTime());
-            if (recurringIncidence.isNull()) {
+            }
+            if (isKnownOrphan) {
+                // construct a parent series for this orphan, or update the previously constructed one.
+                if (recurringIncidence.isNull()) {
+                    // construct a recurring parent series for this orphan.
+                    KCalCore::Incidence::Ptr parentSeries = KCalCore::Incidence::Ptr(new KCalCore::Event);
+                    IncidenceHandler::prepareImportedIncidence(incidence);
+                    IncidenceHandler::copyIncidenceProperties(parentSeries, incidence);
+                    parentSeries->setRecurrenceId(KDateTime());
+                    parentSeries->recurrence()->addRDateTime(incidence->recurrenceId());
+                    parentSeries->setUid(nbuid);
+                    setIncidenceHrefUri(parentSeries, resourceHref);
+                    setIncidenceETag(parentSeries, resourceEtag);
+                    LOG_DEBUG("creating parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
+                    bool parentAdded = mCalendar->addEvent(parentSeries.staticCast<KCalCore::Event>(), mNotebook->uid());
+                    if (!parentAdded) {
+                        LOG_WARNING("error: could not create parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
+                    } else {
+                        mStorage->load(nbuid, KDateTime());
+                        recurringIncidence = mCalendar->event(nbuid);
+                    }
+                } else if (!recurringIncidence.isNull()) {
+                    // the parent was already added for this orphan (e.g. for a separate orphan exception occurrence)
+                    // but we still need to make sure that the rdate exists for this one.
+                    if (!recurringIncidence->recurrence()->rDateTimes().contains(incidence->recurrenceId())) {
+                        LOG_DEBUG("adding rdate to parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
+                        recurringIncidence->startUpdates();
+                        recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
+                        recurringIncidence->endUpdates();
+                    }
+                }
+            }
+            // now we should have a parent series from which we can dissociate the exception occurrence.
+            if (!recurringIncidence.isNull()) {
+                KCalCore::Incidence::Ptr occurrence = mCalendar->dissociateSingleOccurrence(recurringIncidence, incidence->recurrenceId(), incidence->recurrenceId().timeSpec());
+                if (occurrence.isNull()) {
+                    LOG_WARNING("error: could not dissociate occurrence from recurring event:" << incidence->uid() << incidence->recurrenceId().toString());
+                    return false;
+                }
+
+                IncidenceHandler::prepareImportedIncidence(incidence);
+                IncidenceHandler::copyIncidenceProperties(occurrence, incidence);
+                setIncidenceHrefUri(occurrence, resourceHref);
+                setIncidenceETag(occurrence, resourceEtag);
+                if (!mCalendar->addEvent(occurrence.staticCast<KCalCore::Event>(), mNotebook->uid())) {
+                    LOG_WARNING("error: could not add dissociated occurrence to calendar");
+                    return false;
+                }
+                LOG_DEBUG("Added new occurrence incidence:" << occurrence->uid() << occurrence->recurrenceId().toString());
+                return true;
+            } else {
                 LOG_WARNING("error: parent recurring incidence could not be retrieved:" << incidence->uid());
                 return false;
             }
-            KCalCore::Incidence::Ptr occurrence = mCalendar->dissociateSingleOccurrence(recurringIncidence, incidence->recurrenceId(), incidence->recurrenceId().timeSpec());
-            if (occurrence.isNull()) {
-                LOG_WARNING("error: could not dissociate occurrence from recurring event:" << incidence->uid() << incidence->recurrenceId().toString());
-                return false;
-            }
-
-            IncidenceHandler::prepareImportedIncidence(incidence);
-            IncidenceHandler::copyIncidenceProperties(occurrence, incidence);
-            setIncidenceHrefUri(occurrence, resourceHref);
-            setIncidenceETag(occurrence, resourceEtag);
-            if (!mCalendar->addEvent(occurrence.staticCast<KCalCore::Event>(), mNotebook->uid())) {
-                LOG_WARNING("error: could not add dissociated occurrence to calendar");
-                return false;
-            }
-            LOG_DEBUG("Added new occurrence incidence:" << occurrence->uid() << occurrence->recurrenceId().toString());
-            return true;
         }
 
         // just a new event without needing detach.
@@ -1371,16 +1406,17 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         if (parentIndex == -1) {
-            LOG_DEBUG("No parent or base incidence in resource's incidence list, performing direct updates to persistent occurrences");
+            LOG_DEBUG("No parent or base incidence in resource's incidence list, performing direct updates to" << resource.incidences.size() << "persistent occurrences");
             for (int i = 0; i < resource.incidences.size(); ++i) {
                 KCalCore::Incidence::Ptr remoteInstance = resource.incidences[i];
-                updateIncidence(remoteInstance, resource.href, resource.etag, &criticalError);
+                LOG_DEBUG("Updating orphan persistent occurrence:" << remoteInstance->uid() << remoteInstance->summary());
+                updateIncidence(remoteInstance, resource.href, resource.etag, true, &criticalError);
                 if (criticalError) {
                     LOG_WARNING("Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString());
                     return false;
                 }
             }
-            return true; // finished
+            continue; // finished with this resource, now handle the next one
         }
 
         // if there was a parent / base incidence, then we need to compare local/remote lists.
@@ -1394,7 +1430,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         // first save the added/updated base incidence
         LOG_DEBUG("Saving the added/updated base incidence before saving persistent exceptions:" << resource.incidences[parentIndex]->uid());
         KCalCore::Incidence::Ptr updatedBaseIncidence = resource.incidences[parentIndex];
-        updateIncidence(updatedBaseIncidence, resource.href, resource.etag, &criticalError); // update the base incidence first.
+        updateIncidence(updatedBaseIncidence, resource.href, resource.etag, false, &criticalError); // update the base incidence first.
         if (criticalError) {
             LOG_WARNING("Error saving base incidence of resource" << resource.href);
             return false;
@@ -1410,7 +1446,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             LOG_DEBUG("Now saving a persistent exception:" << resource.incidences[i]->recurrenceId().toString());
             KCalCore::Incidence::Ptr remoteInstance = resource.incidences[i];
             remoteRecurrenceIds.append(remoteInstance->recurrenceId());
-            updateIncidence(remoteInstance, resource.href, resource.etag, &criticalError);
+            updateIncidence(remoteInstance, resource.href, resource.etag, false, &criticalError);
             if (criticalError) {
                 LOG_WARNING("Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString());
                 return false;
