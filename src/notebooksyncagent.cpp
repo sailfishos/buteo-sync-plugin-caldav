@@ -389,6 +389,7 @@ void NotebookSyncAgent::processETags()
                             &mRemoteAdditions,
                             &mRemoteModifications,
                             &mRemoteDeletions)) {
+            LOG_WARNING("unable to calculate the sync delta for:" << mRemoteCalendarPath);
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR, "unable to calculate sync delta");
             return;
         }
@@ -457,26 +458,37 @@ void NotebookSyncAgent::sendLocalChanges()
         // we're finished syncing.
         LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebookName << mRemoteCalendarPath);
         emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        return;
     } else {
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
 
+    bool localChangeRequestStarted = false;
     QSet<QString> addModUids;
     for (int i = 0; i < mLocalAdditions.count(); i++) {
         if (addModUids.contains(mLocalAdditions[i]->uid())) {
+            LOG_DEBUG("Already handled local addition" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        } else {
-            addModUids.insert(mLocalAdditions[i]->uid());
         }
-        Put *put = new Put(mNetworkManager, mSettings);
-        mRequests.insert(put);
-        connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        put->createEvent(mRemoteCalendarPath,
-                         constructLocalChangeIcs(mLocalAdditions[i]),
-                         mLocalAdditions[i]->uid());
+        QString icsData = constructLocalChangeIcs(mLocalAdditions[i]);
+        if (icsData.isEmpty()) {
+            LOG_DEBUG("Skipping upload of broken local addition:" << i << ":" << mLocalAdditions[i]->uid());
+        } else {
+            LOG_DEBUG("Uploading local addition" << i << "via series PUT for uid:" << mLocalAdditions[i]->uid());
+            localChangeRequestStarted = true;
+            addModUids.insert(mLocalAdditions[i]->uid());
+            Put *put = new Put(mNetworkManager, mSettings);
+            mRequests.insert(put);
+            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
+            put->createEvent(mRemoteCalendarPath,
+                             icsData,
+                             mLocalAdditions[i]->uid());
+            LOG_DEBUG("Triggered upload of local addition" << i);
+        }
     }
     for (int i = 0; i < mLocalModifications.count(); i++) {
         if (addModUids.contains(mLocalModifications[i]->uid())) {
+            LOG_DEBUG("Already handled local modification" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         } else if (incidenceHrefUri(mLocalModifications[i]).isEmpty()) {
             LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
@@ -486,25 +498,35 @@ void NotebookSyncAgent::sendLocalChanges()
         }
         // first, handle updates of exceptions by uploading the entire modified series.
         if (mLocalModifications[i]->hasRecurrenceId()) {
-            addModUids.insert(mLocalModifications[i]->uid());
-            Put *put = new Put(mNetworkManager, mSettings);
-            mRequests.insert(put);
-            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            put->updateEvent(mRemoteCalendarPath,
-                             constructLocalChangeIcs(mLocalModifications[i]),
-                             incidenceETag(mLocalModifications[i]),
-                             incidenceHrefUri(mLocalModifications[i]),
-                             mLocalModifications[i]->uid());
+            QString icsData = constructLocalChangeIcs(mLocalModifications[i]);
+            if (icsData.isEmpty()) {
+                LOG_DEBUG("Skipping upload of broken local exception modification:" << i << ":" << mLocalModifications[i]->uid());
+            } else {
+                LOG_DEBUG("Uploading exception modification via series update for local modification:" << i << ":" << mLocalModifications[i]->uid());
+                localChangeRequestStarted = true;
+                addModUids.insert(mLocalModifications[i]->uid());
+                Put *put = new Put(mNetworkManager, mSettings);
+                mRequests.insert(put);
+                connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
+                put->updateEvent(mRemoteCalendarPath,
+                                 icsData,
+                                 incidenceETag(mLocalModifications[i]),
+                                 incidenceHrefUri(mLocalModifications[i]),
+                                 mLocalModifications[i]->uid());
+            }
         }
     }
     for (int i = 0; i < mLocalModifications.count(); i++) {
         if (addModUids.contains(mLocalModifications[i]->uid())) {
+            LOG_DEBUG("Already handled local modification" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
         // now handle updates of base incidences (which haven't otherwise already been upsynced), via direct update.
         // TODO: is this correct?  Or should we always generate the entire series as a resource we upload?
         // E.g. in the case where there is a pre-existing persistent exception, and the base-event gets modified,
         // does this PUT of the modified base-event cause (unwanted) changes/deletion of the persistent exception?
+        LOG_DEBUG("Uploading base event modification for local modification:" << i);
+        localChangeRequestStarted = true;
         KCalCore::ICalFormat icalFormat;
         Put *put = new Put(mNetworkManager, mSettings);
         mRequests.insert(put);
@@ -536,17 +558,24 @@ void NotebookSyncAgent::sendLocalChanges()
                 LOG_DEBUG("Already handled this exception deletion in another exception update");
                 continue;
             }
-            Put *put = new Put(mNetworkManager, mSettings);
-            mRequests.insert(put);
-            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
             KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid, KDateTime());
             if (!recurringSeries.isNull()) {
-                put->updateEvent(mRemoteCalendarPath,
-                                 constructLocalChangeIcs(recurringSeries),
-                                 uidToEtagAndUri.value(uid).first,
-                                 uidToEtagAndUri.value(uid).second,
-                                 uid);
-                continue; // finished with this deletion.
+                QString icsData = constructLocalChangeIcs(recurringSeries);
+                if (icsData.isEmpty()) {
+                    LOG_DEBUG("Skipping upload of broken local exception deletion:" << uid << "to calendar:" << mRemoteCalendarPath);
+                } else {
+                    LOG_DEBUG("Uploading local deletion of exception via PUT to series event with uid:" << uid << "to calendar:" << mRemoteCalendarPath);
+                    localChangeRequestStarted = true;
+                    Put *put = new Put(mNetworkManager, mSettings);
+                    mRequests.insert(put);
+                    connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
+                    put->updateEvent(mRemoteCalendarPath,
+                                     icsData,
+                                     uidToEtagAndUri.value(uid).first,
+                                     uidToEtagAndUri.value(uid).second,
+                                     uid);
+                    continue; // finished with this deletion.
+                }
             } else {
                 LOG_WARNING("Unable to load recurring incidence for deleted exception; deleting entire series instead");
                 // fall through to the DELETE code below.
@@ -554,12 +583,18 @@ void NotebookSyncAgent::sendLocalChanges()
         }
 
         // the whole series is being deleted; can DELETE.
+        localChangeRequestStarted = true;
         QString remoteUri = uidToEtagAndUri.value(uid).second;
         LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
         Delete *del = new Delete(mNetworkManager, mSettings);
         mRequests.insert(del);
         connect(del, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
         del->deleteEvent(remoteUri);
+    }
+
+    if (!localChangeRequestStarted) {
+        LOG_WARNING("local change upsync skipped due to bad data - finished with notebook" << mNotebookName << mRemoteCalendarPath);
+        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
     }
 }
 
@@ -569,13 +604,14 @@ void NotebookSyncAgent::nonReportRequestFinished()
 
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
+        LOG_WARNING("Report request finished but request is invalid, aborting sync for calendar:" << mCalendarPath);
         emitFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("Invalid request object"));
         return;
     }
     mRequests.remove(request);
 
     if (request->errorCode() != Buteo::SyncResults::NO_ERROR) {
-        LOG_CRITICAL("Aborting sync," << request->command() << "failed" << request->errorString() << "for notebook" << mCalendarPath << "of account:" << mNotebookAccountId);
+        LOG_WARNING("Aborting sync," << request->command() << "failed" << request->errorString() << "for notebook" << mCalendarPath << "of account:" << mNotebookAccountId);
         emitFinished(request->errorCode(), request->errorString());
     } else {
         Put *putRequest = qobject_cast<Put*>(request);
@@ -688,6 +724,8 @@ void NotebookSyncAgent::additionalReportRequestFinished()
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
         return;
     }
+
+    LOG_WARNING("Additional report request finished with error, aborting sync of notebook:" << mCalendarPath);
     emitFinished(report->errorCode(), report->errorString());
 }
 
@@ -783,6 +821,7 @@ bool NotebookSyncAgent::calculateDelta(
     // load all local incidences
     KCalCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
+        LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mCalendarPath << ":" << mNotebook->uid());
         emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString("Unable to load storage incidences for notebook: %1").arg(mNotebook->uid()));
         return false;
     }
@@ -792,7 +831,8 @@ bool NotebookSyncAgent::calculateDelta(
     // Here we can determine local additions and remote deletions.
     KCalCore::Incidence::List additions, addedPersistentExceptionOccurrences;
     if (!mStorage->insertedIncidences(&additions, fromDate < syncDateTime ? fromDate : syncDateTime, mNotebook->uid())) {
-        LOG_CRITICAL("mKCal::ExtendedStorage::insertedIncidences() failed");
+        LOG_WARNING("mKCal::ExtendedStorage::insertedIncidences() failed");
+        emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString("Unable to insert incidences for notebook: %1").arg(mNotebook->uid()));
         return false;
     }
     // We only use the above "additions" list to find new exception occurrences.
@@ -858,7 +898,7 @@ bool NotebookSyncAgent::calculateDelta(
     KCalCore::Incidence::List deleted, deletedSyncDate;
     if (!mStorage->deletedIncidences(&deleted, fromDate, mNotebook->uid()) ||
         !mStorage->deletedIncidences(&deletedSyncDate, syncDateTime, mNotebook->uid())) {
-        LOG_CRITICAL("mKCal::ExtendedStorage::deletedIncidences() failed");
+        LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
     uniteIncidenceLists(deletedSyncDate, &deleted);
@@ -898,7 +938,7 @@ bool NotebookSyncAgent::calculateDelta(
     KCalCore::Incidence::List modified, modifiedSyncDate;
     if (!mStorage->modifiedIncidences(&modified, fromDate, mNotebook->uid()) ||
         !mStorage->modifiedIncidences(&modifiedSyncDate, syncDateTime, mNotebook->uid())) {
-        LOG_CRITICAL("mKCal::ExtendedStorage::modifiedIncidences() failed");
+        LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
         return false;
     }
     uniteIncidenceLists(modifiedSyncDate, &modified);
@@ -1123,6 +1163,10 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
         KCalCore::Incidence::Ptr recurringIncidence = updatedIncidence->hasRecurrenceId()
                                                 ? mCalendar->incidence(updatedIncidence->uid(), KDateTime())
                                                 : updatedIncidence;
+        if (!recurringIncidence) {
+            LOG_WARNING("Unable to find parent series for locally updated incidence:"
+                        << updatedIncidence->uid() << ":" << updatedIncidence->recurrenceId().toString());
+        }
         KCalCore::Incidence::List instances = mCalendar->instances(recurringIncidence);
         KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(recurringIncidence);
 
@@ -1134,7 +1178,11 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
         }
 
         // store the base recurring event into the in-memory calendar
-        memoryCalendar->addIncidence(exportableIncidence);
+        if (!memoryCalendar->addIncidence(exportableIncidence)) {
+            LOG_WARNING("Unable to add base series event to in-memory calendar for incidence:"
+                        << updatedIncidence->uid() << ":" << updatedIncidence->recurrenceId().toString());
+            return QString();
+        }
 
         // now create the persistent occurrences in the in-memory calendar
         Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
@@ -1151,11 +1199,21 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
             exportableOccurrence->setDtStart(instance->recurrenceId());
 
             // add it, and then update it in-memory.
-            memoryCalendar->addIncidence(exportableOccurrence);
-            exportableOccurrence = memoryCalendar->incidence(instance->uid(), instance->recurrenceId());
-            exportableOccurrence->startUpdates();
-            IncidenceHandler::copyIncidenceProperties(exportableOccurrence, IncidenceHandler::incidenceToExport(instance));
-            exportableOccurrence->endUpdates();
+            if (!memoryCalendar->addIncidence(exportableOccurrence)) {
+                LOG_WARNING("Unable to add this incidence to in-memory calendar for export:"
+                            << instance->uid() << instance->recurrenceId().toString());
+                return QString();
+            } else {
+                KCalCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
+                if (!reloadedOccurrence) {
+                    LOG_WARNING("Unable to find this incidence within in-memory calendar for export:"
+                                << exportableIncidence->uid() << instance->recurrenceId().toString());
+                    return QString();
+                }
+                reloadedOccurrence->startUpdates();
+                IncidenceHandler::copyIncidenceProperties(reloadedOccurrence, IncidenceHandler::incidenceToExport(instance));
+                reloadedOccurrence->endUpdates();
+            }
         }
     } else {
         KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(updatedIncidence);
@@ -1337,7 +1395,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         if (added) {
             LOG_DEBUG("Added new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
         } else {
-            LOG_CRITICAL("Unable to add incidence" << incidence->uid() << incidence->recurrenceId().toString() << "to notebook" << mNotebook->uid());
+            LOG_WARNING("Unable to add incidence" << incidence->uid() << incidence->recurrenceId().toString() << "to notebook" << mNotebook->uid());
             *criticalError = true;
             return false;
         }
@@ -1475,7 +1533,7 @@ bool NotebookSyncAgent::deleteIncidences(KCalCore::Incidence::List deletedIncide
     Q_FOREACH (KCalCore::Incidence::Ptr doomed, deletedIncidences) {
         mStorage->load(doomed->uid());
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
-            LOG_CRITICAL("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
+            LOG_WARNING("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
             return false;
         } else {
             LOG_DEBUG("Deleted incidence: " << doomed->uid() << doomed->recurrenceId().toString());
