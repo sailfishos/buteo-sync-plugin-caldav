@@ -27,6 +27,7 @@
 #include "incidencehandler.h"
 
 #include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QBuffer>
 #include <QDebug>
 #include <QStringList>
@@ -103,6 +104,7 @@ void Put::createEvent(const QString &remoteCalendarPath, const QString &icalData
     buffer->setData(data);
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_INCIDENCE_URI, uri);
+    LOG_DEBUG("Sent create event request:" << REQUEST_TYPE.toLatin1() << request.url().toString());
     debugRequest(request, data);
     connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
@@ -120,9 +122,12 @@ void Put::requestFinished()
 
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
+        LOG_WARNING("Internal error: PUT request finished but null");
         finishedWithInternalError();
         return;
     }
+
+    LOG_DEBUG("PUT request finished:" << reply->error());
     debugReplyAndReadAll(reply);
 
     // If the put was denied by server (e.g. read-only calendar), the etag

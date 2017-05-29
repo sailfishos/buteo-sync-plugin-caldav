@@ -69,7 +69,7 @@ void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
     } else if (error == QNetworkReply::ContentOperationNotPermittedError) {
         // Gracefully continue when the operation fails for permission
         // reasons (like pushing to a read-only resource).
-        qWarning() << "the operation requested on the remote content is not permitted";
+        LOG_DEBUG("The" << command() << "operation requested on the remote content is not permitted");
         finishedWithSuccess();
     } else {
         int errorCode = Buteo::SyncResults::INTERNAL_ERROR;
@@ -79,13 +79,13 @@ void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
         } else if (error < 200) {
             errorCode = Buteo::SyncResults::CONNECTION_ERROR;
         }
+        LOG_WARNING("The" << command() << "operation failed with error:" << error << ":" << errorCode);
         finishedWithError(errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(error));
     }
 }
 
 void Request::slotSslErrors(QList<QSslError> errors)
 {
-    FUNCTION_CALL_TRACE;
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
         return;
@@ -93,16 +93,17 @@ void Request::slotSslErrors(QList<QSslError> errors)
     debugReplyAndReadAll(reply);
 
     if (mSettings->ignoreSSLErrors()) {
+        LOG_DEBUG("Ignoring SSL error response");
         reply->ignoreSslErrors(errors);
     } else {
-        qWarning() << command() << "request failed with SSL error";
+        LOG_WARNING(command() << "request received SSL error response!");
     }
 }
 
 void Request::finishedWithError(int minorCode, const QString &errorString)
 {
     if (minorCode != Buteo::SyncResults::NO_ERROR) {
-        LOG_CRITICAL(REQUEST_TYPE << "request failed." << minorCode << errorString);
+        LOG_WARNING(REQUEST_TYPE << "request failed." << minorCode << errorString);
     }
     mMinorCode = minorCode;
     mErrorString = errorString;
