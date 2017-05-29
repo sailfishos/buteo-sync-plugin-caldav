@@ -164,19 +164,21 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalen
 {
     FUNCTION_CALL_TRACE;
 
-    QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
-    QString accountIdStr = QString::number(accountId);
-    mKCal::Notebook::List notebookList = storage->notebooks();
-    LOG_DEBUG("Total Number of Notebooks in device = " << notebookList.count());
-    int deletedCount = 0;
-    Q_FOREACH (mKCal::Notebook::Ptr notebook, notebookList) {
-        if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
-            if (storage->deleteNotebook(notebook)) {
-                deletedCount++;
+    if (storage) {
+        QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
+        QString accountIdStr = QString::number(accountId);
+        mKCal::Notebook::List notebookList = storage->notebooks();
+        LOG_DEBUG("Total Number of Notebooks in device = " << notebookList.count());
+        int deletedCount = 0;
+        Q_FOREACH (mKCal::Notebook::Ptr notebook, notebookList) {
+            if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
+                if (storage->deleteNotebook(notebook)) {
+                    deletedCount++;
+                }
             }
         }
+        LOG_DEBUG("Deleted" << deletedCount << "notebooks");
     }
-    LOG_DEBUG("Deleted" << deletedCount << "notebooks");
 }
 
 bool CalDavClient::cleanSyncRequired(int accountId)
@@ -392,6 +394,7 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
     }
     if (mStorage) {
         mStorage->close();
+        mStorage.clear();
     }
 
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR) {
@@ -470,7 +473,7 @@ void CalDavClient::start()
     }
     mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(KDateTime::Spec::UTC()));
     mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
-    if (!mStorage->open()) {
+    if (!mStorage || !mStorage->open()) {
         syncFinished(Buteo::SyncResults::DATABASE_FAILURE, "unable to open calendar storage");
         return;
     }
