@@ -184,6 +184,26 @@ void tst_Reader::readICal_data()
         << QStringLiteral("Achtelfinale")
         << false
         << 0;
+    QTest::newRow("escaped xml tag within ics")
+        << QStringLiteral("data/reader_xmltag.xml")
+        << true
+        << 1
+        << 1
+        << QStringLiteral("123456789")
+        << QStringLiteral("Sieger F - Zweiter E")
+        << QStringLiteral("&a<b>c<d>e</d>f&g")
+        << false
+        << 0;
+    QTest::newRow("url within ics description")
+        << QStringLiteral("data/reader_urldescription.xml")
+        << true
+        << 1
+        << 1
+        << QStringLiteral("123456789")
+        << QStringLiteral("Sieger F - Zweiter E")
+        << QStringLiteral("this https://www.sailfishos.org/test?id=one&two=2 &\"'<a> ok?")
+        << false
+        << 0;
 }
 
 void tst_Reader::readICal()

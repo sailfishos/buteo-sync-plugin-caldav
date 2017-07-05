@@ -51,6 +51,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_insert_and_update.xml
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_recurring.xml
 /opt/tests/buteo/plugins/caldav/data/notebooksyncagent_simple.xml
+/opt/tests/buteo/plugins/caldav/data/notebooksyncagent_orphanexceptions.xml
 /opt/tests/buteo/plugins/caldav/data/reader_CR_description.xml
 /opt/tests/buteo/plugins/caldav/data/reader_UID.xml
 /opt/tests/buteo/plugins/caldav/data/reader_earlyUID.xml
@@ -63,13 +64,15 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 /opt/tests/buteo/plugins/caldav/data/reader_nodav.xml
 /opt/tests/buteo/plugins/caldav/data/reader_fullday.xml
 /opt/tests/buteo/plugins/caldav/data/reader_fullday_vcal.xml
+/opt/tests/buteo/plugins/caldav/data/reader_xmltag.xml
+/opt/tests/buteo/plugins/caldav/data/reader_urldescription.xml
 
 %prep
 %setup -q -n %{name}-%{version}
 
 %build
 %qmake5 "DEFINES+=BUTEO_OUT_OF_PROCESS_SUPPORT"
-make %{?jobs:-j%jobs}
+make %{?_smp_mflags}
 
 %pre
 rm -f /home/nemo/.cache/msyncd/sync/client/caldav.xml || :

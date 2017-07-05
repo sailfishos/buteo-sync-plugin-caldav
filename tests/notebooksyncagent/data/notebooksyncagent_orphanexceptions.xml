@@ -1,0 +1,122 @@
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:card="urn:ietf:params:xml:ns:carddav" xmlns:oc="http://owncloud.org/ns">
+ <d:response>
+  <d:href>/remote.php/dav/calendars/dupluser/personal/aaaaaaaaaa.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;aaaaaaaaaa1&quot;</d:getetag>
+    <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN
+VERSION:2.0
+BEGIN:VEVENT
+LAST-MODIFIED:20170522T064817Z
+DTSTAMP:20170522T064817Z
+UID:aaaaaaaaaa
+SUMMARY:Test a
+DTSTART:20170322T110000Z
+DTEND:20170322T120000Z
+DESCRIPTION;LANGUAGE=en-US:Test a description
+CLASS:PUBLIC
+TRANSP:OPAQUE
+LOCATION;LANGUAGE=en-US:@office + GTM
+END:VEVENT
+END:VCALENDAR
+    </cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+ <d:response>
+  <d:href>/remote.php/dav/calendars/dupluser/personal/d1158dac-5a63-49d5-83b8-176bb792a088_20170323T110000.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;d1158dac5a6349d583b8176bb792a08820170323T1100001&quot;</d:getetag>
+    <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN
+VERSION:2.0
+BEGIN:VEVENT
+LAST-MODIFIED:20170522T064817Z
+DTSTAMP:20170522T064817Z
+UID:d1158dac-5a63-49d5-83b8-176bb792a088
+SUMMARY:Test orphan one
+PRIORITY:5
+STATUS:CONFIRMED
+RECURRENCE-ID:20170323T110000Z
+ORGANIZER;CN=Test Guy;SCHEDULE-AGENT=CLIENT:mailto:testguy@merproject.org
+RELATED-TO;RELTYPE=SIBLING:9DFE2850-C84A-4623-80D5-81C1B9974F52
+DTSTART:20170323T110000Z
+DTEND:20170323T120000Z
+DESCRIPTION;LANGUAGE=en-US:Test orphan one description
+CLASS:PUBLIC
+TRANSP:OPAQUE
+SEQUENCE:32
+LOCATION;LANGUAGE=en-US:@office + GTM
+END:VEVENT
+END:VCALENDAR
+    </cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+ <d:response>
+  <d:href>/remote.php/dav/calendars/dupluser/personal/bbbbbbbbbb.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;bbbbbbbbbb1&quot;</d:getetag>
+    <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN
+VERSION:2.0
+BEGIN:VEVENT
+LAST-MODIFIED:20170522T064817Z
+DTSTAMP:20170522T064817Z
+UID:bbbbbbbbbb
+SUMMARY:Test b
+DTSTART:20170324T110000Z
+DTEND:20170324T120000Z
+DESCRIPTION;LANGUAGE=en-US:Test b description
+CLASS:PUBLIC
+TRANSP:OPAQUE
+LOCATION;LANGUAGE=en-US:@office + GTM
+END:VEVENT
+END:VCALENDAR
+    </cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+ <d:response>
+  <d:href>/remote.php/dav/calendars/dupluser/personal/d1158dac-5a63-49d5-83b8-176bb792a088_20170330T110000.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;d1158dac5a6349d583b8176bb792a08820170330T1100001&quot;</d:getetag>
+    <cal:calendar-data>
+BEGIN:VCALENDAR
+PRODID:-//Mozilla.org/NONSGML Mozilla Calendar V1.1//EN
+VERSION:2.0
+BEGIN:VEVENT
+LAST-MODIFIED:20170522T064817Z
+DTSTAMP:20170522T064817Z
+UID:d1158dac-5a63-49d5-83b8-176bb792a088
+SUMMARY:Test orphan two
+PRIORITY:5
+STATUS:CONFIRMED
+RECURRENCE-ID:20170330T110000Z
+ORGANIZER;CN=Test Guy;SCHEDULE-AGENT=CLIENT:mailto:testguy@merproject.org
+RELATED-TO;RELTYPE=SIBLING:9DFE2850-C84A-4623-80D5-81C1B9974F52
+DTSTART:20170330T110000Z
+DTEND:20170330T120000Z
+DESCRIPTION;LANGUAGE=en-US:Test orphan two description
+CLASS:PUBLIC
+TRANSP:OPAQUE
+SEQUENCE:33
+LOCATION;LANGUAGE=en-US:@office + GTM
+END:VEVENT
+END:VCALENDAR
+    </cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>

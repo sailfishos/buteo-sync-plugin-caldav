@@ -25,6 +25,8 @@
 
 #include <QDebug>
 #include <QUrl>
+#include <QList>
+#include <QByteArray>
 #include <QXmlStreamReader>
 
 #include <icalformat.h>
@@ -35,6 +37,43 @@
 #include <LogMacros.h>
 
 namespace {
+   /* Some servers don't XML-escape the ics content when they return it
+    * in the XML stream, so we need to fix any issues.
+    * Note that this can cause line-lengths to exceed the spec (due to
+    * & -> &amp; expansion etc) but our iCal parser is more robust than
+    * our XML parser, so this works. */
+    QByteArray xmlSanitiseIcsData(const QByteArray &data) {
+        QList<QByteArray> lines = data.split('\n');
+        int depth = 0;
+        QByteArray retn;
+        retn.reserve(data.size());
+        for (QList<QByteArray>::const_iterator it = lines.constBegin(); it != lines.constEnd(); it++) {
+            QByteArray line = *it;
+            if (line.contains("BEGIN:VCALENDAR")) {
+                depth += 1;
+            } else if (line.contains("END:VCALENDAR")) {
+                depth -= 1;
+            } else if (depth > 0) {
+                // We're inside a VCALENDAR/ics block.
+                // First, hack to turn sanitised input into malformed input:
+                line.replace("&amp;",  "&");
+                line.replace("&quot;", "\"");
+                line.replace("&apos;", "'");
+                line.replace("&lt;",   "<");
+                line.replace("&gt;",   ">");
+                // Then, fix for malformed input:
+                line.replace('&',  "&amp;");
+                line.replace('"',  "&quot;");
+                line.replace('\'', "&apos;");
+                line.replace('<',  "&lt;");
+                line.replace('>',  "&gt;");
+            }
+            retn.append(line);
+            retn.append('\n');
+        }
+        return retn;
+    }
+
     QString ensureUidInVEvent(const QString &data) {
         // Ensure UID is in VEVENT section for single-event VCALENDAR blobs.
         int eventCount = 0; // a value of 1 specifies that we should use the fixed data.
@@ -113,8 +152,7 @@ Reader::~Reader()
 void Reader::read(const QByteArray &data)
 {
     delete mReader;
-    mReader = new QXmlStreamReader(data);
-
+    mReader = new QXmlStreamReader(xmlSanitiseIcsData(data));
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "multistatus") {
             mValidResponse = true;
@@ -246,7 +284,7 @@ void Reader::readProp(CalendarResource *resource)
         if (mReader->name() == "getetag") {
             resource->etag = mReader->readElementText();
         } else if (mReader->name() == "calendar-data") {
-            resource->iCalData = mReader->readElementText();
+            resource->iCalData = mReader->readElementText(QXmlStreamReader::IncludeChildElements);
         }
     }
 }
