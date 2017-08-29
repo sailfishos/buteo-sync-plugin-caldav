@@ -45,6 +45,13 @@
     }\
 }
 
+#define RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, func, desc) {\
+        if (a->func.trimmed() != b->func.trimmed()) {\
+            LOG_DEBUG("Incidence" << desc << "" << "properties are not equal:" << a->func.trimmed() << b->func.trimmed()); \
+        return false;\
+    }\
+}
+
 #define RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(failureCheck, desc, debug) {\
     if (failureCheck) {\
         LOG_DEBUG("Incidence" << desc << "properties are not equal:" << desc << debug); \
@@ -100,17 +107,17 @@ bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &
     RETURN_FALSE_IF_NOT_EQUAL(a, b, isReadOnly(), "isReadOnly");
     RETURN_FALSE_IF_NOT_EQUAL(a, b, comments(), "comments");
     RETURN_FALSE_IF_NOT_EQUAL(a, b, contacts(), "contacts");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, altDescription(), "altDescription");
+    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, altDescription(), "altDescription");
     RETURN_FALSE_IF_NOT_EQUAL(a, b, categories(), "categories");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, customStatus(), "customStatus");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, description(), "description");
+    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, customStatus(), "customStatus");
+    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, description(), "description");
     RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(!qFuzzyCompare(a->geoLatitude(), b->geoLatitude()), "geoLatitude", (QString("%1 != %2").arg(a->geoLatitude()).arg(b->geoLatitude())));
     RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(!qFuzzyCompare(a->geoLongitude(), b->geoLongitude()), "geoLongitude", (QString("%1 != %2").arg(a->geoLongitude()).arg(b->geoLongitude())));
     RETURN_FALSE_IF_NOT_EQUAL(a, b, hasGeo(), "hasGeo");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, location(), "location");
+    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, location(), "location");
     RETURN_FALSE_IF_NOT_EQUAL(a, b, secrecy(), "secrecy");
     RETURN_FALSE_IF_NOT_EQUAL(a, b, status(), "status");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, summary(), "summary");
+    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, summary(), "summary");
 
     // check recurrence information. Note that we only need to check the recurrence rules for equality if they both recur.
     RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->recurs() != b->recurs(), "recurs", a->recurs() + " != " + b->recurs());
