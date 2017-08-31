@@ -493,74 +493,37 @@ void CalDavClient::start()
 
     QDateTime fromDateTime;
     QDateTime toDateTime;
-    mKCal::Notebook::List notebooks;
     if (mFirstSync) {
         mSyncStartTime = QDateTime();
         getSyncDateRange(QDateTime::currentDateTime().toUTC(), &fromDateTime, &toDateTime);
     } else {
         mSyncStartTime = QDateTime::currentDateTime().toUTC();
         getSyncDateRange(mSyncStartTime, &fromDateTime, &toDateTime);
-        notebooks = mStorage->notebooks();
     }
     LOG_DEBUG("++++++++++++++ mSyncStartTime:" << mSyncStartTime << "LAST SYNC:" << lastSyncTime());
-
-    mKCal::Notebook::List validNotebooks;
-    for (int i = 0; i < notebooks.size(); ++i) {
-        mKCal::Notebook::Ptr notebook = notebooks[i];
-        if (notebook->account() == QString::number(mAccountId)) {
-            // This notebook is for this account.
-            LOG_TRACE("Have notebook:" << notebook->uid() << "for account:" << mAccountId << notebook->account());
-            validNotebooks.append(notebook);
-        }
-    }
 
     // for each calendar path we need to sync:
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
     Q_FOREACH (const Settings::CalendarInfo &calendarInfo, allCalendarInfo) {
-        mKCal::Notebook::Ptr existingNotebook;
-        Q_FOREACH (mKCal::Notebook::Ptr notebook, validNotebooks) {
-            // we abuse the syncProfile() field in mKCal::Notebook to store not just the profile name
-            // but also the remote calendar path, because Notebook API is deficient and doesn't have
-            // a dedicated field for the remote calendar path url.
-            if (notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(calendarInfo.remotePath))) {
-                LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << calendarInfo.remotePath);
-                existingNotebook = notebook;
-                break;
-            }
-        }
-
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
-
-        if (existingNotebook) {
-            // the notebook exists and we didn't need to do a clean sync.
-            LOG_DEBUG("notebook exists, performing quick sync for" << calendarInfo.remotePath);
-            if (!mStorage->loadNotebookIncidences(existingNotebook->uid())) {
-                syncFinished(Buteo::SyncResults::DATABASE_FAILURE, "unable to load calendar storage");
-                return;
-            }
-            NotebookSyncAgent *agent = new NotebookSyncAgent(mCalendar, mStorage, mNAManager, &mSettings, calendarInfo.remotePath, this);
-            connect(agent, SIGNAL(finished(int,QString)),
-                    this, SLOT(notebookSyncFinished(int,QString)));
-            mNotebookSyncAgents.append(agent);
-            agent->startQuickSync(existingNotebook, lastSyncTime(), fromDateTime, toDateTime);
-        } else {
-            // the notebook did not already exist, or we needed to do a clean sync.
-            LOG_DEBUG("no notebook exists for calendar path:" << calendarInfo.remotePath << ", creating new");
-            LOG_DEBUG("performing slow sync for" << calendarInfo.remotePath);
-            NotebookSyncAgent *agent = new NotebookSyncAgent(mCalendar, mStorage, mNAManager, &mSettings, calendarInfo.remotePath, this);
-            connect(agent, SIGNAL(finished(int,QString)),
-                    this, SLOT(notebookSyncFinished(int,QString)));
-            mNotebookSyncAgents.append(agent);
-            agent->startSlowSync(calendarInfo.remotePath,
-                                 calendarInfo.displayName,
-                                 QString::number(mAccountId),
-                                 getPluginName(),
-                                 getProfileName(),
-                                 calendarInfo.color,
-                                 fromDateTime,
-                                 toDateTime);
+        NotebookSyncAgent *agent = new NotebookSyncAgent
+            (mCalendar, mStorage, mNAManager, &mSettings,
+             calendarInfo.remotePath, this);
+        if (!agent->setNotebookFromInfo(calendarInfo.displayName,
+                                        calendarInfo.color,
+                                        QString::number(mAccountId),
+                                        getPluginName(),
+                                        getProfileName())) {
+            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                         "unable to load calendar storage");
+            return;
         }
+        connect(agent, SIGNAL(finished(int,QString)),
+                this, SLOT(notebookSyncFinished(int,QString)));
+        mNotebookSyncAgents.append(agent);
+
+        agent->startSync(lastSyncTime(), fromDateTime, toDateTime);
     }
     if (mNotebookSyncAgents.isEmpty()) {
         syncFinished(Buteo::SyncResults::INTERNAL_ERROR, "Could not add or find existing notebooks for this account");

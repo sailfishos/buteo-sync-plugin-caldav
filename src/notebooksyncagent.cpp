@@ -192,6 +192,46 @@ void NotebookSyncAgent::clearRequests()
     mRequests.clear();
 }
 
+bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
+                                            const QString &color,
+                                            const QString &accountId,
+                                            const QString &pluginName,
+                                            const QString &syncProfile)
+{
+    mNotebook = static_cast<mKCal::Notebook::Ptr>(0);
+    // Look for an already existing notebook in storage for this account and path.
+    Q_FOREACH (mKCal::Notebook::Ptr notebook, mStorage->notebooks()) {
+        if (notebook->account() == accountId
+            && notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath))) {
+            LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
+            if (!mStorage->loadNotebookIncidences(notebook->uid()))
+                return false;
+            mNotebook = notebook;
+            return true;
+        }
+    }
+    LOG_DEBUG("no notebook exists for" << mRemoteCalendarPath);
+    // or create a new one
+    mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookName, QString()));
+    mNotebook->setAccount(accountId);
+    mNotebook->setPluginName(pluginName);
+    mNotebook->setSyncProfile(syncProfile + ":" + mRemoteCalendarPath); // ugly hack because mkcal API is deficient.  I wanted to use uid field but it won't save.
+    mNotebook->setColor(color);
+    return true;
+}
+
+void NotebookSyncAgent::startSync(const QDateTime &changesSinceDate,
+                                  const QDateTime &fromDateTime,
+                                  const QDateTime &toDateTime)
+{
+    NOTEBOOK_FUNCTION_CALL_TRACE;
+
+    if (!mNotebook) {
+        LOG_DEBUG("no notebook to sync.");
+        return;
+    }
+
+    if (changesSinceDate.isNull()) {
 /*
     Slow sync mode:
 
@@ -200,42 +240,15 @@ void NotebookSyncAgent::clearRequests()
 
     Step 2) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-void NotebookSyncAgent::startSlowSync(const QString &calendarPath,
-                                      const QString &notebookName,
-                                      const QString &notebookAccountId,
-                                      const QString &pluginName,
-                                      const QString &syncProfile,
-                                      const QString &color,
-                                      const QDateTime &fromDateTime,
-                                      const QDateTime &toDateTime)
-{
-    NOTEBOOK_FUNCTION_CALL_TRACE;
+        LOG_DEBUG("Start slow sync for notebook:" << mNotebook->name() << "for account" << mNotebook->account()
+                  << "between" << fromDateTime << "to" << toDateTime);
 
-    LOG_DEBUG("Start slow sync for notebook:" << notebookName << "for account" << notebookAccountId
-              << "between" << fromDateTime << "to" << toDateTime);
+        mSyncMode = SlowSync;
+        mFromDateTime = fromDateTime;
+        mToDateTime = toDateTime;
 
-    mSyncMode = SlowSync;
-    mCalendarPath = calendarPath;
-    mNotebookName = notebookName;
-    mNotebookAccountId = notebookAccountId;
-    mPluginName = pluginName;
-    mSyncProfile = syncProfile;
-    mColor = color;
-    mFromDateTime = fromDateTime;
-    mToDateTime = toDateTime;
-
-    sendReportRequest();
-}
-
-void NotebookSyncAgent::sendReportRequest()
-{
-    // must be m_syncMode = SlowSync.
-    Report *report = new Report(mNetworkManager, mSettings);
-    mRequests.insert(report);
-    connect(report, SIGNAL(finished()), this, SLOT(reportRequestFinished()));
-    report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
-}
-
+        sendReportRequest();
+    } else {
 /*
     Quick sync mode:
 
@@ -248,24 +261,25 @@ void NotebookSyncAgent::sendReportRequest()
 
     Step 5) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-void NotebookSyncAgent::startQuickSync(mKCal::Notebook::Ptr notebook,
-                                       const QDateTime &changesSinceDate,
-                                       const QDateTime &fromDateTime,
-                                       const QDateTime &toDateTime)
+        LOG_DEBUG("Start quick sync for notebook:" << mNotebook->uid()
+                  << "between" << fromDateTime << "to" << toDateTime
+                  << ", sync changes since" << changesSinceDate);
+        mSyncMode = QuickSync;
+        mChangesSinceDate = changesSinceDate;
+        mFromDateTime = fromDateTime;
+        mToDateTime = toDateTime;
+
+        fetchRemoteChanges(mFromDateTime, mToDateTime);
+    }
+}
+
+void NotebookSyncAgent::sendReportRequest()
 {
-    NOTEBOOK_FUNCTION_CALL_TRACE;
-
-    LOG_DEBUG("Start quick sync for notebook:" << notebook->uid()
-              << "between" << fromDateTime << "to" << toDateTime
-              << ", sync changes since" << changesSinceDate);
-
-    mSyncMode = QuickSync;
-    mNotebook = notebook;
-    mChangesSinceDate = changesSinceDate;
-    mFromDateTime = fromDateTime;
-    mToDateTime = toDateTime;
-
-    fetchRemoteChanges(mFromDateTime, mToDateTime);
+    // must be m_syncMode = SlowSync.
+    Report *report = new Report(mNetworkManager, mSettings);
+    mRequests.insert(report);
+    connect(report, SIGNAL(finished()), this, SLOT(reportRequestFinished()));
+    report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
 void NotebookSyncAgent::fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime)
@@ -456,7 +470,7 @@ void NotebookSyncAgent::sendLocalChanges()
     if (!mLocalAdditions.count() && !mLocalModifications.count() && !mLocalDeletions.count()) {
         // no local changes to upsync.
         // we're finished syncing.
-        LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebookName << mRemoteCalendarPath);
+        LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
         emitFinished(Buteo::SyncResults::NO_ERROR, QString());
         return;
     } else {
@@ -593,7 +607,7 @@ void NotebookSyncAgent::sendLocalChanges()
     }
 
     if (!localChangeRequestStarted) {
-        LOG_WARNING("local change upsync skipped due to bad data - finished with notebook" << mNotebookName << mRemoteCalendarPath);
+        LOG_WARNING("local change upsync skipped due to bad data - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
         emitFinished(Buteo::SyncResults::NO_ERROR, QString());
     }
 }
@@ -604,14 +618,14 @@ void NotebookSyncAgent::nonReportRequestFinished()
 
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
-        LOG_WARNING("Report request finished but request is invalid, aborting sync for calendar:" << mCalendarPath);
+        LOG_WARNING("Report request finished but request is invalid, aborting sync for calendar:" << mRemoteCalendarPath);
         emitFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("Invalid request object"));
         return;
     }
     mRequests.remove(request);
 
     if (request->errorCode() != Buteo::SyncResults::NO_ERROR) {
-        LOG_WARNING("Aborting sync," << request->command() << "failed" << request->errorString() << "for notebook" << mCalendarPath << "of account:" << mNotebookAccountId);
+        LOG_WARNING("Aborting sync," << request->command() << "failed" << request->errorString() << "for notebook" << mRemoteCalendarPath << "of account:" << mNotebook->account());
         emitFinished(request->errorCode(), request->errorString());
     } else {
         Put *putRequest = qobject_cast<Put*>(request);
@@ -725,13 +739,18 @@ void NotebookSyncAgent::additionalReportRequestFinished()
         return;
     }
 
-    LOG_WARNING("Additional report request finished with error, aborting sync of notebook:" << mCalendarPath);
+    LOG_WARNING("Additional report request finished with error, aborting sync of notebook:" << mRemoteCalendarPath);
     emitFinished(report->errorCode(), report->errorString());
 }
 
 bool NotebookSyncAgent::applyRemoteChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
+
+    if (!mNotebook) {
+        LOG_DEBUG("Missing notebook in apply changes.");
+        return false;
+    }
 
     if (mSyncMode == SlowSync) {
         if (mNotebookNeedsDeletion) {
@@ -740,18 +759,12 @@ bool NotebookSyncAgent::applyRemoteChanges()
             return true;
         }
 
-        // delete the existing notebook associated with this calendar path, if it exists
-        // TODO: if required.  Currently we don't support per-notebook clean sync.
-
-        // and create a new one
-        mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(mNotebookName, QString()));
-        mNotebook->setAccount(mNotebookAccountId);
-        mNotebook->setPluginName(mPluginName);
-        mNotebook->setSyncProfile(mSyncProfile + ":" + mCalendarPath); // ugly hack because mkcal API is deficient.  I wanted to use uid field but it won't save.
-        mNotebook->setColor(mColor);
-        if (!mStorage->addNotebook(mNotebook)) {
-            LOG_DEBUG("Unable to (re)create notebook" << mNotebookName << "during slow sync for account" << mNotebookAccountId << ":" << mCalendarPath);
-            return false;
+        // If current notebook is not already in storage, we add it.
+        if (!mStorage->notebook(mNotebook->uid())) {
+            if (!mStorage->addNotebook(mNotebook)) {
+                LOG_DEBUG("Unable to (re)create notebook" << mNotebook->name() << "during slow sync for account" << mNotebook->account() << ":" << mRemoteCalendarPath);
+                return false;
+            }
         }
     } else if (mNotebookNeedsDeletion) {
         // delete the notebook from local database
@@ -821,7 +834,7 @@ bool NotebookSyncAgent::calculateDelta(
     // load all local incidences
     KCalCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
-        LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mCalendarPath << ":" << mNotebook->uid());
+        LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid());
         emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString("Unable to load storage incidences for notebook: %1").arg(mNotebook->uid()));
         return false;
     }
