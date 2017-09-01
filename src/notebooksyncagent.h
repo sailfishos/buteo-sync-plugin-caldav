@@ -58,8 +58,7 @@ public:
                              const QString &pluginName,
                              const QString &syncProfile);
 
-    void startSync(const QDateTime &changesSinceDate,
-                   const QDateTime &fromDateTime,
+    void startSync(const QDateTime &fromDateTime,
                    const QDateTime &toDateTime);
 
     void abort();
@@ -131,7 +130,6 @@ private:
 
     // these are used only in quick-sync mode.
     QHash<QString,QString> mUpdatedETags; // etags are for resources, not incidences, hence the key is URI
-    QDateTime mChangesSinceDate;
     // delta detection and change data
     QMultiHash<QString, KDateTime> mAddedPersistentExceptionOccurrences;   // remoteUri to recurrenceIds.
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.

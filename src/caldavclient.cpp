@@ -69,7 +69,6 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     , mAuth(0)
     , mCalendar(0)
     , mStorage(0)
-    , mFirstSync(true)
     , mSyncAborted(false)
     , mAccountId(0)
 {
@@ -84,12 +83,6 @@ CalDavClient::~CalDavClient()
 bool CalDavClient::init()
 {
     FUNCTION_CALL_TRACE;
-
-    if (lastSyncTime().isNull()) {
-        mFirstSync = true;
-    } else {
-        mFirstSync = false;
-    }
 
     mNAManager = new QNetworkAccessManager(this);
 
@@ -383,16 +376,6 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
 
     clearAgents();
 
-    if (mFirstSync) {
-        if (minorErrorCode == Buteo::SyncResults::NO_ERROR) {
-            // Set the lastSyncTime after the calendar data is
-            // written locally to the mkcal db.
-            mSyncStartTime = QDateTime::currentDateTime().toUTC().addSecs(2);
-            LOG_DEBUG("\n\n++++++++++++++ First sync mSyncStartTime:" << mSyncStartTime << "LAST SYNC:" << lastSyncTime());
-        } else {
-            deleteNotebooksForAccount(mSettings.accountId(), mCalendar, mStorage);
-        }
-    }
     if (mCalendar) {
         mCalendar->close();
     }
@@ -403,13 +386,13 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
 
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR) {
         LOG_DEBUG("CalDAV sync succeeded!" << message);
-        mResults = Buteo::SyncResults(mSyncStartTime,
+        mResults = Buteo::SyncResults(QDateTime::currentDateTime().toUTC(),
                                       Buteo::SyncResults::SYNC_RESULT_SUCCESS,
                                       Buteo::SyncResults::NO_ERROR);
         emit success(getProfileName(), message);
     } else {
         LOG_WARNING("CalDAV sync failed:" << minorErrorCode << message);
-        mResults = Buteo::SyncResults(lastSyncTime(),       // don't change the last sync time
+        mResults = Buteo::SyncResults(QDateTime::currentDateTime().toUTC(),
                                       Buteo::SyncResults::SYNC_RESULT_FAILED,
                                       minorErrorCode);
 
@@ -424,11 +407,6 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
 void CalDavClient::authenticationError()
 {
     syncFinished(Buteo::SyncResults::AUTHENTICATION_FAILURE, QStringLiteral("Authentication failed"));
-}
-
-QDateTime CalDavClient::lastSyncTime()
-{
-    return iProfile.lastSuccessfulSyncTime();
 }
 
 Buteo::SyncProfile::SyncDirection CalDavClient::syncDirection()
@@ -486,21 +464,11 @@ void CalDavClient::start()
         return;
     }
 
-    int accountId = iProfile.key(Buteo::KEY_ACCOUNT_ID).toInt();
-    if (cleanSyncRequired(accountId)) {
-        mFirstSync = true;
-    }
+    cleanSyncRequired(mAccountId);
 
     QDateTime fromDateTime;
     QDateTime toDateTime;
-    if (mFirstSync) {
-        mSyncStartTime = QDateTime();
-        getSyncDateRange(QDateTime::currentDateTime().toUTC(), &fromDateTime, &toDateTime);
-    } else {
-        mSyncStartTime = QDateTime::currentDateTime().toUTC();
-        getSyncDateRange(mSyncStartTime, &fromDateTime, &toDateTime);
-    }
-    LOG_DEBUG("++++++++++++++ mSyncStartTime:" << mSyncStartTime << "LAST SYNC:" << lastSyncTime());
+    getSyncDateRange(QDateTime::currentDateTime().toUTC(), &fromDateTime, &toDateTime);
 
     // for each calendar path we need to sync:
     //  - if it is mapped to a known notebook, we need to perform quick sync
@@ -523,7 +491,7 @@ void CalDavClient::start()
                 this, SLOT(notebookSyncFinished(int,QString)));
         mNotebookSyncAgents.append(agent);
 
-        agent->startSync(lastSyncTime(), fromDateTime, toDateTime);
+        agent->startSync(fromDateTime, toDateTime);
     }
     if (mNotebookSyncAgents.isEmpty()) {
         syncFinished(Buteo::SyncResults::INTERNAL_ERROR, "Could not add or find existing notebooks for this account");

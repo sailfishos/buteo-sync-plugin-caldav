@@ -220,8 +220,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     return true;
 }
 
-void NotebookSyncAgent::startSync(const QDateTime &changesSinceDate,
-                                  const QDateTime &fromDateTime,
+void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
                                   const QDateTime &toDateTime)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
@@ -231,7 +230,11 @@ void NotebookSyncAgent::startSync(const QDateTime &changesSinceDate,
         return;
     }
 
-    if (changesSinceDate.isNull()) {
+    // Store sync time before sync is completed to avoid loosing events
+    // that may be inserted server side between now and the termination
+    // of the process.
+    mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
+    if (mNotebook->syncDate().isNull()) {
 /*
     Slow sync mode:
 
@@ -263,9 +266,8 @@ void NotebookSyncAgent::startSync(const QDateTime &changesSinceDate,
  */
         LOG_DEBUG("Start quick sync for notebook:" << mNotebook->uid()
                   << "between" << fromDateTime << "to" << toDateTime
-                  << ", sync changes since" << changesSinceDate);
+                  << ", sync changes since" << mNotebook->syncDate().dateTime());
         mSyncMode = QuickSync;
-        mChangesSinceDate = changesSinceDate;
         mFromDateTime = fromDateTime;
         mToDateTime = toDateTime;
 
@@ -395,7 +397,7 @@ void NotebookSyncAgent::processETags()
         }
 
         // calculate the local and remote delta.
-        if (!calculateDelta(KDateTime(mChangesSinceDate),
+        if (!calculateDelta(mNotebook->syncDate(),
                             remoteHrefUriToEtags,
                             &mLocalAdditions,
                             &mLocalModifications,
@@ -792,7 +794,6 @@ void NotebookSyncAgent::emitFinished(int minorErrorCode, const QString &message)
     if (mFinished) {
         return;
     }
-    mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
     mFinished = true;
     clearRequests();
 
