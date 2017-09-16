@@ -167,6 +167,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mRetriedReport(false)
     , mNotebookNeedsDeletion(false)
     , mFinished(false)
+    , mResults(QString(), Buteo::ItemCounts(), Buteo::ItemCounts())
 {
 }
 
@@ -309,10 +310,13 @@ void NotebookSyncAgent::reportRequestFinished()
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         mReceivedCalendarResources = report->receivedCalendarResources();
+        unsigned int count = 0;
+        for (QList<Reader::CalendarResource>::ConstIterator it = mReceivedCalendarResources.constBegin(); it != mReceivedCalendarResources.constEnd(); ++it) {
+            count += it->incidences.count();
+        }
         LOG_DEBUG("Report request finished: received:"
                   << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
-                  << report->receivedCalendarResources().count() << "incidences"
-                  << "of which" << mReceivedCalendarResources.size() << "incidences were remote additions/modifications");
+                  << count << "incidences");
 
         if (mSyncMode == QuickSync) {
             sendLocalChanges();
@@ -323,6 +327,9 @@ void NotebookSyncAgent::reportRequestFinished()
         // Instead, we just emit finished (for this notebook)
         // Once ALL notebooks are finished, then we apply the remote changes.
         // This prevents the worst partial-sync issues.
+        mResults = Buteo::TargetResults(mNotebook->name().toHtmlEscaped(),
+                                        Buteo::ItemCounts(count, 0, 0),
+                                        Buteo::ItemCounts());
 
     } else if (mSyncMode == SlowSync
                && report->networkError() == QNetworkReply::AuthenticationRequiredError
@@ -382,6 +389,14 @@ void NotebookSyncAgent::processETags()
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR, "unable to calculate sync delta");
             return;
         }
+        mResults = Buteo::TargetResults
+            (mNotebook->name().toHtmlEscaped(),
+             Buteo::ItemCounts(mRemoteAdditions.size(),
+                               mRemoteDeletions.size(),
+                               mRemoteModifications.size()),
+             Buteo::ItemCounts(mLocalAdditions.size(),
+                               mLocalDeletions.size(),
+                               mLocalModifications.size()));
 
         // Note that due to the fact that we update the ETAG and URI data in locally
         // upsynced events during sync, those incidences will be reported as modified
@@ -649,6 +664,11 @@ bool NotebookSyncAgent::applyRemoteChanges()
     }
 
     return true;
+}
+
+Buteo::TargetResults NotebookSyncAgent::result() const
+{
+    return mResults;
 }
 
 void NotebookSyncAgent::emitFinished(int minorErrorCode, const QString &message)

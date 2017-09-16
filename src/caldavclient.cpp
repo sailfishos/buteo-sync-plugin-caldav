@@ -520,15 +520,15 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
 
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR) {
         LOG_DEBUG("CalDAV sync succeeded!" << message);
-        mResults = Buteo::SyncResults(QDateTime::currentDateTime().toUTC(),
-                                      Buteo::SyncResults::SYNC_RESULT_SUCCESS,
-                                      Buteo::SyncResults::NO_ERROR);
+        mResults.setMajorCode(Buteo::SyncResults::SYNC_RESULT_SUCCESS);
+        mResults.setMinorCode(Buteo::SyncResults::NO_ERROR);
         emit success(getProfileName(), message);
     } else {
         LOG_WARNING("CalDAV sync failed:" << minorErrorCode << message);
-        mResults = Buteo::SyncResults(QDateTime::currentDateTime().toUTC(),
-                                      Buteo::SyncResults::SYNC_RESULT_FAILED,
-                                      minorErrorCode);
+        mResults.setMajorCode(minorErrorCode == Buteo::SyncResults::ABORTED
+                              ? Buteo::SyncResults::SYNC_RESULT_CANCELLED
+                              : Buteo::SyncResults::SYNC_RESULT_FAILED);
+        mResults.setMinorCode(minorErrorCode);
 
         if (minorErrorCode == Buteo::SyncResults::AUTHENTICATION_FAILURE) {
             setCredentialsNeedUpdate(mSettings.accountId());
@@ -708,6 +708,8 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
             if (mNotebookSyncAgents[i]->isDeleted()) {
                 deletedNotebooks += mNotebookSyncAgents[i]->path();
             }
+            if (!mNotebookSyncAgents[i]->result().targetName().isEmpty())
+                mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             mNotebookSyncAgents[i]->finalize();
         }
         if (mStorage->save()) {
