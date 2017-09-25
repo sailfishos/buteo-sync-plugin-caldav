@@ -10,6 +10,8 @@
         <key value="caldav" name="Sync Protocol"/>
         <key value="HTTP" name="Sync Transport"/>
         <key value="prefer remote" name="conflictpolicy" />
+        <key value="6" name="Sync Previous Months Span"/>
+        <key value="12" name="Sync Next Months Span"/>
     </profile>
 
     <schedule enabled="false" interval="720" syncconfiguredtime="" days="" time="">
