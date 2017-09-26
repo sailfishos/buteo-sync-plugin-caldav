@@ -82,7 +82,7 @@ bool IncidenceHandler::pointerDataEqual(const QVector<QSharedPointer<T> > &vecto
         return false;
     }
     for (int i=0; i<vectorA.count(); i++) {
-        if (vectorA[i].data() != vectorB[i].data()) {
+        if (*vectorA[i].data() != *vectorB[i].data()) {
             return false;
         }
     }
