@@ -1166,6 +1166,7 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
         if (!recurringIncidence) {
             LOG_WARNING("Unable to find parent series for locally updated incidence:"
                         << updatedIncidence->uid() << ":" << updatedIncidence->recurrenceId().toString());
+            return QString();
         }
         KCalCore::Incidence::List instances = mCalendar->instances(recurringIncidence);
         KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(recurringIncidence);
