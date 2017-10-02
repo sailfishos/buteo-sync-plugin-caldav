@@ -1095,7 +1095,7 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
             }
             // Note: we compare the remote resources with the "export" version of the local modifications
             // otherwise spurious differences might be detected.
-            const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i));
+            const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i), (localModifications->at(i)->recurs()) ? mCalendar->instances(localModifications->at(i)) : KCalCore::Incidence::List());
             if (pLMod->recurrenceId() == rid) {
                 // check to see if the modification is actually an added persistent exception occurrence.
                 if (addedPersistentExceptionOccurrences.values(hrefUri).contains(rid)) {
@@ -1169,14 +1169,7 @@ QString NotebookSyncAgent::constructLocalChangeIcs(KCalCore::Incidence::Ptr upda
             return QString();
         }
         KCalCore::Incidence::List instances = mCalendar->instances(recurringIncidence);
-        KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(recurringIncidence);
-
-        // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
-        Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
-            QList<KDateTime> exDateTimes = exportableIncidence->recurrence()->exDateTimes();
-            exDateTimes.removeAll(instance->recurrenceId());
-            exportableIncidence->recurrence()->setExDateTimes(exDateTimes);
-        }
+        KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(recurringIncidence, instances);
 
         // store the base recurring event into the in-memory calendar
         if (!memoryCalendar->addIncidence(exportableIncidence)) {
