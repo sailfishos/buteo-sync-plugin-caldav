@@ -227,6 +227,16 @@ void tst_Reader::readICal_data()
         << QStringLiteral("Alarm with relative time.")
         << false
         << 1;
+    QTest::newRow("pending todo")
+        << QStringLiteral("data/reader_todo_pending.xml")
+        << true
+        << 1
+        << 1
+        << QStringLiteral("20070313T123432Z-456553@example.com")
+        << QStringLiteral("Submit Quebec Income Tax Return for 2006")
+        << QString()
+        << false
+        << 0;
 }
 
 void tst_Reader::readICal()

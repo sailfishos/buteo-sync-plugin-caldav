@@ -200,7 +200,7 @@ void Reader::readResponse()
         if (mReader->name() == "href") {
             resource.href = QUrl::fromPercentEncoding(mReader->readElementText().toLatin1());
         } else if (mReader->name() == "propstat") {
-            readPropStat(&resource);
+            readPropStat(resource);
         }
     }
     if (resource.href.isEmpty()) {
@@ -209,7 +209,6 @@ void Reader::readResponse()
     }
     if (!resource.iCalData.trimmed().isEmpty()) {
         bool parsed = true;
-        bool isVCalFormat = false;
         QString icsData = preprocessIcsData(resource.iCalData);
         KCalCore::ICalFormat iCalFormat;
         KCalCore::MemoryCalendar::Ptr cal(new KCalCore::MemoryCalendar(KDateTime::UTC));
@@ -217,8 +216,7 @@ void Reader::readResponse()
             if (iCalFormat.exception() && iCalFormat.exception()->code()
                 == KCalCore::Exception::CalVersion1) {
                 KCalCore::VCalFormat vCalFormat;
-                isVCalFormat = vCalFormat.fromString(cal, icsData);
-                if (!isVCalFormat) {
+                if (!vCalFormat.fromString(cal, icsData)) {
                     LOG_WARNING("unable to parse vCal data");
                     parsed = false;
                 }
@@ -240,36 +238,29 @@ void Reader::readResponse()
             }
         }
         if (parsed) {
-            KCalCore::Event::List events = cal->events(); // TODO: incidences() not just events()
-            LOG_DEBUG("iCal data contains" << cal->events().count() << "VEVENT instances");
-            if (events.count() <= 1) {
-                // single event, or journal/todos
-                if (isVCalFormat && events.count() == 1) {
-                    resource.incidences = KCalCore::Incidence::List() << events.first();
-                } else {
-                    KCalCore::Incidence::Ptr incidence = iCalFormat.fromString(icsData);
-                    if (!incidence.isNull()) {
-                        resource.incidences = KCalCore::Incidence::List() << incidence;
-                    } else {
-                        LOG_WARNING("iCal data doesn't contain a valid incidence");
-                    }
-                }
-            } else {
-                // contains some recurring event information, with exception / RECURRENCE-ID defined.
-                QString eventUid = events.first()->uid();
-                Q_FOREACH (const KCalCore::Event::Ptr &event, events) {
-                    if (event->uid() != eventUid) {
-                        LOG_WARNING("iCal data contains invalid events with conflicting uids");
-                        eventUid.clear();
+            KCalCore::Incidence::List incidences = cal->incidences();
+            LOG_DEBUG("iCal data contains" << incidences.count() << " incidences");
+            if (incidences.count()) {
+                QString uid = incidences.first()->uid();
+                // In case of more than one incidence, it contains some
+                // recurring event information, with exception / RECURRENCE-ID defined.
+                Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, incidences) {
+                    if (incidence->uid() != uid) {
+                        LOG_WARNING("iCal data contains invalid incidences with conflicting uids");
+                        uid.clear();
                         break;
                     }
                 }
-                if (!eventUid.isEmpty()) {
-                    Q_FOREACH (const KCalCore::Event::Ptr &event, events) {
-                        resource.incidences.append(event);
+                if (!uid.isEmpty()) {
+                    Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, incidences) {
+                        if (incidence->type() == KCalCore::IncidenceBase::TypeEvent
+                            || incidence->type() == KCalCore::IncidenceBase::TypeTodo)
+                            resource.incidences.append(incidence);
                     }
                 }
-                LOG_DEBUG("parsed" << resource.incidences.count() << "events from the iCal data");
+                LOG_DEBUG("parsed" << resource.incidences.count() << "events or todos from the iCal data");
+            } else {
+                LOG_WARNING("iCal data doesn't contain a valid incidence");
             }
         }
     }
@@ -277,24 +268,24 @@ void Reader::readResponse()
     mResults.append(resource);
 }
 
-void Reader::readPropStat(CalendarResource *resource)
+void Reader::readPropStat(CalendarResource &resource)
 {
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "prop") {
             readProp(resource);
         } else if (mReader->name() == "status") {
-            resource->status = mReader->readElementText();
+            resource.status = mReader->readElementText();
         }
     }
 }
 
-void Reader::readProp(CalendarResource *resource)
+void Reader::readProp(CalendarResource &resource)
 {
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "getetag") {
-            resource->etag = mReader->readElementText();
+            resource.etag = mReader->readElementText();
         } else if (mReader->name() == "calendar-data") {
-            resource->iCalData = mReader->readElementText(QXmlStreamReader::IncludeChildElements);
+            resource.iCalData = mReader->readElementText(QXmlStreamReader::IncludeChildElements);
         }
     }
 }

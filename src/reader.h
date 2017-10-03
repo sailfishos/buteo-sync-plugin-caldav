@@ -52,8 +52,8 @@ public:
 private:
     void readMultiStatus();
     void readResponse();
-    void readPropStat(CalendarResource *resource);
-    void readProp(CalendarResource *resource);
+    void readPropStat(CalendarResource &resource);
+    void readProp(CalendarResource &resource);
 
 private:
     QXmlStreamReader *mReader;
