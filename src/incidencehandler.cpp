@@ -365,7 +365,7 @@ void IncidenceHandler::prepareImportedIncidence(KCalCore::Incidence::Ptr inciden
     }
 }
 
-KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence)
+KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances)
 {
     if (sourceIncidence->type() != KCalCore::IncidenceBase::TypeEvent) {
         LOG_DEBUG("Incidence not an event; cannot create exportable version");
@@ -449,6 +449,16 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
             } else {
                 LOG_DEBUG("Not discarding attendee:" << attendee->fullName() << attendee->email() << ": not organizer:" << organizer->fullName() << organizer->email());
             }
+        }
+    }
+
+    // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
+    if (incidence->recurs()) {
+        Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+            KCalCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
+            exDateTimes.removeAll(instance->recurrenceId());
+            incidence->recurrence()->setExDateTimes(exDateTimes);
+            LOG_DEBUG("Discarding exdate:" << instance->recurrenceId().toString());
         }
     }
 
