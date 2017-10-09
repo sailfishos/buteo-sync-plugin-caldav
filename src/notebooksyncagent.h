@@ -85,6 +85,7 @@ private:
     bool updateIncidence(KCalCore::Incidence::Ptr incidence, const QString &resourceHref,
                          const QString &resourceEtag, bool isKnownOrphan, bool *criticalError);
     bool deleteIncidences(KCalCore::Incidence::List deletedIncidences);
+    bool updateListHrefETag(KCalCore::Incidence::List incidences);
 
     void sendLocalChanges();
     QString constructLocalChangeIcs(KCalCore::Incidence::Ptr updatedIncidence);

@@ -125,6 +125,19 @@ namespace {
         incidence->addComment(QStringLiteral("buteo:caldav:etag:%1").arg(etag));
     }
 
+    void updateIncidenceHrefEtag(KCalCore::Incidence::Ptr incidence,
+                                 const QString &href, const QString &etag)
+    {
+        // Set the URI and the ETAG property to the required values.
+        LOG_DEBUG("Adding URI and ETAG to incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << href << etag);
+        incidence->startUpdates();
+        if (!href.isEmpty())
+            setIncidenceHrefUri(incidence, href);
+        if (!etag.isEmpty())
+            setIncidenceETag(incidence, etag);
+        incidence->endUpdates();
+    }
+
     void uniteIncidenceLists(const KCalCore::Incidence::List &first, KCalCore::Incidence::List *second)
     {
         int originalSecondSize = second->size();
@@ -663,22 +676,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
             if (!hrefsToReload.contains(href)) {
                 hrefsToReload.append(href);
             }
-        } else {
-            // Set the URI and the ETAG property to the required values.
-            LOG_DEBUG("Adding URI and ETAG to locally added incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << href << mUpdatedETags[href]);
-            KDateTime modDate = incidence->lastModified();
-            incidence->startUpdates();
-            setIncidenceHrefUri(incidence, href);
-            setIncidenceETag(incidence, mUpdatedETags[href]);
-            incidence->setLastModified(modDate);
-            incidence->endUpdates();
-            Reader::CalendarResource resource;
-            resource.etag = mUpdatedETags[href];
-            resource.href = href;
-            resource.incidences = KCalCore::Incidence::List() << incidence;
-            KCalCore::ICalFormat icalFormat;
-            resource.iCalData = icalFormat.toICalString(IncidenceHandler::incidenceToExport(incidence));
-            mReceivedCalendarResources.append(resource);
         }
     }
 
@@ -690,20 +687,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
             if (!hrefsToReload.contains(href)) {
                 hrefsToReload.append(href);
             }
-        } else {
-            LOG_DEBUG("Updating ETAG in locally modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << mUpdatedETags[href]);
-            KDateTime modDate = incidence->lastModified();
-            incidence->startUpdates();
-            setIncidenceETag(incidence, mUpdatedETags[href]);
-            incidence->setLastModified(modDate);
-            incidence->endUpdates();
-            Reader::CalendarResource resource;
-            resource.etag = mUpdatedETags[href];
-            resource.href = href;
-            resource.incidences = KCalCore::Incidence::List() << incidence;
-            KCalCore::ICalFormat icalFormat;
-            resource.iCalData = icalFormat.toICalString(IncidenceHandler::incidenceToExport(incidence));
-            mReceivedCalendarResources.append(resource);
         }
     }
 
@@ -774,6 +757,12 @@ bool NotebookSyncAgent::applyRemoteChanges()
         return true;
     }
 
+    if (!updateListHrefETag(mLocalAdditions)) {
+        return false;
+    }
+    if (!updateListHrefETag(mLocalModifications)) {
+        return false;
+    }
     if (!updateIncidences(mReceivedCalendarResources)) {
         return false;
     }
@@ -1550,3 +1539,33 @@ bool NotebookSyncAgent::deleteIncidences(KCalCore::Incidence::List deletedIncide
     return true;
 }
 
+bool NotebookSyncAgent::updateListHrefETag(KCalCore::Incidence::List incidences)
+{
+    if (mUpdatedETags.isEmpty())
+        return true;
+
+    // After upsyncing changes (additions + modifications) we need to update local incidences.
+    // For modifications, we need to get the new (server-side) etag values, and store them into those incidences.
+    // For additions, we need to do that, and ALSO update the local URI value (to remote resource path).
+    Q_FOREACH (KCalCore::Incidence::Ptr incidence, incidences) {
+        bool setUri = false;
+        QString href = incidenceHrefUri(incidence, mRemoteCalendarPath, &setUri);
+        if (mUpdatedETags.contains(href)) {
+            const QString &etag = mUpdatedETags.take(href);
+            KCalCore::Incidence::Ptr localBaseIncidence =
+                mCalendar->incidence(incidence->uid());
+            if (localBaseIncidence) {
+                updateIncidenceHrefEtag(localBaseIncidence,
+                                        setUri ? href : QString(), etag);
+                if (localBaseIncidence->recurs()) {
+                    Q_FOREACH (KCalCore::Incidence::Ptr instance,
+                               mCalendar->instances(localBaseIncidence))
+                        updateIncidenceHrefEtag(instance,
+                                                setUri ? href : QString(), etag);
+                }
+            }
+        }
+    }
+
+    return true;
+}
