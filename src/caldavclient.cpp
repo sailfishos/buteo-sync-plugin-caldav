@@ -33,6 +33,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QDateTime>
+#include <QtGlobal>
 
 #include <Accounts/Manager>
 #include <Accounts/Account>
@@ -44,6 +45,9 @@
 
 static const char * const cleanSyncMarkersFile = "/home/nemo/.local/share/system/privileged/Sync/caldav.ini";
 static const char * const cleanSyncMarkersFileDir = "/home/nemo/.local/share/system/privileged/Sync/";
+
+static const char * const SYNC_PREV_PERIOD_KEY = "Sync Previous Months Span";
+static const char * const SYNC_NEXT_PERIOD_KEY = "Sync Next Months Span";
 
 extern "C" CalDavClient* createPlugin(const QString& aPluginName,
                                          const Buteo::SyncProfile& aProfile,
@@ -452,8 +456,12 @@ void CalDavClient::getSyncDateRange(const QDateTime &sourceDate, QDateTime *from
         LOG_WARNING("fromDate or toDate is invalid");
         return;
     }
-    *fromDateTime = sourceDate.addMonths(-6);
-    *toDateTime = sourceDate.addMonths(12);
+    const Buteo::Profile* client = iProfile.clientProfile();
+    bool valid = (client != 0);
+    uint prevPeriod = (valid) ? client->key(SYNC_PREV_PERIOD_KEY).toUInt(&valid) : 0;
+    *fromDateTime = sourceDate.addMonths((valid) ? -int(qMin(prevPeriod, uint(120))) : -6);
+    uint nextPeriod = (valid) ? client->key(SYNC_NEXT_PERIOD_KEY).toUInt(&valid) : 0;
+    *toDateTime = sourceDate.addMonths((valid) ? int(qMin(nextPeriod, uint(120))) : 12);
 }
 
 void CalDavClient::start()
