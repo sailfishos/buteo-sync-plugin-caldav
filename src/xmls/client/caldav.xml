@@ -5,6 +5,4 @@
     <field name="Sync Direction" />
     <field name="Sync Protocol" />
     <field name="conflictpolicy" />
-    <field name="Sync Previous Months Span" />
-    <field name="Sync Next Months Span" />
 </profile>
