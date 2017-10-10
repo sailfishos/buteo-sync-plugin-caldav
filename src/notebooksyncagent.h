@@ -52,19 +52,14 @@ public:
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
-    void startSlowSync(const QString &calendarPath,
-                       const QString &notebookName,
-                       const QString &notebookAccountId,
-                       const QString &pluginName,
-                       const QString &syncProfile,
-                       const QString &color,
-                       const QDateTime &fromDateTime,
-                       const QDateTime &toDateTime);
+    bool setNotebookFromInfo(const QString &notebookName,
+                             const QString &color,
+                             const QString &accountId,
+                             const QString &pluginName,
+                             const QString &syncProfile);
 
-    void startQuickSync(mKCal::Notebook::Ptr notebook,
-                        const QDateTime &changesSinceDate,
-                        const QDateTime &fromDateTime,
-                        const QDateTime &toDateTime);
+    void startSync(const QDateTime &fromDateTime,
+                   const QDateTime &toDateTime);
 
     void abort();
     bool applyRemoteChanges();
@@ -133,17 +128,8 @@ private:
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
     bool mFinished;
 
-    // these are used only in slow-sync mode.
-    QString mCalendarPath;
-    QString mNotebookName;
-    QString mNotebookAccountId;
-    QString mPluginName;
-    QString mSyncProfile;
-    QString mColor;
-
     // these are used only in quick-sync mode.
     QHash<QString,QString> mUpdatedETags; // etags are for resources, not incidences, hence the key is URI
-    QDateTime mChangesSinceDate;
     // delta detection and change data
     QMultiHash<QString, KDateTime> mAddedPersistentExceptionOccurrences;   // remoteUri to recurrenceIds.
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.
