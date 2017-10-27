@@ -1,0 +1,31 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+  <d:href>/thunderbird/1234.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;7d68408eb5c61bb428fe19619797f32a&quot;</d:getetag>
+    <cal:calendar-data>BEGIN:VCALENDAR
+PRODID:-//Thunderbird almost
+VERSION:2.0
+BEGIN:VEVENT
+CREATED:20170323T195623
+DTSTAMP:20170323T195623
+LAST-MODIFIED:20170323T195623
+UID:123456789
+SUMMARY:Alarm
+DESCRIPTION:Alarm with relative time.
+DTSTART;VALUE=DATE:20170324
+DTEND;VALUE=DATE:20170325
+BEGIN:VALARM
+ACTION:DISPLAY
+TRIGGER;VALUE=DURATION:-PT12H
+DESCRIPTION:Default Mozilla Description
+X-KDE-KCALCORE-ENABLED:TRUE
+END:VALARM
+END:VEVENT
+END:VCALENDAR</cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>

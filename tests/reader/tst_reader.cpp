@@ -45,6 +45,9 @@ private slots:
 
     void readDate_data();
     void readDate();
+
+    void readAlarm_data();
+    void readAlarm();
 };
 
 tst_Reader::tst_Reader()
@@ -204,6 +207,16 @@ void tst_Reader::readICal_data()
         << QStringLiteral("this https://www.sailfishos.org/test?id=one&two=2 &\"'<a> ok?")
         << false
         << 0;
+    QTest::newRow("relative alarm time")
+        << QStringLiteral("data/reader_relativealarm.xml")
+        << true
+        << 1
+        << 1
+        << QStringLiteral("123456789")
+        << QStringLiteral("Alarm")
+        << QStringLiteral("Alarm with relative time.")
+        << false
+        << 1;
 }
 
 void tst_Reader::readICal()
@@ -302,6 +315,48 @@ void tst_Reader::readDate()
 
     QCOMPARE(ev->dtStart().date(), expectedStartDate);
     QCOMPARE(ev->dtEnd().date(), expectedEndDate);
+}
+
+void tst_Reader::readAlarm_data()
+{
+    QTest::addColumn<QString>("xmlFilename");
+    QTest::addColumn<int>("expectedNAlarms");
+    QTest::addColumn<int>("expectedAction");
+    QTest::addColumn<QString>("expectedTime");
+
+    QTest::newRow("relative alarm time")
+        << QStringLiteral("data/reader_relativealarm.xml")
+        << 1
+        << int(KCalCore::Alarm::Display)
+        << QStringLiteral("20170323T120000");
+}
+
+void tst_Reader::readAlarm()
+{
+    QFETCH(QString, xmlFilename);
+    QFETCH(int, expectedNAlarms);
+    QFETCH(int, expectedAction);
+    QFETCH(QString, expectedTime);
+
+    QFile f(QStringLiteral("%1/%2").arg(QCoreApplication::applicationDirPath(), xmlFilename));
+    if (!f.exists() || !f.open(QIODevice::ReadOnly)) {
+        QFAIL("Data file does not exist or cannot be opened for reading!");
+    }
+
+    Reader rd;
+    rd.read(f.readAll());
+
+    QVERIFY(!rd.hasError());
+
+    QCOMPARE(rd.results().size(), 1);
+    QCOMPARE(rd.results().first().incidences.length(), 1);
+
+    KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(rd.results().first().incidences[0]);
+
+    QCOMPARE(ev->alarms().length(), expectedNAlarms);
+    KCalCore::Alarm::Ptr alarm(ev->alarms().at(0));
+    QCOMPARE(alarm->type(), KCalCore::Alarm::Type(expectedAction));
+    QCOMPARE(alarm->time(), KDateTime::fromString(expectedTime));
 }
 
 #include "tst_reader.moc"
