@@ -331,6 +331,14 @@ void IncidenceHandler::copyIncidenceProperties(KCalCore::Incidence::Ptr dest, co
         }
     }
 
+    // Ensure all custom properties are copied also.
+    QSharedPointer<KCalCore::CustomProperties> srcCP =
+        src.staticCast<KCalCore::CustomProperties>();
+    QSharedPointer<KCalCore::CustomProperties> destCP =
+        dest.staticCast<KCalCore::CustomProperties>();
+    if (!(*srcCP.data() == *destCP.data()))
+        *destCP.data() = *srcCP.data();
+
     // Don't change created and lastModified properties as that affects mkcal
     // calculations for when the incidence was added and modified in the db.
     if (origCreated != dest->created()) {

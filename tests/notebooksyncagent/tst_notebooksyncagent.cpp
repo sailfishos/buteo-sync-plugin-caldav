@@ -54,6 +54,8 @@ private slots:
     void removePossibleLocal_data();
     void removePossibleLocal();
 
+    void updateEvent();
+
 private:
     Settings m_settings;
     NotebookSyncAgent *m_agent;
@@ -326,6 +328,39 @@ void tst_NotebookSyncAgent::removePossibleLocal()
     }
     if (!expectedRemoval && !found)
         QFAIL("Local modification not found anymore.");
+}
+
+void tst_NotebookSyncAgent::updateEvent()
+{
+    // Populate the database.
+    KCalCore::Incidence::Ptr incidence = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    incidence->setUid("123456-moz");
+    incidence->setNonKDECustomProperty("X-MOZ-LASTACK", "20171013T174424Z");
+    m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    m_agent->mStorage->save();
+
+    // Test that event exists.
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-moz"));
+    QVERIFY(incidence);
+    QCOMPARE(incidence->customProperties().count(), 1);
+    QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
+             QStringLiteral("20171013T174424Z"));
+
+    // Update event with a custom property.
+    KCalCore::Incidence::Ptr update = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    update->setUid("123456-moz");
+    update->setNonKDECustomProperty("X-MOZ-LASTACK", "20171016T174424Z");
+    bool success = true;
+    m_agent->updateIncidence(update, QString(), QString(), false, &success);
+    QVERIFY(success);
+
+    // Check that custom property is updated as well.
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-moz"));
+    QVERIFY(incidence);
+    QCOMPARE(incidence->customProperties().count(), 2);
+    QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
+             QStringLiteral("20171016T174424Z"));
 }
 
 #include "tst_notebooksyncagent.moc"
