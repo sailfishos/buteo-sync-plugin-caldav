@@ -55,6 +55,7 @@ private slots:
     void removePossibleLocal();
 
     void updateEvent();
+    void updateHrefETag();
 
 private:
     Settings m_settings;
@@ -336,6 +337,7 @@ void tst_NotebookSyncAgent::updateEvent()
     KCalCore::Incidence::Ptr incidence = KCalCore::Incidence::Ptr(new KCalCore::Event);
     incidence->setUid("123456-moz");
     incidence->setNonKDECustomProperty("X-MOZ-LASTACK", "20171013T174424Z");
+
     m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
     m_agent->mStorage->save();
@@ -361,6 +363,85 @@ void tst_NotebookSyncAgent::updateEvent()
     QCOMPARE(incidence->customProperties().count(), 2);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
              QStringLiteral("20171016T174424Z"));
+}
+
+void tst_NotebookSyncAgent::updateHrefETag()
+{
+    // Populate the database.
+    KCalCore::Incidence::Ptr incidence = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    incidence->setUid("123456-single");
+    m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    incidence = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    incidence->setUid("123456-recurs");
+    incidence->setDtStart(KDateTime::currentUtcDateTime());
+    incidence->recurrence()->setDaily(1);
+    incidence->recurrence()->setDuration(28);
+    m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KDateTime refId = incidence->recurrence()->getNextDateTime(incidence->dtStart().addDays(4));
+    incidence = m_agent->mCalendar->dissociateSingleOccurrence(incidence, refId,
+                                                               refId.timeSpec());
+    m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    m_agent->mStorage->save();
+
+    KCalCore::Incidence::List incidences;
+    m_agent->mStorage->allIncidences(&incidences, m_agent->mNotebook->uid());
+
+    KCalCore::Incidence::List toBeUpdated;
+    Q_FOREACH (KCalCore::Incidence::Ptr inc, incidences) {
+        if (inc->uid().compare(QStringLiteral("123456-single")) == 0)
+            toBeUpdated << inc;
+    }
+    QCOMPARE(toBeUpdated.count(), 1);
+
+    // Simple case.
+    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-single.ics")] =
+        QStringLiteral("\"123456\"");
+
+    m_agent->updateListHrefETag(toBeUpdated);
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-single"));
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-single.ics" << "buteo:caldav:etag:\"123456\"");
+
+    // Update simple case.
+    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-single.ics")] =
+        QStringLiteral("\"456789\"");
+
+    m_agent->updateListHrefETag(toBeUpdated);
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-single"));
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-single.ics" << "buteo:caldav:etag:\"456789\"");
+
+    toBeUpdated.clear();
+    Q_FOREACH (KCalCore::Incidence::Ptr inc, incidences) {
+        if (inc->uid().compare(QStringLiteral("123456-recurs")) == 0)
+            toBeUpdated << inc;
+    }
+    QCOMPARE(toBeUpdated.count(), 2);
+
+    // Base incidence alone.
+    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-recurs.ics")] =
+        QStringLiteral("\"123456\"");
+
+    m_agent->updateListHrefETag(toBeUpdated);
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"123456\"");
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"123456\"");
+
+    // Exception incidence alone.
+    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-recurs.ics")] =
+        QStringLiteral("\"456789\"");
+
+    m_agent->updateListHrefETag(toBeUpdated);
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"456789\"");
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
+    QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"456789\"");
 }
 
 #include "tst_notebooksyncagent.moc"
