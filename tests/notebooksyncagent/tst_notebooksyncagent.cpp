@@ -56,6 +56,7 @@ private slots:
 
     void updateEvent();
     void updateHrefETag();
+    void calculateDelta();
 
 private:
     Settings m_settings;
@@ -442,6 +443,137 @@ void tst_NotebookSyncAgent::updateHrefETag()
     QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"456789\"");
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
     QCOMPARE(incidence->comments(), QStringList() << "buteo:caldav:uri:/testCal/123456-recurs.ics" << "buteo:caldav:etag:\"456789\"");
+}
+
+void tst_NotebookSyncAgent::calculateDelta()
+{
+    QHash<QString, QString> remoteUriEtags;
+
+    // Populate the database.
+    KCalCore::Incidence::Ptr ev222 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev222->setSummary("local modification");
+    ev222->addComment(QStringLiteral("buteo:caldav:uri:%1222.ics").arg(m_agent->mRemoteCalendarPath));
+    ev222->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag222"));
+    m_agent->mCalendar->addEvent(ev222.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev333 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev333->setSummary("local deletion");
+    ev333->addComment(QStringLiteral("buteo:caldav:uri:%1333.ics").arg(m_agent->mRemoteCalendarPath));
+    ev333->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag333"));
+    m_agent->mCalendar->addEvent(ev333.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev444 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev444->addComment(QStringLiteral("buteo:caldav:uri:%1444.ics").arg(m_agent->mRemoteCalendarPath));
+    ev444->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag444"));
+    ev444->setSummary("local modification discarded by a remote modification");
+    m_agent->mCalendar->addEvent(ev444.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev555 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev555->addComment(QStringLiteral("buteo:caldav:uri:%1555.ics").arg(m_agent->mRemoteCalendarPath));
+    ev555->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag555"));
+    ev555->setSummary("local modification discarded by a remote deletion");
+    m_agent->mCalendar->addEvent(ev555.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev666 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev666->addComment(QStringLiteral("buteo:caldav:uri:%1666.ics").arg(m_agent->mRemoteCalendarPath));
+    ev666->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag666"));
+    ev666->setSummary("remote modification");
+    m_agent->mCalendar->addEvent(ev666.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev777 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev777->addComment(QStringLiteral("buteo:caldav:uri:%1777.ics").arg(m_agent->mRemoteCalendarPath));
+    ev777->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag777"));
+    ev777->setSummary("remote deletion");
+    m_agent->mCalendar->addEvent(ev777.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev888 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev888->setRecurrenceId(KDateTime());
+    ev888->addComment(QStringLiteral("buteo:caldav:uri:%1888.ics").arg(m_agent->mRemoteCalendarPath));
+    ev888->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag888"));
+    ev888->setSummary("unchanged synced incidence");
+    KDateTime recId = KDateTime::currentUtcDateTime();
+    ev888->setDtStart( recId );
+    ev888->recurrence()->addRDateTime(recId);
+    m_agent->mCalendar->addEvent(ev888.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    m_agent->mStorage->save();
+
+    KDateTime lastSync = KDateTime::currentUtcDateTime();
+    m_agent->mNotebook->setSyncDate(lastSync.addSecs(1));
+
+    // Sleep a bit to ensure that modification done after the sleep will have
+    // dates that are later than creation ones, so inquiring the local database
+    // with modifications strictly later than lastSync value will actually
+    // returned the right events and not all.
+    QThread::sleep(3);
+
+    // Perform local modifications.
+    KCalCore::Incidence::Ptr ev111 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev111->setSummary("local addition");
+    m_agent->mCalendar->addEvent(ev111.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    ev222->setDescription(QStringLiteral("Modified summary."));
+    m_agent->mCalendar->deleteIncidence(ev333);
+    ev444->setDescription(QStringLiteral("Modified summary."));
+    ev555->setDescription(QStringLiteral("Modified summary."));
+    KCalCore::Incidence::Ptr ev999 = m_agent->mCalendar->dissociateSingleOccurrence(ev888, recId, recId.timeSpec());
+    QVERIFY(ev999);
+    ev999->setSummary("local addition of persistent exception");
+    m_agent->mCalendar->addEvent(ev999.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    m_agent->mStorage->save();
+
+    // Generate server etag reply.
+    remoteUriEtags.insert(QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag000\""));
+    remoteUriEtags.insert(QStringLiteral("%1222.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag222\""));
+    remoteUriEtags.insert(QStringLiteral("%1333.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag333\""));
+    remoteUriEtags.insert(QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag444-1\""));
+    remoteUriEtags.insert(QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag666-1\""));
+    remoteUriEtags.insert(QStringLiteral("%1888.ics").arg(m_agent->mRemoteCalendarPath),
+                          QStringLiteral("\"etag888\""));
+
+    QVERIFY(m_agent->calculateDelta(m_agent->mNotebook->syncDate(),
+                                    remoteUriEtags,
+                                    &m_agent->mLocalAdditions,
+                                    &m_agent->mLocalModifications,
+                                    &m_agent->mLocalDeletions,
+                                    &m_agent->mRemoteAdditions,
+                                    &m_agent->mRemoteModifications,
+                                    &m_agent->mRemoteDeletions));
+    QCOMPARE(m_agent->mLocalAdditions.count(), 1);
+    QCOMPARE(m_agent->mLocalAdditions.first()->uid(), ev111->uid());
+    QCOMPARE(m_agent->mLocalModifications.count(), 2);
+    QCOMPARE(m_agent->mLocalModifications.at(0)->uid(), ev222->uid());
+    // ev444 have been locally modified, but is not in mLocalModifications
+    // because of precedence of remote modifications by default.
+    QCOMPARE(m_agent->mLocalModifications.at(1)->uid(), ev999->uid());
+    QCOMPARE(m_agent->mLocalModifications.at(1)->recurrenceId(), ev999->recurrenceId());
+    QCOMPARE(m_agent->mLocalDeletions.count(), 1);
+    QCOMPARE(m_agent->mLocalDeletions.first().deletedIncidence->uid(), ev333->uid());
+    QCOMPARE(m_agent->mRemoteAdditions.count(), 1);
+    QCOMPARE(m_agent->mRemoteAdditions.first(), QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath));
+    QCOMPARE(m_agent->mRemoteModifications.count(), 2);
+    uint nCheck = 0;
+    Q_FOREACH(const QString &uri, m_agent->mRemoteModifications) {
+        if (uri == QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath)
+            || uri == QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath)) {
+            nCheck += 1;
+        }
+    }
+    QCOMPARE(nCheck, uint(2));
+    uint nFound = 0;
+    Q_FOREACH(const KCalCore::Incidence::Ptr &incidence, m_agent->mRemoteDeletions) {
+        if (incidence->uid() == ev555->uid()
+            || incidence->uid() == ev777->uid()) {
+            nFound += 1;
+        }
+    }
+    QCOMPARE(nFound, uint(2));
 }
 
 #include "tst_notebooksyncagent.moc"

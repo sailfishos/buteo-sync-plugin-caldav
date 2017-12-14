@@ -993,7 +993,8 @@ bool NotebookSyncAgent::calculateDelta(
                     // if the etags are different, then the event was also modified remotely.
                     // we only support PreferRemote conflict resolution, so we discard the local modification.
                     LOG_DEBUG("ignoring local modification to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                    remoteModifications->append(remoteUri);
+                    // Don't append it here, it will be appended later when treating remote modifications.
+                    // remoteModifications->append(remoteUri);
                 } else {
                     // this is either a real local modification, or a modification being reported due to URI/ETAG update after previous sync.
                     // because it may be being reported due solely to URI/ETAG update, we treat it as a "possible" local modification.
