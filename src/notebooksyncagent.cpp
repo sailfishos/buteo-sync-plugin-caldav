@@ -1061,6 +1061,8 @@ bool NotebookSyncAgent::calculateDelta(
                     LOG_DEBUG("ignoring deletion of persistent exception due to remote series modification:"
                               << (*it).deletedIncidence->uid() << (*it).deletedIncidence->recurrenceId().toString());
                     it = localDeletions->erase(it);
+                } else {
+                    ++it;
                 }
             }
         } else {
