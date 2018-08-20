@@ -521,9 +521,7 @@ void NotebookSyncAgent::sendLocalChanges()
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         } else if (incidenceHrefUri(mLocalModifications[i]).isEmpty()) {
             LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
-            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         "Unable to determine remote uri for modified incidence:" + mLocalModifications[i]->uid());
-            return;
+            continue; // this is an error, but allow sync to continue regardless, so at least other changes will sync.
         }
         // first, handle updates of exceptions by uploading the entire modified series.
         if (mLocalModifications[i]->hasRecurrenceId()) {
