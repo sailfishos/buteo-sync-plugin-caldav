@@ -496,6 +496,15 @@ void tst_NotebookSyncAgent::calculateDelta()
     ev888->recurrence()->addRDateTime(recId);
     m_agent->mCalendar->addEvent(ev888.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
+    KCalCore::Incidence::Ptr ev112 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev112->setSummary("partial local addition, need download");
+    m_agent->mCalendar->addEvent(ev112.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    m_agent->mStorage->save();
+    KCalCore::Incidence::Ptr ev113 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev113->setSummary("partial local modification, need upload");
+    m_agent->mCalendar->addEvent(ev113.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
     m_agent->mStorage->save();
 
     KDateTime lastSync = KDateTime::currentUtcDateTime();
@@ -510,6 +519,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     // Perform local modifications.
     KCalCore::Incidence::Ptr ev111 = KCalCore::Incidence::Ptr(new KCalCore::Event);
     ev111->setSummary("local addition");
+    ev113->setDescription(QStringLiteral("Modified summary."));
     m_agent->mCalendar->addEvent(ev111.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
     ev222->setDescription(QStringLiteral("Modified summary."));
@@ -526,6 +536,10 @@ void tst_NotebookSyncAgent::calculateDelta()
     // Generate server etag reply.
     remoteUriEtags.insert(QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath),
                           QStringLiteral("\"etag000\""));
+    remoteUriEtags.insert(QStringLiteral("%1%2.ics").arg(m_agent->mRemoteCalendarPath).arg(ev112->uid()),
+                          QStringLiteral("\"etag112\""));
+    remoteUriEtags.insert(QStringLiteral("%1%2.ics").arg(m_agent->mRemoteCalendarPath).arg(ev113->uid()),
+                          QStringLiteral("\"etag113\""));
     remoteUriEtags.insert(QStringLiteral("%1222.ics").arg(m_agent->mRemoteCalendarPath),
                           QStringLiteral("\"etag222\""));
     remoteUriEtags.insert(QStringLiteral("%1333.ics").arg(m_agent->mRemoteCalendarPath),
@@ -547,25 +561,24 @@ void tst_NotebookSyncAgent::calculateDelta()
                                     &m_agent->mRemoteDeletions));
     QCOMPARE(m_agent->mLocalAdditions.count(), 1);
     QCOMPARE(m_agent->mLocalAdditions.first()->uid(), ev111->uid());
-    QCOMPARE(m_agent->mLocalModifications.count(), 2);
+    QCOMPARE(m_agent->mLocalModifications.count(), 3);
     QCOMPARE(m_agent->mLocalModifications.at(0)->uid(), ev222->uid());
+    QCOMPARE(m_agent->mLocalModifications.at(1)->uid(), ev113->uid());
     // ev444 have been locally modified, but is not in mLocalModifications
     // because of precedence of remote modifications by default.
-    QCOMPARE(m_agent->mLocalModifications.at(1)->uid(), ev999->uid());
-    QCOMPARE(m_agent->mLocalModifications.at(1)->recurrenceId(), ev999->recurrenceId());
+    QCOMPARE(m_agent->mLocalModifications.at(2)->uid(), ev999->uid());
+    QCOMPARE(m_agent->mLocalModifications.at(2)->recurrenceId(), ev999->recurrenceId());
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
     QCOMPARE(m_agent->mLocalDeletions.first().deletedIncidence->uid(), ev333->uid());
     QCOMPARE(m_agent->mRemoteAdditions.count(), 1);
     QCOMPARE(m_agent->mRemoteAdditions.first(), QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath));
-    QCOMPARE(m_agent->mRemoteModifications.count(), 2);
-    uint nCheck = 0;
-    Q_FOREACH(const QString &uri, m_agent->mRemoteModifications) {
-        if (uri == QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath)
-            || uri == QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath)) {
-            nCheck += 1;
-        }
-    }
-    QCOMPARE(nCheck, uint(2));
+    QCOMPARE(m_agent->mRemoteModifications.count(), 3);
+    QVERIFY(m_agent->mRemoteModifications.contains
+            (QStringLiteral("%1%2.ics").arg(m_agent->mRemoteCalendarPath).arg(ev112->uid())));
+    QVERIFY(m_agent->mRemoteModifications.contains
+            (QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath)));
+    QVERIFY(m_agent->mRemoteModifications.contains
+            (QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath)));
     uint nFound = 0;
     Q_FOREACH(const KCalCore::Incidence::Ptr &incidence, m_agent->mRemoteDeletions) {
         if (incidence->uid() == ev555->uid()
