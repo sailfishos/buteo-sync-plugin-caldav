@@ -853,6 +853,8 @@ bool NotebookSyncAgent::calculateDelta(
                 // previously partially upsynced, needs uri update.
                 LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
                 seenRemoteUris.insert(remoteUri);
+                // ensure that it will be seen as a remote modification and trigger download
+                previouslySyncedEtags.insert(remoteUri, QStringLiteral("missing ETag"));
             } else { // it doesn't exist on remote side...
                 // new local addition.
                 LOG_DEBUG("have new local addition:" << incidence->uid() << incidence->recurrenceId().toString());
@@ -960,7 +962,10 @@ bool NotebookSyncAgent::calculateDelta(
                 LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
                 // we treat this as a "definite" local modification due to the partially-synced status.
+                updateIncidenceHrefEtag(incidence,
+                                        remoteUri, remoteUriEtags.value(remoteUri));
                 localModifications->append(incidence);
+                previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
                 seenRemoteUris.insert(remoteUri);
             } else if (localAdditions->contains(incidence)) {
                 LOG_DEBUG("ignoring local modification to locally added incidence:" << incidence->uid() << incidence->recurrenceId().toString());
