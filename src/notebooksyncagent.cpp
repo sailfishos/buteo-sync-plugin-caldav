@@ -135,7 +135,49 @@ namespace {
             setIncidenceHrefUri(incidence, href);
         if (!etag.isEmpty())
             setIncidenceETag(incidence, etag);
+        if (incidence->recurrenceId().isValid()) {
+            // The persistent exception is now on server also.
+            incidence->removeComment("buteo:caldav:detached-and-synced");
+            incidence->addComment("buteo:caldav:detached-and-synced");
+        }
         incidence->endUpdates();
+    }
+
+    bool isCopiedDetachedIncidence(KCalCore::Incidence::Ptr incidence)
+    {
+        if (incidence->recurrenceId().isNull())
+            return false;
+
+        const QStringList &comments(incidence->comments());
+        Q_FOREACH (const QString &comment, comments) {
+            if (comment == "buteo:caldav:detached-and-synced") {
+                return false;
+            }
+        }
+        return true;
+    }
+    KCalCore::Incidence::Ptr setExceptionIncidence(mKCal::ExtendedCalendar::Ptr calendar,
+                                                   KCalCore::Incidence::Ptr recurringIncidence,
+                                                   KCalCore::Incidence::Ptr exception)
+    {
+        KCalCore::Incidence::Ptr occurrence =
+            calendar->dissociateSingleOccurrence(recurringIncidence,
+                                                 exception->recurrenceId(),
+                                                 exception->recurrenceId().timeSpec());
+        if (occurrence.isNull()) {
+            return occurrence;
+        }
+
+        IncidenceHandler::prepareImportedIncidence(exception);
+        IncidenceHandler::copyIncidenceProperties(occurrence, exception);
+        // Add a flag to distinguish persistent exceptions that have
+        // been detached during the sync process (with the flag)
+        // or by a call to dissociateSingleOccurrence() outside
+        // of the sync process (in that later case, the incidence
+        // will have to be treated as a local addition of a persistent
+        // exception, see the calculateDelta() function).
+        occurrence->addComment("buteo:caldav:detached-and-synced");
+        return occurrence;
     }
 
     void uniteIncidenceLists(const KCalCore::Incidence::List &first, KCalCore::Incidence::List *second)
@@ -832,15 +874,7 @@ bool NotebookSyncAgent::calculateDelta(
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions and remote deletions.
-    KCalCore::Incidence::List additions, addedPersistentExceptionOccurrences;
-    if (!mStorage->insertedIncidences(&additions, fromDate < syncDateTime ? fromDate : syncDateTime, mNotebook->uid())) {
-        LOG_WARNING("mKCal::ExtendedStorage::insertedIncidences() failed");
-        emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString("Unable to insert incidences for notebook: %1").arg(mNotebook->uid()));
-        return false;
-    }
-    // We only use the above "additions" list to find new exception occurrences.
-    // We have to handle those specially since they WILL have a hrefUri set in them,
-    // as they inherit all properties from the base recurring event.
+    KCalCore::Incidence::List addedPersistentExceptionOccurrences;
     QSet<QString> seenRemoteUris;
     QHash<QString, QString> previouslySyncedEtags; // remote uri to the etag we saw last time.
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, localIncidences) {
@@ -869,31 +903,16 @@ bool NotebookSyncAgent::calculateDelta(
             if (!remoteUriEtags.contains(remoteUri)) {
                 LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 remoteDeletions->append(incidence);
+            } else if (isCopiedDetachedIncidence(incidence)) {
+                LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                addedPersistentExceptionOccurrences.append(incidence);
+                mAddedPersistentExceptionOccurrences.insert(remoteUri, incidence->recurrenceId());
             } else {
-                bool isNewLocalPersistentException = false;
-                Q_FOREACH (KCalCore::Incidence::Ptr added, additions) {
-                    bool addedUriEmpty = false;
-                    QString addedUri = incidenceHrefUri(added, mRemoteCalendarPath, &addedUriEmpty);
-                    if (addedUriEmpty) {
-                        // ignore this one, it cannot be a persistent-exception occurrence
-                        // otherwise it would inherit the uri value from the parent recurring series.
-                        continue;
-                    } else if (addedUri == remoteUri && added->recurrenceId().isValid() && added->recurrenceId() == incidence->recurrenceId()) {
-                        LOG_DEBUG("Found new locally-added persistent exception:" << added->uid() << added->recurrenceId().toString() << ":" << addedUri);
-                        addedPersistentExceptionOccurrences.append(incidence);
-                        isNewLocalPersistentException = true;
-                        mAddedPersistentExceptionOccurrences.insert(addedUri, added->recurrenceId());
-                        break;
-                    }
-                }
-
-                if (!isNewLocalPersistentException) {
-                    // this is a possibly modified or possibly unchanged, previously synced incidence.
-                    // we later check to see if it was modified server-side by checking the etag value.
-                    LOG_DEBUG("have possibly modified or possibly unchanged previously synced local incidence:" << remoteUri);
-                    seenRemoteUris.insert(remoteUri);
-                    previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
-                }
+                // this is a possibly modified or possibly unchanged, previously synced incidence.
+                // we later check to see if it was modified server-side by checking the etag value.
+                LOG_DEBUG("have possibly modified or possibly unchanged previously synced local incidence:" << remoteUri);
+                seenRemoteUris.insert(remoteUri);
+                previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
             }
         }
     }
@@ -962,8 +981,8 @@ bool NotebookSyncAgent::calculateDelta(
                 LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
                 // we treat this as a "definite" local modification due to the partially-synced status.
-                updateIncidenceHrefEtag(incidence,
-                                        remoteUri, remoteUriEtags.value(remoteUri));
+                setIncidenceHrefUri(incidence, remoteUri);
+                setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
                 localModifications->append(incidence);
                 previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
                 seenRemoteUris.insert(remoteUri);
@@ -1354,14 +1373,12 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             }
             // now we should have a parent series from which we can dissociate the exception occurrence.
             if (!recurringIncidence.isNull()) {
-                KCalCore::Incidence::Ptr occurrence = mCalendar->dissociateSingleOccurrence(recurringIncidence, incidence->recurrenceId(), incidence->recurrenceId().timeSpec());
+                KCalCore::Incidence::Ptr occurrence = setExceptionIncidence(mCalendar, recurringIncidence, incidence);
                 if (occurrence.isNull()) {
                     LOG_WARNING("error: could not dissociate occurrence from recurring event:" << incidence->uid() << incidence->recurrenceId().toString());
                     return false;
                 }
 
-                IncidenceHandler::prepareImportedIncidence(incidence);
-                IncidenceHandler::copyIncidenceProperties(occurrence, incidence);
                 setIncidenceHrefUri(occurrence, resourceHref);
                 setIncidenceETag(occurrence, resourceEtag);
                 if (!mCalendar->addEvent(occurrence.staticCast<KCalCore::Event>(), mNotebook->uid())) {
