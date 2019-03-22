@@ -440,6 +440,7 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
     const QStringList &comments(event->comments());
     Q_FOREACH (const QString &comment, comments) {
         if (comment.startsWith("buteo:caldav:uri:") ||
+            comment.startsWith("buteo:caldav:detached-and-synced") ||
             comment.startsWith("buteo:caldav:etag:")) {
             LOG_DEBUG("Discarding buteo-prefixed comment:" << comment);
             event->removeComment(comment);

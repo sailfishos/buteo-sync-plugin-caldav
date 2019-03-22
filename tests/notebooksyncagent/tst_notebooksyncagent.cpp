@@ -375,7 +375,7 @@ void tst_NotebookSyncAgent::updateEvent()
     update->setUid("123456-moz");
     update->setNonKDECustomProperty("X-MOZ-LASTACK", "20171016T174424Z");
     bool success = true;
-    m_agent->updateIncidence(update, QString(), QString(), false, &success);
+    m_agent->updateIncidence(update, "/testPath/123456.ics", "\"123456\"", false, &success);
     QVERIFY(success);
 
     // Check that custom property is updated as well.
