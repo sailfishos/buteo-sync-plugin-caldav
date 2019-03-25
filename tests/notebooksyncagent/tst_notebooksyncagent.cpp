@@ -618,6 +618,7 @@ void tst_NotebookSyncAgent::calculateDelta()
 Q_DECLARE_METATYPE(KCalCore::Incidence::Ptr)
 void tst_NotebookSyncAgent::oneDownSyncCycle_data()
 {
+    QTest::addColumn<QString>("notebookId");
     QTest::addColumn<QString>("uid");
     QTest::addColumn<KCalCore::Incidence::List>("events");
     KCalCore::Incidence::Ptr ev;
@@ -625,6 +626,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle_data()
     ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
     ev->setSummary("Simple event");
     QTest::newRow("simple event")
+        << QStringLiteral("notebook-down-1")
         << QStringLiteral("111") << (KCalCore::Incidence::List() << ev);
 
     ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -637,25 +639,37 @@ void tst_NotebookSyncAgent::oneDownSyncCycle_data()
         m_agent->mCalendar->dissociateSingleOccurrence(ev, refId, refId.timeSpec());
     ex->setSummary("Persistent exception");
     QTest::newRow("recurent event with exception")
+        << QStringLiteral("notebook-down-2")
         << QStringLiteral("222") << (KCalCore::Incidence::List() << ev << ex);
 
     refId = ev->recurrence()->getNextDateTime(ev->dtStart().addDays(2));
     ex = m_agent->mCalendar->dissociateSingleOccurrence(ev, refId, refId.timeSpec());
     ex->setSummary("orphan event");
     QTest::newRow("orphan persistent exception event")
+        << QStringLiteral("notebook-down-3")
+        << QStringLiteral("333") << (KCalCore::Incidence::List() << ex);
+
+    ex->setSummary("modified persistent exception event");
+    QTest::newRow("modified persistent exception event")
+        << QStringLiteral("notebook-down-3")
         << QStringLiteral("333") << (KCalCore::Incidence::List() << ex);
 }
 
 void tst_NotebookSyncAgent::oneDownSyncCycle()
 {
+    QFETCH(QString, notebookId);
     QFETCH(QString, uid);
     QFETCH(KCalCore::Incidence::List, events);
     QHash<QString, QString> remoteUriEtags;
-    static int id = 0;
 
-    /* We create a notebook for this test. */
-    mKCal::Notebook *notebook = new mKCal::Notebook(QStringLiteral("notebook-down-%1").arg(id++), "test1", "test 1", "red", true, false, false, false, false);
-    m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
+    /* We read or create a notebook for this test. */
+    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(notebookId);
+    if (notebook) {
+        QVERIFY(m_agent->mStorage->loadNotebookIncidences(notebook->uid()));
+    } else {
+        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookId, "test1", "test 1", "red", true, false, false, false, false));
+    }
+    m_agent->mNotebook = notebook;
     KCalCore::MemoryCalendar::Ptr memoryCalendar(new KCalCore::MemoryCalendar(KDateTime::UTC));
     for (KCalCore::Incidence::List::Iterator it = events.begin();
          it != events.end(); it++) {
