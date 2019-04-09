@@ -130,7 +130,6 @@ namespace {
     {
         // Set the URI and the ETAG property to the required values.
         LOG_DEBUG("Adding URI and ETAG to incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << href << etag);
-        incidence->startUpdates();
         if (!href.isEmpty())
             setIncidenceHrefUri(incidence, href);
         if (!etag.isEmpty())
@@ -140,7 +139,6 @@ namespace {
             incidence->removeComment("buteo:caldav:detached-and-synced");
             incidence->addComment("buteo:caldav:detached-and-synced");
         }
-        incidence->endUpdates();
     }
 
     bool isCopiedDetachedIncidence(KCalCore::Incidence::Ptr incidence)
@@ -1323,8 +1321,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             }
 
             // ensure we set the url and etag as required.
-            setIncidenceHrefUri(storedIncidence, resourceHref);
-            setIncidenceETag(storedIncidence, resourceEtag);
+            updateIncidenceHrefEtag(storedIncidence, resourceHref, resourceEtag);
             storedIncidence->endUpdates();
         }
     } else {
@@ -1580,13 +1577,18 @@ bool NotebookSyncAgent::updateListHrefETag(KCalCore::Incidence::List incidences)
             KCalCore::Incidence::Ptr localBaseIncidence =
                 mCalendar->incidence(incidence->uid());
             if (localBaseIncidence) {
+                localBaseIncidence->startUpdates();
                 updateIncidenceHrefEtag(localBaseIncidence,
                                         setUri ? href : QString(), etag);
+                localBaseIncidence->endUpdates();
                 if (localBaseIncidence->recurs()) {
                     Q_FOREACH (KCalCore::Incidence::Ptr instance,
-                               mCalendar->instances(localBaseIncidence))
+                               mCalendar->instances(localBaseIncidence)) {
+                        instance->startUpdates();
                         updateIncidenceHrefEtag(instance,
                                                 setUri ? href : QString(), etag);
+                        instance->endUpdates();
+                    }
                 }
             }
         }
