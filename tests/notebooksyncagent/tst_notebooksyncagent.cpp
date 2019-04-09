@@ -358,9 +358,10 @@ void tst_NotebookSyncAgent::updateEvent()
     KCalCore::Incidence::Ptr incidence = KCalCore::Incidence::Ptr(new KCalCore::Event);
     incidence->setUid("123456-moz");
     incidence->setNonKDECustomProperty("X-MOZ-LASTACK", "20171013T174424Z");
+    incidence->setCreated(KDateTime(QDate(2019, 03, 28)));
 
-    m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
-                                 m_agent->mNotebook->uid());
+    QVERIFY(m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
+                                         m_agent->mNotebook->uid()));
     m_agent->mStorage->save();
 
     // Test that event exists.
@@ -369,6 +370,7 @@ void tst_NotebookSyncAgent::updateEvent()
     QCOMPARE(incidence->customProperties().count(), 1);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
              QStringLiteral("20171013T174424Z"));
+    QCOMPARE(incidence->created().date(), QDate(2019, 03, 28));
 
     // Update event with a custom property.
     KCalCore::Incidence::Ptr update = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -577,8 +579,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     remoteUriEtags.insert(QStringLiteral("%1888.ics").arg(m_agent->mRemoteCalendarPath),
                           QStringLiteral("\"etag888\""));
 
-    QVERIFY(m_agent->calculateDelta(m_agent->mNotebook->syncDate(),
-                                    remoteUriEtags,
+    QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
@@ -711,8 +712,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
     m_agent->mNotebook->setSyncDate(KDateTime::currentUtcDateTime());
 
     // Compute delta and check that nothing has changed indeed.
-    QVERIFY(m_agent->calculateDelta(m_agent->mNotebook->syncDate(),
-                                    remoteUriEtags,
+    QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
@@ -778,8 +778,7 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     m_agent->mNotebook->setSyncDate(KDateTime::currentUtcDateTime());
 
     // Compute delta and check that nothing has changed indeed.
-    QVERIFY(m_agent->calculateDelta(m_agent->mNotebook->syncDate(),
-                                    remoteUriEtags,
+    QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
@@ -808,8 +807,7 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     m_agent->mRemoteModifications.clear();
     m_agent->mRemoteDeletions.clear();
     // Compute delta again and check that nothing has changed indeed.
-    QVERIFY(m_agent->calculateDelta(m_agent->mNotebook->syncDate(),
-                                    remoteUriEtags,
+    QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,

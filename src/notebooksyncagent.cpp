@@ -450,8 +450,7 @@ void NotebookSyncAgent::processETags()
         }
 
         // calculate the local and remote delta.
-        if (!calculateDelta(mNotebook->syncDate(),
-                            remoteHrefUriToEtags,
+        if (!calculateDelta(remoteHrefUriToEtags,
                             &mLocalAdditions,
                             &mLocalModifications,
                             &mLocalDeletions,
@@ -845,7 +844,6 @@ bool NotebookSyncAgent::isFinished() const
 // from the etags, we can determine the local and remote sync delta.
 bool NotebookSyncAgent::calculateDelta(
         // in parameters:
-        const KDateTime &fromDate,                     //  fromDate:    date to load local changes since
         const QHash<QString, QString> &remoteUriEtags, //  remoteEtags: map of uri to etag which exist on the remote server.
         // out parameters:
         KCalCore::Incidence::List *localAdditions,
@@ -915,15 +913,12 @@ bool NotebookSyncAgent::calculateDelta(
         }
     }
 
-    // now determine local deletions.  Note that we combine deletions reported since
-    // the from date and since the last sync date, due to mKCal API semantics.
-    KCalCore::Incidence::List deleted, deletedSyncDate;
-    if (!mStorage->deletedIncidences(&deleted, fromDate, mNotebook->uid()) ||
-        !mStorage->deletedIncidences(&deletedSyncDate, syncDateTime, mNotebook->uid())) {
+    // Now determine local deletions reported by mkcal since the last sync date.
+    KCalCore::Incidence::List deleted;
+    if (!mStorage->deletedIncidences(&deleted, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
-    uniteIncidenceLists(deletedSyncDate, &deleted);
     QSet<QString> deletedSeriesUids;
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, deleted) {
         bool uriWasEmpty = false;
@@ -953,17 +948,14 @@ bool NotebookSyncAgent::calculateDelta(
         }
     }
 
-    // now determine local modifications.  Note that we combine modifications reported since
-    // the from date and since the last sync date, due to mKCal API semantics.
-    // We also unite into the reported modifications any addedPersistentExceptionOccurrences
+    // Now determine local modifications.
+    // We unite into the reported modifications any addedPersistentExceptionOccurrences
     // (calculated earlier) - we treat them as modifications of the series rather than additions.
-    KCalCore::Incidence::List modified, modifiedSyncDate;
-    if (!mStorage->modifiedIncidences(&modified, fromDate, mNotebook->uid()) ||
-        !mStorage->modifiedIncidences(&modifiedSyncDate, syncDateTime, mNotebook->uid())) {
+    KCalCore::Incidence::List modified;
+    if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
         return false;
     }
-    uniteIncidenceLists(modifiedSyncDate, &modified);
     uniteIncidenceLists(addedPersistentExceptionOccurrences, &modified);
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, modified) {
         // if it also appears in localDeletions, ignore it - it was deleted locally.

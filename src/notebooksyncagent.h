@@ -100,8 +100,7 @@ private:
         QString remoteEtag;
         QString hrefUri;
     };
-    bool calculateDelta(const KDateTime &fromDate,
-                        const QHash<QString, QString> &remoteUriEtags,
+    bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
                         KCalCore::Incidence::List *localAdditions,
                         KCalCore::Incidence::List *localModifications,
                         QList<LocalDeletion> *localDeletions,
