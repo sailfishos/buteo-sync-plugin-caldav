@@ -43,16 +43,16 @@ class Put : public Request
 public:
     explicit Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
-    void updateEvent(const QString &remoteCalendarPath, const QString &icalData, const QString &eTag, const QString &uri, const QString &localUid);
-    void createEvent(const QString &remoteCalendarPath, const QString &icalData, const QString &localUid);
+    void updateEvent(const QString &uri, const QString &icalData, const QString &eTag);
+    void createEvent(const QString &uri, const QString &icalData);
 
-    QHash<QString,QString> updatedETags() const;
+    const QHash<QString,QString>& updatedETags() const;
 
 private Q_SLOTS:
     void requestFinished();
 
 private:
-    QSet<QString> mLocalUidList;
+    QSet<QString> mLocalUriList;
     QHash<QString,QString> mUpdatedETags;
 };
 

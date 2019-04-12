@@ -531,6 +531,7 @@ void NotebookSyncAgent::sendLocalChanges()
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
 
+    mSentUids.clear();
     bool localChangeRequestStarted = false;
     QSet<QString> addModUids;
     for (int i = 0; i < mLocalAdditions.count(); i++) {
@@ -548,9 +549,11 @@ void NotebookSyncAgent::sendLocalChanges()
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
             connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            put->createEvent(mRemoteCalendarPath,
-                             icsData,
-                             mLocalAdditions[i]->uid());
+            bool create = true;
+            QString href = incidenceHrefUri(mLocalAdditions[i],
+                                            mRemoteCalendarPath, &create);
+            put->createEvent(href, icsData);
+            mSentUids.insert(href, mLocalAdditions[i]->uid());
             LOG_DEBUG("Triggered upload of local addition" << i);
         }
     }
@@ -576,10 +579,10 @@ void NotebookSyncAgent::sendLocalChanges()
                 Put *put = new Put(mNetworkManager, mSettings);
                 mRequests.insert(put);
                 connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                put->updateEvent(mRemoteCalendarPath,
+                put->updateEvent(incidenceHrefUri(mLocalModifications[i]),
                                  icsData,
-                                 incidenceETag(mLocalModifications[i]),
-                                 incidenceHrefUri(mLocalModifications[i]),
+                                 incidenceETag(mLocalModifications[i]));
+                mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
                                  mLocalModifications[i]->uid());
             }
         }
@@ -599,10 +602,10 @@ void NotebookSyncAgent::sendLocalChanges()
         Put *put = new Put(mNetworkManager, mSettings);
         mRequests.insert(put);
         connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        put->updateEvent(mRemoteCalendarPath,
+        put->updateEvent(incidenceHrefUri(mLocalModifications[i]),
                          icalFormat.toICalString(IncidenceHandler::incidenceToExport(mLocalModifications[i])),
-                         incidenceETag(mLocalModifications[i]),
-                         incidenceHrefUri(mLocalModifications[i]),
+                         incidenceETag(mLocalModifications[i]));
+        mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
                          mLocalModifications[i]->uid());
     }
 
@@ -637,11 +640,10 @@ void NotebookSyncAgent::sendLocalChanges()
                     Put *put = new Put(mNetworkManager, mSettings);
                     mRequests.insert(put);
                     connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                    put->updateEvent(mRemoteCalendarPath,
+                    put->updateEvent(uidToEtagAndUri.value(uid).second,
                                      icsData,
-                                     uidToEtagAndUri.value(uid).first,
-                                     uidToEtagAndUri.value(uid).second,
-                                     uid);
+                                     uidToEtagAndUri.value(uid).first);
+                    mSentUids.insert(uidToEtagAndUri.value(uid).second, uid);
                     continue; // finished with this deletion.
                 }
             } else {
@@ -684,9 +686,14 @@ void NotebookSyncAgent::nonReportRequestFinished()
     } else {
         Put *putRequest = qobject_cast<Put*>(request);
         if (putRequest) {
-            QHash<QString, QString> updatedETags = putRequest->updatedETags();
-            Q_FOREACH (const QString &uri, updatedETags.keys()) {
-                mUpdatedETags[uri] = updatedETags[uri];
+            // Apply Etag and Href changes immediately since incidences are now
+            // for sure on server.
+            for (QHash<QString, QString>::ConstIterator
+                     it = putRequest->updatedETags().constBegin();
+                 it != putRequest->updatedETags().constEnd(); ++it) {
+                if (mSentUids.contains(it.key())) {
+                    updateHrefETag(mSentUids.take(it.key()), it.key(), it.value());
+                }
             }
         }
         if (mRequests.isEmpty()) {
@@ -700,40 +707,14 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    // After upsyncing changes (additions + modifications) we need to update local incidences.
-    // For modifications, we need to get the new (server-side) etag values, and store them into those incidences.
-    // For additions, we need to do that, and ALSO update the local URI value (to remote resource path).
-    // We then set the modification date back to what is was before, so that the ETAG/URI update
-    // doesn't get reported as an event modification during our next sync cycle.
-
-    QStringList hrefsToReload;
-    for (int i = 0; i < mLocalAdditions.count(); i++) {
-        KCalCore::Incidence::Ptr &incidence = mLocalAdditions[i];
-        QString href = mRemoteCalendarPath + incidence->uid() + ".ics"; // that's where we PUT the addition.
-        if (!mUpdatedETags.contains(href)) {
-            LOG_DEBUG("Did not receive ETag for incidence " << incidence->uid() << "- will reload from server");
-            if (!hrefsToReload.contains(href)) {
-                hrefsToReload.append(href);
-            }
-        }
-    }
-
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        KCalCore::Incidence::Ptr &incidence = mLocalModifications[i];
-        QString href = incidenceHrefUri(incidence);
-        if (!mUpdatedETags.contains(href)) {
-            LOG_DEBUG("Did not receive ETag for incidence " << incidence->uid() << "- will reload from server");
-            if (!hrefsToReload.contains(href)) {
-                hrefsToReload.append(href);
-            }
-        }
-    }
-
-    if (!hrefsToReload.isEmpty()) {
+    // All PUT requests have been finished, and mSentUids have been cleared from
+    // uids that have already been updated with new etag value. Just remains
+    // the ones that requires additional retrieval to get etag values.
+    if (!mSentUids.isEmpty()) {
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);
         connect(report, SIGNAL(finished()), this, SLOT(additionalReportRequestFinished()));
-        report->multiGetEvents(mRemoteCalendarPath, hrefsToReload);
+        report->multiGetEvents(mRemoteCalendarPath, mSentUids.keys());
         return;
     } else {
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
@@ -796,12 +777,6 @@ bool NotebookSyncAgent::applyRemoteChanges()
         return true;
     }
 
-    if (!updateListHrefETag(mLocalAdditions)) {
-        return false;
-    }
-    if (!updateListHrefETag(mLocalModifications)) {
-        return false;
-    }
     if (!updateIncidences(mReceivedCalendarResources)) {
         return false;
     }
@@ -1553,38 +1528,22 @@ bool NotebookSyncAgent::deleteIncidences(KCalCore::Incidence::List deletedIncide
     return true;
 }
 
-bool NotebookSyncAgent::updateListHrefETag(KCalCore::Incidence::List incidences)
+void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
-    if (mUpdatedETags.isEmpty())
-        return true;
-
-    // After upsyncing changes (additions + modifications) we need to update local incidences.
-    // For modifications, we need to get the new (server-side) etag values, and store them into those incidences.
-    // For additions, we need to do that, and ALSO update the local URI value (to remote resource path).
-    Q_FOREACH (KCalCore::Incidence::Ptr incidence, incidences) {
-        bool setUri = false;
-        QString href = incidenceHrefUri(incidence, mRemoteCalendarPath, &setUri);
-        if (mUpdatedETags.contains(href)) {
-            const QString &etag = mUpdatedETags.take(href);
-            KCalCore::Incidence::Ptr localBaseIncidence =
-                mCalendar->incidence(incidence->uid());
-            if (localBaseIncidence) {
-                localBaseIncidence->startUpdates();
-                updateIncidenceHrefEtag(localBaseIncidence,
-                                        setUri ? href : QString(), etag);
-                localBaseIncidence->endUpdates();
-                if (localBaseIncidence->recurs()) {
-                    Q_FOREACH (KCalCore::Incidence::Ptr instance,
-                               mCalendar->instances(localBaseIncidence)) {
-                        instance->startUpdates();
-                        updateIncidenceHrefEtag(instance,
-                                                setUri ? href : QString(), etag);
-                        instance->endUpdates();
-                    }
-                }
+    KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
+    if (localBaseIncidence) {
+        localBaseIncidence->startUpdates();
+        updateIncidenceHrefEtag(localBaseIncidence, href, etag);
+        localBaseIncidence->endUpdates();
+        if (localBaseIncidence->recurs()) {
+            Q_FOREACH (KCalCore::Incidence::Ptr instance,
+                       mCalendar->instances(localBaseIncidence)) {
+                instance->startUpdates();
+                updateIncidenceHrefEtag(instance, href, etag);
+                instance->endUpdates();
             }
         }
+    } else {
+        LOG_WARNING("Unable to find base incidence: " << uid);
     }
-
-    return true;
 }

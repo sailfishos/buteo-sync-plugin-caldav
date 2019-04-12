@@ -45,16 +45,16 @@ Put::Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
 {
 }
 
-void Put::updateEvent(const QString &, const QString &icalData, const QString &eTag, const QString &uri, const QString &localUid)
+void Put::updateEvent(const QString &uri, const QString &icalData, const QString &eTag)
 {
     FUNCTION_CALL_TRACE;
 
-    if (mLocalUidList.contains(localUid)) {
-        LOG_WARNING("Already uploaded modification to event with uid:" << localUid);
+    if (mLocalUriList.contains(uri)) {
+        LOG_WARNING("Already uploaded modification to event at uri:" << uri);
         return;
     }
 
-    mLocalUidList.insert(localUid);
+    mLocalUriList.insert(uri);
     QByteArray data = icalData.toUtf8();
     if (data.isEmpty()) {
         LOG_WARNING("Error while converting iCal Object to QByteArray");
@@ -77,16 +77,16 @@ void Put::updateEvent(const QString &, const QString &icalData, const QString &e
             this, SLOT(slotSslErrors(QList<QSslError>)));
 }
 
-void Put::createEvent(const QString &remoteCalendarPath, const QString &icalData, const QString &localUid)
+void Put::createEvent(const QString &uri, const QString &icalData)
 {
     FUNCTION_CALL_TRACE;
 
-    if (mLocalUidList.contains(localUid)) {
-        LOG_WARNING("Already uploaded modification to event with id:" << localUid);
+    if (mLocalUriList.contains(uri)) {
+        LOG_WARNING("Already uploaded modification to event at uri:" << uri);
         return;
     }
 
-    mLocalUidList.insert(localUid);
+    mLocalUriList.insert(uri);
     QByteArray data = icalData.toUtf8();
     if (data.isEmpty()) {
         LOG_WARNING("Error while converting iCal Object to QByteArray");
@@ -94,7 +94,6 @@ void Put::createEvent(const QString &remoteCalendarPath, const QString &icalData
     }
 
     QNetworkRequest request;
-    QString uri = remoteCalendarPath + localUid + ".ics";
     prepareRequest(&request, uri);
     request.setRawHeader("If-None-Match", "*");
     request.setHeader(QNetworkRequest::ContentLengthHeader, data.length());
@@ -146,7 +145,7 @@ void Put::requestFinished()
     reply->deleteLater();
 }
 
-QHash<QString,QString> Put::updatedETags() const
+const QHash<QString,QString>& Put::updatedETags() const
 {
     return mUpdatedETags;
 }

@@ -85,7 +85,7 @@ private:
     bool updateIncidence(KCalCore::Incidence::Ptr incidence, const QString &resourceHref,
                          const QString &resourceEtag, bool isKnownOrphan, bool *criticalError);
     bool deleteIncidences(KCalCore::Incidence::List deletedIncidences);
-    bool updateListHrefETag(KCalCore::Incidence::List incidences);
+    void updateHrefETag(const QString &uid, const QString &href, const QString &etag) const;
 
     void sendLocalChanges();
     QString constructLocalChangeIcs(KCalCore::Incidence::Ptr updatedIncidence);
@@ -129,7 +129,6 @@ private:
     bool mFinished;
 
     // these are used only in quick-sync mode.
-    QHash<QString,QString> mUpdatedETags; // etags are for resources, not incidences, hence the key is URI
     // delta detection and change data
     QMultiHash<QString, KDateTime> mAddedPersistentExceptionOccurrences;   // remoteUri to recurrenceIds.
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.
@@ -139,6 +138,8 @@ private:
     QList<QString> mRemoteAdditions;
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
+    QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
+                                       // local additions, modifications and deletions.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;
