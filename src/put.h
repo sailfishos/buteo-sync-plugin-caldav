@@ -43,8 +43,8 @@ class Put : public Request
 public:
     explicit Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
-    void updateEvent(const QString &uri, const QString &icalData, const QString &eTag);
-    void createEvent(const QString &uri, const QString &icalData);
+    void sendIcalData(const QString &uri, const QString &icalData,
+                      const QString &eTag = QString());
 
     const QHash<QString,QString>& updatedETags() const;
 

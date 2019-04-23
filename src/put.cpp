@@ -24,7 +24,6 @@
 #include "put.h"
 #include "report.h"
 #include "settings.h"
-#include "incidencehandler.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -45,25 +44,34 @@ Put::Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
 {
 }
 
-void Put::updateEvent(const QString &uri, const QString &icalData, const QString &eTag)
+void Put::sendIcalData(const QString &uri, const QString &icalData,
+                       const QString &eTag)
 {
     FUNCTION_CALL_TRACE;
 
+    if (uri.isEmpty()) {
+        finishedWithInternalError("no uri provided");
+        return;
+    }
     if (mLocalUriList.contains(uri)) {
-        LOG_WARNING("Already uploaded modification to event at uri:" << uri);
+        finishedWithInternalError("already uploaded ical data to uri");
         return;
     }
 
     mLocalUriList.insert(uri);
     QByteArray data = icalData.toUtf8();
     if (data.isEmpty()) {
-        LOG_WARNING("Error while converting iCal Object to QByteArray");
+        finishedWithInternalError("no ical data provided or cannot convert data to UTF-8");
         return;
     }
 
     QNetworkRequest request;
     prepareRequest(&request, uri);
-    request.setRawHeader("If-Match", eTag.toLatin1());
+    if (eTag.isEmpty()) {
+        request.setRawHeader("If-None-Match", "*");
+    } else {
+        request.setRawHeader("If-Match", eTag.toLatin1());
+    }
     request.setHeader(QNetworkRequest::ContentLengthHeader, data.length());
     request.setHeader(QNetworkRequest::ContentTypeHeader, "text/calendar; charset=utf-8");
 
@@ -71,39 +79,6 @@ void Put::updateEvent(const QString &uri, const QString &icalData, const QString
     buffer->setData(data);
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_INCIDENCE_URI, uri);
-    debugRequest(request, data);
-    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
-    connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(slotSslErrors(QList<QSslError>)));
-}
-
-void Put::createEvent(const QString &uri, const QString &icalData)
-{
-    FUNCTION_CALL_TRACE;
-
-    if (mLocalUriList.contains(uri)) {
-        LOG_WARNING("Already uploaded modification to event at uri:" << uri);
-        return;
-    }
-
-    mLocalUriList.insert(uri);
-    QByteArray data = icalData.toUtf8();
-    if (data.isEmpty()) {
-        LOG_WARNING("Error while converting iCal Object to QByteArray");
-        return;
-    }
-
-    QNetworkRequest request;
-    prepareRequest(&request, uri);
-    request.setRawHeader("If-None-Match", "*");
-    request.setHeader(QNetworkRequest::ContentLengthHeader, data.length());
-    request.setHeader(QNetworkRequest::ContentTypeHeader, "text/calendar; charset=utf-8");
-
-    QBuffer *buffer = new QBuffer(this);
-    buffer->setData(data);
-    QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
-    reply->setProperty(PROP_INCIDENCE_URI, uri);
-    LOG_DEBUG("Sent create event request:" << REQUEST_TYPE.toLatin1() << request.url().toString());
     debugRequest(request, data);
     connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
@@ -121,8 +96,7 @@ void Put::requestFinished()
 
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
-        LOG_WARNING("Internal error: PUT request finished but null");
-        finishedWithInternalError();
+        finishedWithInternalError("Internal error: PUT request finished but null");
         return;
     }
 
@@ -132,14 +106,16 @@ void Put::requestFinished()
     // If the put was denied by server (e.g. read-only calendar), the etag
     // is not updated, so NotebookSyncAgent::finalizeSendingLocalChanges()
     // will emit a rollback report for this incidence.
+    const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
     if (reply->error() != QNetworkReply::ContentOperationNotPermittedError) {
         // Server may update the etag as soon as the modification is received and send back a new etag
         Q_FOREACH (const QNetworkReply::RawHeaderPair &header, reply->rawHeaderPairs()) {
             if (header.first.toLower() == QStringLiteral("etag")) {
-                mUpdatedETags.insert(reply->property(PROP_INCIDENCE_URI).toString(), header.second);
+                mUpdatedETags.insert(uri, header.second);
             }
         }
     }
+    mLocalUriList.remove(uri);
 
     finishedWithReplyResult(reply->error());
     reply->deleteLater();

@@ -552,7 +552,7 @@ void NotebookSyncAgent::sendLocalChanges()
             bool create = true;
             QString href = incidenceHrefUri(mLocalAdditions[i],
                                             mRemoteCalendarPath, &create);
-            put->createEvent(href, icsData);
+            put->sendIcalData(href, icsData);
             mSentUids.insert(href, mLocalAdditions[i]->uid());
             LOG_DEBUG("Triggered upload of local addition" << i);
         }
@@ -579,9 +579,9 @@ void NotebookSyncAgent::sendLocalChanges()
                 Put *put = new Put(mNetworkManager, mSettings);
                 mRequests.insert(put);
                 connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                put->updateEvent(incidenceHrefUri(mLocalModifications[i]),
-                                 icsData,
-                                 incidenceETag(mLocalModifications[i]));
+                put->sendIcalData(incidenceHrefUri(mLocalModifications[i]),
+                                  icsData,
+                                  incidenceETag(mLocalModifications[i]));
                 mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
                                  mLocalModifications[i]->uid());
             }
@@ -602,9 +602,9 @@ void NotebookSyncAgent::sendLocalChanges()
         Put *put = new Put(mNetworkManager, mSettings);
         mRequests.insert(put);
         connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        put->updateEvent(incidenceHrefUri(mLocalModifications[i]),
-                         icalFormat.toICalString(IncidenceHandler::incidenceToExport(mLocalModifications[i])),
-                         incidenceETag(mLocalModifications[i]));
+        put->sendIcalData(incidenceHrefUri(mLocalModifications[i]),
+                          icalFormat.toICalString(IncidenceHandler::incidenceToExport(mLocalModifications[i])),
+                          incidenceETag(mLocalModifications[i]));
         mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
                          mLocalModifications[i]->uid());
     }
@@ -640,9 +640,9 @@ void NotebookSyncAgent::sendLocalChanges()
                     Put *put = new Put(mNetworkManager, mSettings);
                     mRequests.insert(put);
                     connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                    put->updateEvent(uidToEtagAndUri.value(uid).second,
-                                     icsData,
-                                     uidToEtagAndUri.value(uid).first);
+                    put->sendIcalData(uidToEtagAndUri.value(uid).second,
+                                      icsData,
+                                      uidToEtagAndUri.value(uid).first);
                     mSentUids.insert(uidToEtagAndUri.value(uid).second, uid);
                     continue; // finished with this deletion.
                 }
