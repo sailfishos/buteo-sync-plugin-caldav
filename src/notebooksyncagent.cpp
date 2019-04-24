@@ -573,20 +573,19 @@ void NotebookSyncAgent::sendLocalChanges()
         bool create = false;
         QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
         if (href.isEmpty()) {
-            LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         "Unable to determine remote uri for modified incidence:" + mLocalModifications[i]->uid());
+                         "Unable to determine remote uri for incidence:" + toUpload[i]->uid());
             return;
         }
         if (mSentUids.contains(href)) {
-            LOG_DEBUG("Already handled local modification" << i << "via series update");
+            LOG_DEBUG("Already handled upload" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
-        QString icsData = constructLocalChangeIcs(mLocalModifications[i]);
+        QString icsData = constructLocalChangeIcs(toUpload[i]);
         if (icsData.isEmpty()) {
-            LOG_DEBUG("Skipping upload of broken local exception modification:" << i << ":" << mLocalModifications[i]->uid());
+            LOG_DEBUG("Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid());
         } else {
-            LOG_DEBUG("Uploading exception modification via series update for local modification:" << i << ":" << mLocalModifications[i]->uid());
+            LOG_DEBUG("Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid());
             localChangeRequestStarted = true;
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
