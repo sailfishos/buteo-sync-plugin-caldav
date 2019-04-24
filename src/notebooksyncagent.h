@@ -139,7 +139,7 @@ private:
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
-                                       // local additions, modifications and deletions.
+                                       // local additions, modifications.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;

@@ -531,32 +531,47 @@ void NotebookSyncAgent::sendLocalChanges()
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
 
-    mSentUids.clear();
     bool localChangeRequestStarted = false;
-    for (int i = 0; i < mLocalAdditions.count(); i++) {
-        bool create = true;
-        QString href = incidenceHrefUri(mLocalAdditions[i],
-                                        mRemoteCalendarPath, &create);
-        if (mSentUids.contains(href)) {
-            LOG_DEBUG("Already handled local addition" << i << "via series update");
-            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        }
-        QString icsData = constructLocalChangeIcs(mLocalAdditions[i]);
-        if (icsData.isEmpty()) {
-            LOG_DEBUG("Skipping upload of broken local addition:" << i << ":" << mLocalAdditions[i]->uid());
-        } else {
-            LOG_DEBUG("Uploading local addition" << i << "via series PUT for uid:" << mLocalAdditions[i]->uid());
-            localChangeRequestStarted = true;
-            Put *put = new Put(mNetworkManager, mSettings);
-            mRequests.insert(put);
-            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            put->sendIcalData(href, icsData);
-            mSentUids.insert(href, mLocalAdditions[i]->uid());
-            LOG_DEBUG("Triggered upload of local addition" << i);
-        }
+    // For deletions, if a persistent exception is deleted we may need to do a PUT
+    // containing all of the still-existing events in the series.
+    // (Alternative is to push a STATUS:CANCELLED event?)
+    // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
+    QMultiHash<QString, KDateTime> uidToRecurrenceIdDeletions;
+    QHash<QString, QString> uidToUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
+    Q_FOREACH (const LocalDeletion &localDeletion, mLocalDeletions) {
+        uidToRecurrenceIdDeletions.insert(localDeletion.deletedIncidence->uid(), localDeletion.deletedIncidence->recurrenceId());
+        uidToUri.insert(localDeletion.deletedIncidence->uid(), localDeletion.hrefUri);
     }
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        QString href = incidenceHrefUri(mLocalModifications[i]);
+
+    // now send DELETEs as required, and PUTs as required.
+    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.keys()) {
+        QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
+        if (!recurrenceIds.contains(KDateTime())) {
+            KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
+            if (!recurringSeries.isNull()) {
+                mLocalModifications.append(recurringSeries);
+                continue; // finished with this deletion.
+            } else {
+                LOG_WARNING("Unable to load recurring incidence for deleted exception; deleting entire series instead");
+                // fall through to the DELETE code below.
+            }
+        }
+
+        // the whole series is being deleted; can DELETE.
+        localChangeRequestStarted = true;
+        QString remoteUri = uidToUri.value(uid);
+        LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
+        Delete *del = new Delete(mNetworkManager, mSettings);
+        mRequests.insert(del);
+        connect(del, &Delete::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
+        del->deleteEvent(remoteUri);
+    }
+
+    mSentUids.clear();
+    KCalCore::Incidence::List toUpload(mLocalAdditions + mLocalModifications);
+    for (int i = 0; i < toUpload.count(); i++) {
+        bool create = false;
+        QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
         if (href.isEmpty()) {
             LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
@@ -575,63 +590,10 @@ void NotebookSyncAgent::sendLocalChanges()
             localChangeRequestStarted = true;
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
-            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            put->sendIcalData(href, icsData,
-                              incidenceETag(mLocalModifications[i]));
-            mSentUids.insert(href, mLocalModifications[i]->uid());
+            connect(put, &Put::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
+            put->sendIcalData(href, icsData, incidenceETag(toUpload[i]));
+            mSentUids.insert(href, toUpload[i]->uid());
         }
-    }
-
-    // For deletions, if a persistent exception is deleted we may need to do a PUT
-    // containing all of the still-existing events in the series.
-    // (Alternative is to push a STATUS:CANCELLED event?)
-    // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
-    QMultiHash<QString, KDateTime> uidToRecurrenceIdDeletions;
-    QHash<QString, QPair<QString, QString> > uidToEtagAndUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
-    Q_FOREACH (const LocalDeletion &localDeletion, mLocalDeletions) {
-        uidToRecurrenceIdDeletions.insert(localDeletion.deletedIncidence->uid(), localDeletion.deletedIncidence->recurrenceId());
-        uidToEtagAndUri.insert(localDeletion.deletedIncidence->uid(), qMakePair(localDeletion.remoteEtag, localDeletion.hrefUri));
-    }
-
-    // now send DELETEs as required, and PUTs as required.
-    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.keys()) {
-        QString remoteUri = uidToEtagAndUri.value(uid).second;
-        QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
-        if (!recurrenceIds.contains(KDateTime())) {
-            // one or more persistent exceptions are being deleted; must PUT.
-            if (mSentUids.contains(remoteUri)) {
-                LOG_DEBUG("Already handled this exception deletion in another exception update");
-                continue;
-            }
-            KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid, KDateTime());
-            if (!recurringSeries.isNull()) {
-                QString icsData = constructLocalChangeIcs(recurringSeries);
-                if (icsData.isEmpty()) {
-                    LOG_DEBUG("Skipping upload of broken local exception deletion:" << uid << "to calendar:" << mRemoteCalendarPath);
-                } else {
-                    LOG_DEBUG("Uploading local deletion of exception via PUT to series event with uid:" << uid << "to calendar:" << mRemoteCalendarPath);
-                    localChangeRequestStarted = true;
-                    Put *put = new Put(mNetworkManager, mSettings);
-                    mRequests.insert(put);
-                    connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                    put->sendIcalData(remoteUri, icsData,
-                                      uidToEtagAndUri.value(uid).first);
-                    mSentUids.insert(remoteUri, uid);
-                    continue; // finished with this deletion.
-                }
-            } else {
-                LOG_WARNING("Unable to load recurring incidence for deleted exception; deleting entire series instead");
-                // fall through to the DELETE code below.
-            }
-        }
-
-        // the whole series is being deleted; can DELETE.
-        localChangeRequestStarted = true;
-        LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
-        Delete *del = new Delete(mNetworkManager, mSettings);
-        mRequests.insert(del);
-        connect(del, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        del->deleteEvent(remoteUri);
     }
 
     if (!localChangeRequestStarted) {
