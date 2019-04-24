@@ -533,9 +533,11 @@ void NotebookSyncAgent::sendLocalChanges()
 
     mSentUids.clear();
     bool localChangeRequestStarted = false;
-    QSet<QString> addModUids;
     for (int i = 0; i < mLocalAdditions.count(); i++) {
-        if (addModUids.contains(mLocalAdditions[i]->uid())) {
+        bool create = true;
+        QString href = incidenceHrefUri(mLocalAdditions[i],
+                                        mRemoteCalendarPath, &create);
+        if (mSentUids.contains(href)) {
             LOG_DEBUG("Already handled local addition" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
@@ -545,68 +547,39 @@ void NotebookSyncAgent::sendLocalChanges()
         } else {
             LOG_DEBUG("Uploading local addition" << i << "via series PUT for uid:" << mLocalAdditions[i]->uid());
             localChangeRequestStarted = true;
-            addModUids.insert(mLocalAdditions[i]->uid());
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
             connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            bool create = true;
-            QString href = incidenceHrefUri(mLocalAdditions[i],
-                                            mRemoteCalendarPath, &create);
             put->sendIcalData(href, icsData);
             mSentUids.insert(href, mLocalAdditions[i]->uid());
             LOG_DEBUG("Triggered upload of local addition" << i);
         }
     }
     for (int i = 0; i < mLocalModifications.count(); i++) {
-        if (addModUids.contains(mLocalModifications[i]->uid())) {
-            LOG_DEBUG("Already handled local modification" << i << "via series update");
-            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        } else if (incidenceHrefUri(mLocalModifications[i]).isEmpty()) {
+        QString href = incidenceHrefUri(mLocalModifications[i]);
+        if (href.isEmpty()) {
             LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
                          "Unable to determine remote uri for modified incidence:" + mLocalModifications[i]->uid());
             return;
         }
-        // first, handle updates of exceptions by uploading the entire modified series.
-        if (mLocalModifications[i]->hasRecurrenceId()) {
-            QString icsData = constructLocalChangeIcs(mLocalModifications[i]);
-            if (icsData.isEmpty()) {
-                LOG_DEBUG("Skipping upload of broken local exception modification:" << i << ":" << mLocalModifications[i]->uid());
-            } else {
-                LOG_DEBUG("Uploading exception modification via series update for local modification:" << i << ":" << mLocalModifications[i]->uid());
-                localChangeRequestStarted = true;
-                addModUids.insert(mLocalModifications[i]->uid());
-                Put *put = new Put(mNetworkManager, mSettings);
-                mRequests.insert(put);
-                connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                put->sendIcalData(incidenceHrefUri(mLocalModifications[i]),
-                                  icsData,
-                                  incidenceETag(mLocalModifications[i]));
-                mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
-                                 mLocalModifications[i]->uid());
-            }
-        }
-    }
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        if (addModUids.contains(mLocalModifications[i]->uid())) {
+        if (mSentUids.contains(href)) {
             LOG_DEBUG("Already handled local modification" << i << "via series update");
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
-        // now handle updates of base incidences (which haven't otherwise already been upsynced), via direct update.
-        // TODO: is this correct?  Or should we always generate the entire series as a resource we upload?
-        // E.g. in the case where there is a pre-existing persistent exception, and the base-event gets modified,
-        // does this PUT of the modified base-event cause (unwanted) changes/deletion of the persistent exception?
-        LOG_DEBUG("Uploading base event modification for local modification:" << i);
-        localChangeRequestStarted = true;
-        KCalCore::ICalFormat icalFormat;
-        Put *put = new Put(mNetworkManager, mSettings);
-        mRequests.insert(put);
-        connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        put->sendIcalData(incidenceHrefUri(mLocalModifications[i]),
-                          icalFormat.toICalString(IncidenceHandler::incidenceToExport(mLocalModifications[i])),
-                          incidenceETag(mLocalModifications[i]));
-        mSentUids.insert(incidenceHrefUri(mLocalModifications[i]),
-                         mLocalModifications[i]->uid());
+        QString icsData = constructLocalChangeIcs(mLocalModifications[i]);
+        if (icsData.isEmpty()) {
+            LOG_DEBUG("Skipping upload of broken local exception modification:" << i << ":" << mLocalModifications[i]->uid());
+        } else {
+            LOG_DEBUG("Uploading exception modification via series update for local modification:" << i << ":" << mLocalModifications[i]->uid());
+            localChangeRequestStarted = true;
+            Put *put = new Put(mNetworkManager, mSettings);
+            mRequests.insert(put);
+            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
+            put->sendIcalData(href, icsData,
+                              incidenceETag(mLocalModifications[i]));
+            mSentUids.insert(href, mLocalModifications[i]->uid());
+        }
     }
 
     // For deletions, if a persistent exception is deleted we may need to do a PUT
@@ -622,10 +595,11 @@ void NotebookSyncAgent::sendLocalChanges()
 
     // now send DELETEs as required, and PUTs as required.
     Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.keys()) {
+        QString remoteUri = uidToEtagAndUri.value(uid).second;
         QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
         if (!recurrenceIds.contains(KDateTime())) {
             // one or more persistent exceptions are being deleted; must PUT.
-            if (addModUids.contains(uid)) {
+            if (mSentUids.contains(remoteUri)) {
                 LOG_DEBUG("Already handled this exception deletion in another exception update");
                 continue;
             }
@@ -640,10 +614,9 @@ void NotebookSyncAgent::sendLocalChanges()
                     Put *put = new Put(mNetworkManager, mSettings);
                     mRequests.insert(put);
                     connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                    put->sendIcalData(uidToEtagAndUri.value(uid).second,
-                                      icsData,
+                    put->sendIcalData(remoteUri, icsData,
                                       uidToEtagAndUri.value(uid).first);
-                    mSentUids.insert(uidToEtagAndUri.value(uid).second, uid);
+                    mSentUids.insert(remoteUri, uid);
                     continue; // finished with this deletion.
                 }
             } else {
@@ -654,7 +627,6 @@ void NotebookSyncAgent::sendLocalChanges()
 
         // the whole series is being deleted; can DELETE.
         localChangeRequestStarted = true;
-        QString remoteUri = uidToEtagAndUri.value(uid).second;
         LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
         Delete *del = new Delete(mNetworkManager, mSettings);
         mRequests.insert(del);
