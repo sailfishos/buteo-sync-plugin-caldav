@@ -94,15 +94,6 @@ namespace {
             incidence->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(hrefUri));
         }
     }
-    int findIncidenceMatchingHrefUri(KCalCore::Incidence::List incidences, const QString &hrefUri)
-    {
-        for (int i = 0; i < incidences.size(); ++i) {
-            if (incidenceHrefUri(incidences[i]) == hrefUri) {
-                return i;
-            }
-        }
-        return -1;
-    }
     QString incidenceETag(KCalCore::Incidence::Ptr incidence)
     {
         const QStringList &comments(incidence->comments());
@@ -268,6 +259,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     // that may be inserted server side between now and the termination
     // of the process.
     mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
+    mFromDateTime = fromDateTime;
+    mToDateTime = toDateTime;
     if (mNotebook->syncDate().isNull()) {
 /*
     Slow sync mode:
@@ -281,8 +274,6 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
                   << "between" << fromDateTime << "to" << toDateTime);
 
         mSyncMode = SlowSync;
-        mFromDateTime = fromDateTime;
-        mToDateTime = toDateTime;
 
         sendReportRequest();
     } else {
@@ -302,10 +293,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
                   << "between" << fromDateTime << "to" << toDateTime
                   << ", sync changes since" << mNotebook->syncDate().dateTime());
         mSyncMode = QuickSync;
-        mFromDateTime = fromDateTime;
-        mToDateTime = toDateTime;
 
-        fetchRemoteChanges(mFromDateTime, mToDateTime);
+        fetchRemoteChanges();
     }
 }
 
@@ -318,7 +307,7 @@ void NotebookSyncAgent::sendReportRequest()
     report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
-void NotebookSyncAgent::fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime)
+void NotebookSyncAgent::fetchRemoteChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -326,7 +315,7 @@ void NotebookSyncAgent::fetchRemoteChanges(const QDateTime &fromDateTime, const 
     Report *report = new Report(mNetworkManager, mSettings);
     mRequests.insert(report);
     connect(report, SIGNAL(finished()), this, SLOT(processETags()));
-    report->getAllETags(mRemoteCalendarPath, fromDateTime, toDateTime);
+    report->getAllETags(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
 void NotebookSyncAgent::reportRequestFinished()
@@ -354,8 +343,7 @@ void NotebookSyncAgent::reportRequestFinished()
                 if (mPossibleLocalModificationIncidenceIds.contains(resource.href)) {
                     // this resource was fetched so that we could perform a field-by-field delta detection
                     // just in case the only change was the ETAG/URI value (due to previous sync).
-                    removePossibleLocalModificationIfIdentical(resource.href,
-                                                               mPossibleLocalModificationIncidenceIds.values(resource.href),
+                    removePossibleLocalModificationIfIdentical(mPossibleLocalModificationIncidenceIds.values(resource.href),
                                                                resource,
                                                                &mLocalModifications);
                 } else {
@@ -447,22 +435,8 @@ void NotebookSyncAgent::processETags()
         // during the next sync cycle (even though the only changes may have been
         // that ETAG+URI change).  Hence, we need to fetch all of those again, and
         // then manually check equivalence (ignoring etag+uri value) with remote copy.
-        QStringList fetchPossiblyLocallyModifiedIncidenceHrefUris;
-        Q_FOREACH (KCalCore::Incidence::Ptr possiblyModified, mLocalModifications) {
-            QString pmiHrefUri = incidenceHrefUri(possiblyModified);
-            if (pmiHrefUri.isEmpty()) {
-                // this was a modification reported to a previously partially-synced event.
-                // we always treat this as a "definite" local modification.
-            } else if (!fetchPossiblyLocallyModifiedIncidenceHrefUris.contains(pmiHrefUri)) {
-                // this was a modification reported to a successfully synced event.
-                // we always treat this as a "possible" local modification.
-                // hence, we reload from remote and perform field-by-field comparison.
-                fetchPossiblyLocallyModifiedIncidenceHrefUris.append(pmiHrefUri);
-            }
-        }
-
-        // fetch updated and new items full data if required.
-        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + fetchPossiblyLocallyModifiedIncidenceHrefUris;
+        // Also fetch updated and new items full data if required.
+        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + mPossibleLocalModificationIncidenceIds.uniqueKeys();
         if (!fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
             Report *report = new Report(mNetworkManager, mSettings);
@@ -479,7 +453,7 @@ void NotebookSyncAgent::processETags()
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
         LOG_WARNING("Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
         mRetriedReport = true;
-        fetchRemoteChanges(mFromDateTime, mToDateTime);
+        fetchRemoteChanges();
         return;
     } else if (report->networkError() == QNetworkReply::ContentNotFoundError) {
         // The remote calendar resource was removed.
@@ -987,7 +961,6 @@ bool NotebookSyncAgent::calculateDelta(
 // We fetched the remote version of the resource so that we can detect whether the local change
 // is "real" or whether it was just reporting the local modification of the ETAG or URI field.
 void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
-        const QString &remoteUri,
         const QList<KDateTime> &recurrenceIds,
         const Reader::CalendarResource &remoteResource,
         KCalCore::Incidence::List *localModifications)
@@ -1000,33 +973,30 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         for (int i = 0; i < localModifications->size(); ++i) {
             // Only compare incidences which relate to the remote resource.
             QString hrefUri = incidenceHrefUri(localModifications->at(i));
-            if (hrefUri != remoteUri) {
+            if (hrefUri != remoteResource.href) {
                 LOG_DEBUG("skipping unrelated local modification:" << localModifications->at(i)->uid()
-                          << "(" << hrefUri << ") for remote uri:" << remoteUri);
+                          << "(" << hrefUri << ") for remote uri:" << remoteResource.href);
+                continue;
+            }
+            if (localModifications->at(i)->recurrenceId() != rid) {
                 continue;
             }
             // Note: we compare the remote resources with the "export" version of the local modifications
             // otherwise spurious differences might be detected.
             const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i), (localModifications->at(i)->recurs()) ? mCalendar->instances(localModifications->at(i)) : KCalCore::Incidence::List());
-            if (pLMod->recurrenceId() == rid) {
-                // found the local incidence.  now find the copy received from the server and detect changes.
-                if (remoteResource.href != remoteUri) {
-                    LOG_WARNING("error while removing spurious possible local modifications: resource uri mismatch:" << remoteResource.href << "->" << remoteUri);
-                } else {
-                    Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
-                        const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
-                        if (exportRInc->recurrenceId() == rid) {
-                            // found the remote incidence.  compare it to the local.
-                            LOG_DEBUG("comparing:" << pLMod->uid() << "(" << remoteUri << ") to:" << exportRInc->uid() << "(" << remoteResource.href << ")");
-                            foundMatch = true;
-                            if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
-                                removeIdx = i;  // this is a spurious local modification which needs to be removed.
-                            } else {
-                                removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                            }
-                            break;
-                        }
+            // found the local incidence.  now find the copy received from the server and detect changes.
+            Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
+                if (remoteIncidence->recurrenceId() == rid) {
+                    const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
+                    // found the remote incidence.  compare it to the local.
+                    LOG_DEBUG("comparing:" << pLMod->uid() << "to" << exportRInc->uid() << "(" << remoteResource.href << ")");
+                    foundMatch = true;
+                    if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
+                        removeIdx = i;  // this is a spurious local modification which needs to be removed.
+                    } else {
+                        removeIdx = -1; // this is a real local modification. no-op, but for completeness.
                     }
+                    break;
                 }
             }
             if (foundMatch) {
@@ -1037,10 +1007,10 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         // remove the possible local modification if it proved to be spurious
         if (foundMatch) {
             if (removeIdx >= 0) {
-                LOG_DEBUG("discarding spurious local modification to:" << remoteUri << rid.toString());
+                LOG_DEBUG("discarding spurious local modification to:" << remoteResource.href << rid.toString());
                 localModifications->remove(removeIdx);
             } else {
-                LOG_DEBUG("local modification to:" << remoteUri << rid.toString() << "is real.");
+                LOG_DEBUG("local modification to:" << remoteResource.href << rid.toString() << "is real.");
             }
         } else {
             // this is always an internal logic error.  We explicitly requested it.

@@ -80,7 +80,7 @@ private:
     void clearRequests();
     void emitFinished(int minorErrorCode, const QString &message);
 
-    void fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime);
+    void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
     bool updateIncidence(KCalCore::Incidence::Ptr incidence, const QString &resourceHref,
                          const QString &resourceEtag, bool isKnownOrphan, bool *criticalError);
@@ -107,8 +107,7 @@ private:
                         QList<QString> *remoteAdditions,
                         QList<QString> *remoteModifications,
                         KCalCore::Incidence::List *remoteDeletions);
-    void removePossibleLocalModificationIfIdentical(const QString &remoteUri,
-                                                    const QList<KDateTime> &recurrenceIds,
+    void removePossibleLocalModificationIfIdentical(const QList<KDateTime> &recurrenceIds,
                                                     const Reader::CalendarResource &remoteResource,
                                                     KCalCore::Incidence::List *localModifications);
 
