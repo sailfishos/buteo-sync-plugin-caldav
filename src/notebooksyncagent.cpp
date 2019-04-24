@@ -1076,9 +1076,9 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         KCalCore::Incidence::List *localModifications)
 {
     // the remoteResource contains one ical resource fetched from the remote URI.
-    bool foundMatch = false;
     Q_FOREACH (const KDateTime &rid, recurrenceIds) {
         // find the possible local modification associated with this recurrenceId.
+        bool foundMatch = false;
         int removeIdx = -1;
         for (int i = 0; i < localModifications->size(); ++i) {
             // Only compare incidences which relate to the remote resource.

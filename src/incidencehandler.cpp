@@ -89,6 +89,72 @@ bool IncidenceHandler::pointerDataEqual(const QVector<QSharedPointer<T> > &vecto
     return true;
 }
 
+static bool ruleDataEqual(const KCalCore::RecurrenceRule *a, const KCalCore::RecurrenceRule *b)
+{
+    if (*a == *b) {
+        return true;
+    }
+
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, recurrenceType(), "recurrenceType");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, duration(), "duration");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, startDt().dateTime(), "startDt");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, endDt().dateTime(), "endDt");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, frequency(), "frequency");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, allDay(), "allDay");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, isReadOnly(), "isReadOnly");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, bySeconds(), "bySeconds");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMinutes(), "byMinutes");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byHours(), "byHours");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays().count(), "byDays.count");
+    for (int i = 0; i < a->byDays().count(); i++) {
+        RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays()[i].day(), "byDays[i].day");
+        RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays()[i].pos(), "byDays[i].pos");
+    }
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMonthDays(), "byMonthDays");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byYearDays(), "byYearDays");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byWeekNumbers(), "byWeekNumbers");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMonths(), "byMonths");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, bySetPos(), "bySetPos");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, weekStart(), "weekStart");
+    LOG_DEBUG("unknown difference in recurrence rules:" << a->rrule() << b->rrule());
+    return false;
+}
+
+static bool recurrenceDataEqual(const KCalCore::Recurrence *a, const KCalCore::Recurrence *b)
+{
+    if (*a == *b) {
+        return true;
+    }
+
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, startDateTime().dateTime(), "startDateTime");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, allDay(), "allDay");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, recurReadOnly(), "recurReadOnly");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, exDates(), "exDates");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, rDates(), "rDates");
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, exDateTimes().count(), "exDateTimes.count");
+    for (int i = 0; i < a->exDateTimes().count(); i++) {
+        RETURN_FALSE_IF_NOT_EQUAL(a, b, exDateTimes()[i].dateTime(), "exDateTimes[i]");
+    }
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, rDateTimes().count(), "rDateTimes.count");
+    for (int i = 0; i < a->rDateTimes().count(); i++) {
+        RETURN_FALSE_IF_NOT_EQUAL(a, b, rDateTimes()[i].dateTime(), "rDateTimes[i]");
+    }
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, exRules().count(), "exRules.count");
+    for (int i = 0; i < a->exRules().count(); i++) {
+        if (!ruleDataEqual(a->exRules()[i], b->exRules()[i])) {
+            return false;
+        }
+    }
+    RETURN_FALSE_IF_NOT_EQUAL(a, b, rRules().count(), "rRules.count");
+    for (int i = 0; i < a->rRules().count(); i++) {
+        if (!ruleDataEqual(a->rRules()[i], b->rRules()[i])) {
+            return false;
+        }
+    }
+    LOG_DEBUG("unknown difference in recurrences.");
+    return false;
+}
+
 // Checks whether a specific set of properties are equal.
 bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b)
 {
@@ -121,7 +187,9 @@ bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &
 
     // check recurrence information. Note that we only need to check the recurrence rules for equality if they both recur.
     RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->recurs() != b->recurs(), "recurs", a->recurs() + " != " + b->recurs());
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->recurs() && *(a->recurrence()) != *(b->recurrence()), "recurrence", "...");
+    if (a->recurs() && !recurrenceDataEqual(a->recurrence(), b->recurrence())) {
+        return false;
+    }
 
     // some special handling for dtStart() depending on whether it's an all-day event or not.
     if (a->allDay() && b->allDay()) {
