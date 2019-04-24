@@ -686,7 +686,7 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);
         connect(report, SIGNAL(finished()), this, SLOT(additionalReportRequestFinished()));
-        report->multiGetEvents(mRemoteCalendarPath, mSentUids.keys());
+        report->multiGetEtags(mRemoteCalendarPath, mSentUids.keys());
         return;
     } else {
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
@@ -707,11 +707,17 @@ void NotebookSyncAgent::additionalReportRequestFinished()
     report->deleteLater();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        mReceivedCalendarResources.append(report->receivedCalendarResources());
         LOG_DEBUG("Additional report request finished: received:"
                   << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
                   << report->receivedCalendarResources().count() << "incidences");
-        LOG_DEBUG("Have received" << mReceivedCalendarResources.count() << "incidences in total!");
+        for (QList<Reader::CalendarResource>::ConstIterator
+                 it = report->receivedCalendarResources().constBegin();
+             it != report->receivedCalendarResources().constEnd(); ++it) {
+            if (mSentUids.contains(it->href)) {
+                updateHrefETag(mSentUids.take(it->href), it->href, it->etag);
+            }
+        }
+        LOG_DEBUG("Remains" << mSentUids.count() << "uris not updated.");
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
         return;
     }

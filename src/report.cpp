@@ -111,13 +111,28 @@ void Report::sendCalendarQuery(const QString &remoteCalendarPath,
 void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList)
 {
     FUNCTION_CALL_TRACE;
+    sendMultiQuery(remoteCalendarPath, eventHrefList, true);
+ }
 
+void Report::multiGetEtags(const QString &remoteCalendarPath, const QStringList &eventHrefList)
+{
+    FUNCTION_CALL_TRACE;
+    sendMultiQuery(remoteCalendarPath, eventHrefList, false);
+}
+
+void Report::sendMultiQuery(const QString &remoteCalendarPath, const QStringList &eventHrefList, bool getCalendarData)
+{
+    FUNCTION_CALL_TRACE;
     if (eventHrefList.isEmpty()) {
         return;
     }
 
     QByteArray requestData = "<c:calendar-multiget xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">" \
-                             "<d:prop><d:getetag /><c:calendar-data /></d:prop>";
+                             "<d:prop><d:getetag />";
+    if (getCalendarData) {
+        requestData += "<c:calendar-data />";
+    }
+    requestData += "</d:prop>";
     Q_FOREACH (const QString &eventHref , eventHrefList) {
         requestData.append("<d:href>");
         requestData.append(eventHref.toUtf8());
@@ -126,7 +141,7 @@ void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList
     requestData.append("</c:calendar-multiget>");
 
     sendRequest(remoteCalendarPath, requestData);
- }
+}
 
 void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &requestData)
 {
@@ -197,7 +212,7 @@ void Report::processResponse()
     }
 }
 
-QList<Reader::CalendarResource> Report::receivedCalendarResources() const
+const QList<Reader::CalendarResource>& Report::receivedCalendarResources() const
 {
     return mReceivedResources;
 }
