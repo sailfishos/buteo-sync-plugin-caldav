@@ -177,25 +177,6 @@ namespace {
         occurrence->addComment("buteo:caldav:detached-and-synced");
         return occurrence;
     }
-
-    void uniteIncidenceLists(const KCalCore::Incidence::List &first, KCalCore::Incidence::List *second)
-    {
-        int originalSecondSize = second->size();
-        bool foundMatch = false;
-        Q_FOREACH (KCalCore::Incidence::Ptr inc, first) {
-            foundMatch = false;
-            for (int i = 0; i < originalSecondSize; ++i) {
-                if (inc->uid() == second->at(i)->uid() && inc->recurrenceId() == second->at(i)->recurrenceId()) {
-                    // found a match
-                    foundMatch = true;
-                    break;
-                }
-            }
-            if (!foundMatch) {
-                second->append(inc);
-            }
-        }
-    }
 }
 
 
@@ -376,7 +357,6 @@ void NotebookSyncAgent::reportRequestFinished()
                     removePossibleLocalModificationIfIdentical(resource.href,
                                                                mPossibleLocalModificationIncidenceIds.values(resource.href),
                                                                resource,
-                                                               mAddedPersistentExceptionOccurrences,
                                                                &mLocalModifications);
                 } else {
                     // these were resources fetched from m_remoteAdditions or m_remoteModifications
@@ -784,7 +764,6 @@ bool NotebookSyncAgent::calculateDelta(
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions and remote deletions.
-    KCalCore::Incidence::List addedPersistentExceptionOccurrences;
     QSet<QString> seenRemoteUris;
     QHash<QString, QString> previouslySyncedEtags; // remote uri to the etag we saw last time.
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, localIncidences) {
@@ -814,16 +793,19 @@ bool NotebookSyncAgent::calculateDelta(
                 LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 remoteDeletions->append(incidence);
             } else if (isCopiedDetachedIncidence(incidence)) {
-                LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
-                addedPersistentExceptionOccurrences.append(incidence);
-                mAddedPersistentExceptionOccurrences.insert(remoteUri, incidence->recurrenceId());
+                if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
+                    LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                    localAdditions->append(incidence);
+                } else {
+                    LOG_DEBUG("ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                }
             } else {
                 // this is a possibly modified or possibly unchanged, previously synced incidence.
                 // we later check to see if it was modified server-side by checking the etag value.
                 LOG_DEBUG("have possibly modified or possibly unchanged previously synced local incidence:" << remoteUri);
-                seenRemoteUris.insert(remoteUri);
-                previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
             }
+            seenRemoteUris.insert(remoteUri);
+            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
@@ -863,14 +845,11 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // Now determine local modifications.
-    // We unite into the reported modifications any addedPersistentExceptionOccurrences
-    // (calculated earlier) - we treat them as modifications of the series rather than additions.
     KCalCore::Incidence::List modified;
     if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
         return false;
     }
-    uniteIncidenceLists(addedPersistentExceptionOccurrences, &modified);
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, modified) {
         // if it also appears in localDeletions, ignore it - it was deleted locally.
         // if it also appears in localAdditions, ignore it - we are already uploading it.
@@ -1011,7 +990,6 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         const QString &remoteUri,
         const QList<KDateTime> &recurrenceIds,
         const Reader::CalendarResource &remoteResource,
-        const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
         KCalCore::Incidence::List *localModifications)
 {
     // the remoteResource contains one ical resource fetched from the remote URI.
@@ -1031,16 +1009,6 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
             // otherwise spurious differences might be detected.
             const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i), (localModifications->at(i)->recurs()) ? mCalendar->instances(localModifications->at(i)) : KCalCore::Incidence::List());
             if (pLMod->recurrenceId() == rid) {
-                // check to see if the modification is actually an added persistent exception occurrence.
-                if (addedPersistentExceptionOccurrences.values(hrefUri).contains(rid)) {
-                    // The "modification" is actually an addition of a persistent exception occurrence
-                    // which we treat as a modification of the series, then no remote incidence will exist yet.
-                    foundMatch = true;
-                    removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                    break;
-                }
-
-                // not a persistent exception occurrence addition, must be a "normal" local modification.
                 // found the local incidence.  now find the copy received from the server and detect changes.
                 if (remoteResource.href != remoteUri) {
                     LOG_WARNING("error while removing spurious possible local modifications: resource uri mismatch:" << remoteResource.href << "->" << remoteUri);

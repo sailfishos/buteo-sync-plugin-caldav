@@ -333,11 +333,9 @@ void tst_NotebookSyncAgent::removePossibleLocal()
 
     QList<KDateTime> recurrenceIds;
     recurrenceIds << KDateTime::fromString(remoteIncidence["recurrenceId"]);
-    QMultiHash<QString, KDateTime> addedPersistentExceptionOccurrences;
 
     m_agent->removePossibleLocalModificationIfIdentical
-        (resource.href, recurrenceIds, resource,
-         addedPersistentExceptionOccurrences, &localModifications);
+        (resource.href, recurrenceIds, resource, &localModifications);
 
     /* Check if remote is still or not in localModifications. */
     bool found = false;
@@ -359,6 +357,7 @@ void tst_NotebookSyncAgent::updateEvent()
     incidence->setUid("123456-moz");
     incidence->setNonKDECustomProperty("X-MOZ-LASTACK", "20171013T174424Z");
     incidence->setCreated(KDateTime(QDate(2019, 03, 28)));
+    incidence->setAllDay(false);
 
     QVERIFY(m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
                                          m_agent->mNotebook->uid()));
@@ -376,6 +375,7 @@ void tst_NotebookSyncAgent::updateEvent()
     KCalCore::Incidence::Ptr update = KCalCore::Incidence::Ptr(new KCalCore::Event);
     update->setUid("123456-moz");
     update->setNonKDECustomProperty("X-MOZ-LASTACK", "20171016T174424Z");
+    update->setAllDay(false);
     bool success = true;
     m_agent->updateIncidence(update, "/testPath/123456.ics", "\"123456\"", false, &success);
     QVERIFY(success);
@@ -383,7 +383,7 @@ void tst_NotebookSyncAgent::updateEvent()
     // Check that custom property is updated as well.
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-moz"));
     QVERIFY(incidence);
-    QCOMPARE(incidence->customProperties().count(), 2);
+    QCOMPARE(incidence->customProperties().count(), 1);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
              QStringLiteral("20171016T174424Z"));
 }
@@ -450,6 +450,20 @@ void tst_NotebookSyncAgent::updateHrefETag()
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
     QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
     QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
+}
+
+static bool incidenceListContains(const KCalCore::Incidence::List &list,
+                                  const KCalCore::Incidence::Ptr &ev)
+{
+    for (KCalCore::Incidence::List::ConstIterator it = list.constBegin();
+         it != list.constEnd(); it++) {
+        if ((*it)->uid() == ev->uid()
+            && (!ev->hasRecurrenceId()
+                || (*it)->recurrenceId() == ev->recurrenceId())) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void tst_NotebookSyncAgent::calculateDelta()
@@ -565,15 +579,15 @@ void tst_NotebookSyncAgent::calculateDelta()
                                     &m_agent->mRemoteAdditions,
                                     &m_agent->mRemoteModifications,
                                     &m_agent->mRemoteDeletions));
-    QCOMPARE(m_agent->mLocalAdditions.count(), 1);
-    QCOMPARE(m_agent->mLocalAdditions.first()->uid(), ev111->uid());
+    QCOMPARE(m_agent->mLocalAdditions.count(), 2);
+    QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev111));
+    QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev999));
     QCOMPARE(m_agent->mLocalModifications.count(), 3);
-    QCOMPARE(m_agent->mLocalModifications.at(0)->uid(), ev222->uid());
-    QCOMPARE(m_agent->mLocalModifications.at(1)->uid(), ev113->uid());
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev222));
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev113));
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev888));
     // ev444 have been locally modified, but is not in mLocalModifications
     // because of precedence of remote modifications by default.
-    QCOMPARE(m_agent->mLocalModifications.at(2)->uid(), ev999->uid());
-    QCOMPARE(m_agent->mLocalModifications.at(2)->recurrenceId(), ev999->recurrenceId());
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
     QCOMPARE(m_agent->mLocalDeletions.first().deletedIncidence->uid(), ev333->uid());
     QCOMPARE(m_agent->mRemoteAdditions.count(), 1);

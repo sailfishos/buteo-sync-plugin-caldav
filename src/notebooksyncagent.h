@@ -110,7 +110,6 @@ private:
     void removePossibleLocalModificationIfIdentical(const QString &remoteUri,
                                                     const QList<KDateTime> &recurrenceIds,
                                                     const Reader::CalendarResource &remoteResource,
-                                                    const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
                                                     KCalCore::Incidence::List *localModifications);
 
     QNetworkAccessManager* mNetworkManager;
@@ -130,7 +129,6 @@ private:
 
     // these are used only in quick-sync mode.
     // delta detection and change data
-    QMultiHash<QString, KDateTime> mAddedPersistentExceptionOccurrences;   // remoteUri to recurrenceIds.
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.
     KCalCore::Incidence::List mLocalAdditions;
     KCalCore::Incidence::List mLocalModifications;
