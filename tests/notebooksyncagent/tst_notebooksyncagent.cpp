@@ -335,7 +335,7 @@ void tst_NotebookSyncAgent::removePossibleLocal()
     recurrenceIds << KDateTime::fromString(remoteIncidence["recurrenceId"]);
 
     m_agent->removePossibleLocalModificationIfIdentical
-        (resource.href, recurrenceIds, resource, &localModifications);
+        (recurrenceIds, resource, &localModifications);
 
     /* Check if remote is still or not in localModifications. */
     bool found = false;
@@ -589,7 +589,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     // ev444 have been locally modified, but is not in mLocalModifications
     // because of precedence of remote modifications by default.
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
-    QCOMPARE(m_agent->mLocalDeletions.first().deletedIncidence->uid(), ev333->uid());
+    QCOMPARE(m_agent->mLocalDeletions.first()->uid(), ev333->uid());
     QCOMPARE(m_agent->mRemoteAdditions.count(), 1);
     QCOMPARE(m_agent->mRemoteAdditions.first(), QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath));
     QCOMPARE(m_agent->mRemoteModifications.count(), 3);

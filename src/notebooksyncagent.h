@@ -91,19 +91,10 @@ private:
     QString constructLocalChangeIcs(KCalCore::Incidence::Ptr updatedIncidence);
     void finalizeSendingLocalChanges();
 
-    // we cannot access custom properties of deleted incidences from mkcal
-    // so instead, we need to determine the remote etag and uri via remote etags request and cache it here.
-    struct LocalDeletion {
-        LocalDeletion(KCalCore::Incidence::Ptr deleted, const QString &etag, const QString &uri)
-            : deletedIncidence(deleted), remoteEtag(etag), hrefUri(uri) {}
-        KCalCore::Incidence::Ptr deletedIncidence;
-        QString remoteEtag;
-        QString hrefUri;
-    };
     bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
                         KCalCore::Incidence::List *localAdditions,
                         KCalCore::Incidence::List *localModifications,
-                        QList<LocalDeletion> *localDeletions,
+                        KCalCore::Incidence::List *localDeletions,
                         QList<QString> *remoteAdditions,
                         QList<QString> *remoteModifications,
                         KCalCore::Incidence::List *remoteDeletions);
@@ -131,7 +122,7 @@ private:
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.
     KCalCore::Incidence::List mLocalAdditions;
     KCalCore::Incidence::List mLocalModifications;
-    QList<LocalDeletion> mLocalDeletions;
+    KCalCore::Incidence::List mLocalDeletions;
     QList<QString> mRemoteAdditions;
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;

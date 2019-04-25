@@ -492,13 +492,13 @@ void NotebookSyncAgent::sendLocalChanges()
     // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
     QMultiHash<QString, KDateTime> uidToRecurrenceIdDeletions;
     QHash<QString, QString> uidToUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
-    Q_FOREACH (const LocalDeletion &localDeletion, mLocalDeletions) {
-        uidToRecurrenceIdDeletions.insert(localDeletion.deletedIncidence->uid(), localDeletion.deletedIncidence->recurrenceId());
-        uidToUri.insert(localDeletion.deletedIncidence->uid(), localDeletion.hrefUri);
+    Q_FOREACH (KCalCore::Incidence::Ptr localDeletion, mLocalDeletions) {
+        uidToRecurrenceIdDeletions.insert(localDeletion->uid(), localDeletion->recurrenceId());
+        uidToUri.insert(localDeletion->uid(), incidenceHrefUri(localDeletion));
     }
 
     // now send DELETEs as required, and PUTs as required.
-    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.keys()) {
+    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.uniqueKeys()) {
         QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
         if (!recurrenceIds.contains(KDateTime())) {
             KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
@@ -716,7 +716,7 @@ bool NotebookSyncAgent::calculateDelta(
         // out parameters:
         KCalCore::Incidence::List *localAdditions,
         KCalCore::Incidence::List *localModifications,
-        QList<LocalDeletion> *localDeletions,
+        KCalCore::Incidence::List *localDeletions,
         QList<QString> *remoteAdditions,
         QList<QString> *remoteModifications,
         KCalCore::Incidence::List *remoteDeletions)
@@ -789,7 +789,6 @@ bool NotebookSyncAgent::calculateDelta(
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
-    QSet<QString> deletedSeriesUids;
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, deleted) {
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
@@ -800,18 +799,24 @@ bool NotebookSyncAgent::calculateDelta(
                 // subsequently, the user deleted the incidence.
                 // Hence, it exists remotely, and has been deleted locally.
                 LOG_DEBUG("have local deletion for partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                // We treat this as a local deletion.
+                setIncidenceHrefUri(incidence, remoteUri);
+                setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
+                localDeletions->append(incidence);
             } else {
-                // the incidence was previously synced successfully.  it has now been deleted locally.
-                LOG_DEBUG("have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
+                    // the incidence was previously synced successfully.  it has now been deleted locally.
+                    LOG_DEBUG("have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    localDeletions->append(incidence);
+                } else {
+                    // Sub-optimal case for persistent exceptions.
+                    // TODO: improve handling of this case.
+                    LOG_DEBUG("ignoring local deletion due to remote modification:"
+                              << incidence->uid() << incidence->recurrenceId().toString());
+                }
             }
-            LocalDeletion localDeletion(incidence, remoteUriEtags.value(remoteUri), remoteUri);
-            localDeletions->append(localDeletion);
             seenRemoteUris.insert(remoteUri);
-            if (incidence->recurrenceId().isNull()) {
-                // this is a deletion of an entire series.  We use this information later to remove
-                // unnecessary deletions of exception occurrences if the base series is also deleted.
-                deletedSeriesUids.insert(incidence->uid());
-            }
+            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
@@ -915,39 +920,6 @@ bool NotebookSyncAgent::calculateDelta(
         } else {
             // this incidence is unchanged since last sync.
             LOG_DEBUG("unchanged server-side since last sync:" << remoteUri);
-        }
-    }
-
-    // Now remove from the list of deletions, any deletion of a persistent exception occurrence
-    // if the base recurring series was also deleted, since the deletion of the base series
-    // will already ensure deletion of all exception occurrences when pushed to the remote.
-    // Also remove from the list of deletions, any deletion of a persistent exception occurrence
-    // if the base recurring series was modified remotely.  This one is a suboptimal case,
-    // as it will effectively "roll-back" a local deletion of an occurrence, if the remote series
-    // has changed.  But it's better than the alternative: being stuck in a sync failure loop.
-    QList<LocalDeletion>::iterator it = localDeletions->begin();
-    bool deletedIncidenceUriWasEmpty = false;
-    QString deletedIncidenceRemoteUri;
-    while (it != localDeletions->end()) {
-        if (!(*it).deletedIncidence->recurrenceId().isNull()) {
-            if (deletedSeriesUids.contains((*it).deletedIncidence->uid())) {
-                LOG_DEBUG("ignoring deletion of persistent exception already handled by series deletion:"
-                          << (*it).deletedIncidence->uid() << (*it).deletedIncidence->recurrenceId().toString());
-                it = localDeletions->erase(it);
-            } else {
-                deletedIncidenceUriWasEmpty = false;
-                deletedIncidenceRemoteUri = incidenceHrefUri((*it).deletedIncidence, mRemoteCalendarPath, &deletedIncidenceUriWasEmpty);
-                if (!deletedIncidenceUriWasEmpty && remoteModifications->contains(deletedIncidenceRemoteUri)) {
-                    // Sub-optimal case.  TODO: improve handling of this case.
-                    LOG_DEBUG("ignoring deletion of persistent exception due to remote series modification:"
-                              << (*it).deletedIncidence->uid() << (*it).deletedIncidence->recurrenceId().toString());
-                    it = localDeletions->erase(it);
-                } else {
-                    ++it;
-                }
-            }
-        } else {
-            ++it;
         }
     }
 
@@ -1143,7 +1115,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
             LOG_DEBUG("Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString()
                                                              << resourceHref << resourceEtag);
-            mLocalDeletions.append(LocalDeletion(incidence, resourceEtag, resourceHref));
+            mLocalDeletions.append(incidence);
         } else {
             LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString()
                                                  << resourceHref << resourceEtag);
