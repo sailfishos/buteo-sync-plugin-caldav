@@ -232,6 +232,8 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             if (!mStorage->loadNotebookIncidences(notebook->uid()))
                 return false;
             mNotebook = notebook;
+            mNotebook->setColor(color);
+            mNotebook->setName(notebookName);
             return true;
         }
     }
