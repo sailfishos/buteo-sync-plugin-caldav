@@ -66,6 +66,9 @@ public:
     void finalize();
 
     bool isFinished() const;
+    bool isDeleted() const;
+
+    const QString& path() const;
 
 signals:
     void finished(int minorErrorCode, const QString &message);

@@ -708,6 +708,16 @@ bool NotebookSyncAgent::isFinished() const
     return mFinished;
 }
 
+bool NotebookSyncAgent::isDeleted() const
+{
+    return mNotebookNeedsDeletion;
+}
+
+const QString& NotebookSyncAgent::path() const
+{
+    return mRemoteCalendarPath;
+}
+
 // ------------------------------ Utility / implementation functions.
 
 // called in the QuickSync codepath after fetching etags for remote resources.

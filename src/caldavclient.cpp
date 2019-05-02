@@ -381,6 +381,44 @@ void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars
     }
 }
 
+void CalDavClient::removeCalendars(const QStringList &paths)
+{
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    if (!account) {
+        return;
+    }
+
+    QStringList calendarPaths = account->value("calendars").toStringList();
+    QStringList enabledCalendars = account->value("enabled_calendars").toStringList();
+    QStringList displayNames = account->value("calendar_display_names").toStringList();
+    QStringList colors = account->value("calendar_colors").toStringList();
+    account->selectService(Accounts::Service());
+
+    bool modified = false;
+    for (QStringList::ConstIterator it = paths.constBegin();
+         it != paths.constEnd(); ++it) {
+        int at = calendarPaths.indexOf(*it);
+        if (at >= 0) {
+            LOG_DEBUG("Found a deleted upstream calendar:" << *it << displayNames[at]);
+            calendarPaths.removeAt(at);
+            enabledCalendars.removeAll(*it);
+            displayNames.removeAt(at);
+            colors.removeAt(at);
+            modified = true;
+        }
+    }
+    if (modified) {
+        account->selectService(srv);
+        account->setValue("calendars", calendarPaths);
+        account->setValue("enabled_calendars", enabledCalendars);
+        account->setValue("calendar_display_names", displayNames);
+        account->setValue("calendar_colors", colors);
+        account->selectService(Accounts::Service());
+        account->syncAndBlock();
+    }
+}
+
 bool CalDavClient::initConfig()
 {
     FUNCTION_CALL_TRACE;
@@ -627,15 +665,20 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         }
     }
     if (finished && !mSyncAborted) {
+        QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
                 syncFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("unable to write notebook changes"));
                 return;
             }
+            if (mNotebookSyncAgents[i]->isDeleted()) {
+                deletedNotebooks += mNotebookSyncAgents[i]->path();
+            }
             mNotebookSyncAgents[i]->finalize();
         }
         if (mStorage->save()) {
+            removeCalendars(deletedNotebooks);
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
             syncFinished(errorCode, errorString); // NO_ERROR, QString()
         } else {
