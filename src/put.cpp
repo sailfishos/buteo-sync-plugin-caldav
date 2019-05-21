@@ -32,9 +32,6 @@
 #include <QStringList>
 #include <QUrl>
 
-#include <incidence.h>
-#include <icalformat.h>
-
 #include <LogMacros.h>
 
 #define PROP_INCIDENCE_URI "uri"

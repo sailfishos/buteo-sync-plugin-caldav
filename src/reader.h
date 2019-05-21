@@ -26,7 +26,7 @@
 
 #include <QObject>
 
-#include <incidence.h>
+#include <KCalendarCore/Incidence>
 
 class QXmlStreamReader;
 
@@ -39,7 +39,7 @@ public:
         QString etag;
         QString status;
         QString iCalData;
-        KCalCore::Incidence::List incidences;
+        KCalendarCore::Incidence::List incidences;
     };
 
     explicit Reader(QObject *parent = 0);

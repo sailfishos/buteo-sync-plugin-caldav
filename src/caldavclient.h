@@ -34,7 +34,6 @@
 #include <QSet>
 #include <QScopedPointer>
 
-#include <incidence.h>
 #include <extendedstorage.h>
 
 #include <ClientPlugin.h>
