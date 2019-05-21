@@ -23,23 +23,23 @@
 #ifndef INCIDENCEHANDLER_P_H
 #define INCIDENCEHANDLER_P_H
 
-#include <incidence.h>
-#include <event.h>
-#include <todo.h>
-#include <journal.h>
-#include <attendee.h>
+#include <KCalendarCore/Incidence>
+#include <KCalendarCore/Event>
+#include <KCalendarCore/Todo>
+#include <KCalendarCore/Journal>
+#include <KCalendarCore/Attendee>
 
 class IncidenceHandler
 {
 public:
-    static QString toIcs(const KCalCore::Incidence::Ptr incidence,
-                         const KCalCore::Incidence::List instances = KCalCore::Incidence::List());
+    static QString toIcs(const KCalendarCore::Incidence::Ptr incidence,
+                         const KCalendarCore::Incidence::List instances = KCalendarCore::Incidence::List());
 
 private:
     IncidenceHandler();
     ~IncidenceHandler();
 
-    static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
+    static KCalendarCore::Incidence::Ptr incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence, const KCalendarCore::Incidence::List &instances = KCalendarCore::Incidence::List());
 
     friend class tst_NotebookSyncAgent;
     friend class tst_IncidenceHandler;

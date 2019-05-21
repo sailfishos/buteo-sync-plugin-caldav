@@ -148,7 +148,7 @@ bool CalDavClient::cleanUp()
     }
 
     mAccountId = accountId;
-    mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(KDateTime::Spec::UTC()));
+    mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
     if (!storage->open()) {
         calendar->close();
@@ -661,7 +661,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
                      QLatin1String("No calendars for this account"));
         return;
     }
-    mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(KDateTime::Spec::UTC()));
+    mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
     if (!mStorage || !mStorage->open()) {
         syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
