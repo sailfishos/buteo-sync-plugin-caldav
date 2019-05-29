@@ -516,6 +516,17 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
     NotebookSyncAgent *agent = qobject_cast<NotebookSyncAgent*>(sender());
     agent->disconnect(this);
 
+    // At that point, the finishing agent has sent all possible local additions /
+    // modifications to upstream and upstream has returned according etags.
+    // Even in case of error, some PUT may have succeeded and etags should
+    // be saved accordingly.
+    if (!mStorage->save()) {
+        LOG_WARNING("Unable to save calendar storage after etag changes!");
+        syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                     QStringLiteral("unable to save upstream etags"));
+        return;
+    }
+
     if (errorCode != Buteo::SyncResults::NO_ERROR) {
         LOG_WARNING("Aborting! Notebook synchronisation failed:" << errorCode << ":" << errorString);
         syncFinished(errorCode, errorString);
@@ -535,11 +546,9 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
                 syncFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("unable to write notebook changes"));
                 return;
             }
+            mNotebookSyncAgents[i]->finalize();
         }
         if (mStorage->save()) {
-            for (int i=0; i<mNotebookSyncAgents.count(); i++) {
-                mNotebookSyncAgents[i]->finalize();
-            }
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
             syncFinished(errorCode, errorString); // NO_ERROR, QString()
         } else {

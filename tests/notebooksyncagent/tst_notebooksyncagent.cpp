@@ -333,11 +333,9 @@ void tst_NotebookSyncAgent::removePossibleLocal()
 
     QList<KDateTime> recurrenceIds;
     recurrenceIds << KDateTime::fromString(remoteIncidence["recurrenceId"]);
-    QMultiHash<QString, KDateTime> addedPersistentExceptionOccurrences;
 
     m_agent->removePossibleLocalModificationIfIdentical
-        (resource.href, recurrenceIds, resource,
-         addedPersistentExceptionOccurrences, &localModifications);
+        (recurrenceIds, resource, &localModifications);
 
     /* Check if remote is still or not in localModifications. */
     bool found = false;
@@ -359,6 +357,7 @@ void tst_NotebookSyncAgent::updateEvent()
     incidence->setUid("123456-moz");
     incidence->setNonKDECustomProperty("X-MOZ-LASTACK", "20171013T174424Z");
     incidence->setCreated(KDateTime(QDate(2019, 03, 28)));
+    incidence->setAllDay(false);
 
     QVERIFY(m_agent->mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(),
                                          m_agent->mNotebook->uid()));
@@ -376,6 +375,7 @@ void tst_NotebookSyncAgent::updateEvent()
     KCalCore::Incidence::Ptr update = KCalCore::Incidence::Ptr(new KCalCore::Event);
     update->setUid("123456-moz");
     update->setNonKDECustomProperty("X-MOZ-LASTACK", "20171016T174424Z");
+    update->setAllDay(false);
     bool success = true;
     m_agent->updateIncidence(update, "/testPath/123456.ics", "\"123456\"", false, &success);
     QVERIFY(success);
@@ -383,7 +383,7 @@ void tst_NotebookSyncAgent::updateEvent()
     // Check that custom property is updated as well.
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-moz"));
     QVERIFY(incidence);
-    QCOMPARE(incidence->customProperties().count(), 2);
+    QCOMPARE(incidence->customProperties().count(), 1);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
              QStringLiteral("20171016T174424Z"));
 }
@@ -409,68 +409,61 @@ void tst_NotebookSyncAgent::updateHrefETag()
                                  m_agent->mNotebook->uid());
     m_agent->mStorage->save();
 
-    KCalCore::Incidence::List incidences;
-    m_agent->mStorage->allIncidences(&incidences, m_agent->mNotebook->uid());
-
-    KCalCore::Incidence::List toBeUpdated;
-    Q_FOREACH (KCalCore::Incidence::Ptr inc, incidences) {
-        if (inc->uid().compare(QStringLiteral("123456-single")) == 0)
-            toBeUpdated << inc;
-    }
-    QCOMPARE(toBeUpdated.count(), 1);
-
     // Simple case.
-    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-single.ics")] =
-        QStringLiteral("\"123456\"");
-
-    m_agent->updateListHrefETag(toBeUpdated);
+    m_agent->updateHrefETag(QStringLiteral("123456-single"),
+                            QStringLiteral("/testCal/123456-single.ics"),
+                            QStringLiteral("\"123456\""));
 
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-single"));
     QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-single.ics"));
     QCOMPARE(fetchETag(incidence), QStringLiteral("\"123456\""));
 
     // Update simple case.
-    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-single.ics")] =
-        QStringLiteral("\"456789\"");
-
-    m_agent->updateListHrefETag(toBeUpdated);
+    m_agent->updateHrefETag(QStringLiteral("123456-single"),
+                            QStringLiteral("/testCal/123456-single.ics"),
+                            QStringLiteral("\"456789\""));
 
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-single"));
     QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-single.ics"));
     QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
 
-    toBeUpdated.clear();
-    Q_FOREACH (KCalCore::Incidence::Ptr inc, incidences) {
-        if (inc->uid().compare(QStringLiteral("123456-recurs")) == 0)
-            toBeUpdated << inc;
+    // Recuring case.
+    m_agent->updateHrefETag(QStringLiteral("123456-recurs"),
+                            QStringLiteral("/testCal/123456-recurs.ics"),
+                            QStringLiteral("\"123456\""));
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
+    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
+    QCOMPARE(fetchETag(incidence), QStringLiteral("\"123456\""));
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
+    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
+    QCOMPARE(fetchETag(incidence), QStringLiteral("\"123456\""));
+
+    // Update recuring case.
+    m_agent->updateHrefETag(QStringLiteral("123456-recurs"),
+                            QStringLiteral("/testCal/123456-recurs.ics"),
+                            QStringLiteral("\"456789\""));
+
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
+    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
+    QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
+    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
+    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
+    QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
+}
+
+static bool incidenceListContains(const KCalCore::Incidence::List &list,
+                                  const KCalCore::Incidence::Ptr &ev)
+{
+    for (KCalCore::Incidence::List::ConstIterator it = list.constBegin();
+         it != list.constEnd(); it++) {
+        if ((*it)->uid() == ev->uid()
+            && (!ev->hasRecurrenceId()
+                || (*it)->recurrenceId() == ev->recurrenceId())) {
+            return true;
+        }
     }
-    QCOMPARE(toBeUpdated.count(), 2);
-
-    // Base incidence alone.
-    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-recurs.ics")] =
-        QStringLiteral("\"123456\"");
-
-    m_agent->updateListHrefETag(toBeUpdated);
-
-    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
-    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
-    QCOMPARE(fetchETag(incidence), QStringLiteral("\"123456\""));
-    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
-    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
-    QCOMPARE(fetchETag(incidence), QStringLiteral("\"123456\""));
-
-    // Exception incidence alone.
-    m_agent->mUpdatedETags[QStringLiteral("/testCal/123456-recurs.ics")] =
-        QStringLiteral("\"456789\"");
-
-    m_agent->updateListHrefETag(toBeUpdated);
-
-    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"));
-    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
-    QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
-    incidence = m_agent->mCalendar->event(QStringLiteral("123456-recurs"), refId);
-    QCOMPARE(fetchUri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
-    QCOMPARE(fetchETag(incidence), QStringLiteral("\"456789\""));
+    return false;
 }
 
 void tst_NotebookSyncAgent::calculateDelta()
@@ -586,17 +579,17 @@ void tst_NotebookSyncAgent::calculateDelta()
                                     &m_agent->mRemoteAdditions,
                                     &m_agent->mRemoteModifications,
                                     &m_agent->mRemoteDeletions));
-    QCOMPARE(m_agent->mLocalAdditions.count(), 1);
-    QCOMPARE(m_agent->mLocalAdditions.first()->uid(), ev111->uid());
+    QCOMPARE(m_agent->mLocalAdditions.count(), 2);
+    QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev111));
+    QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev999));
     QCOMPARE(m_agent->mLocalModifications.count(), 3);
-    QCOMPARE(m_agent->mLocalModifications.at(0)->uid(), ev222->uid());
-    QCOMPARE(m_agent->mLocalModifications.at(1)->uid(), ev113->uid());
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev222));
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev113));
+    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev888));
     // ev444 have been locally modified, but is not in mLocalModifications
     // because of precedence of remote modifications by default.
-    QCOMPARE(m_agent->mLocalModifications.at(2)->uid(), ev999->uid());
-    QCOMPARE(m_agent->mLocalModifications.at(2)->recurrenceId(), ev999->recurrenceId());
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
-    QCOMPARE(m_agent->mLocalDeletions.first().deletedIncidence->uid(), ev333->uid());
+    QCOMPARE(m_agent->mLocalDeletions.first()->uid(), ev333->uid());
     QCOMPARE(m_agent->mRemoteAdditions.count(), 1);
     QCOMPARE(m_agent->mRemoteAdditions.first(), QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath));
     QCOMPARE(m_agent->mRemoteModifications.count(), 3);
@@ -793,9 +786,8 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     QCOMPARE(m_agent->mRemoteDeletions.count(), 0);
 
     // Simulate reception of etags for each event.
-    m_agent->mUpdatedETags.insert(uri, etag);
-    remoteUriEtags = m_agent->mUpdatedETags;
-    QVERIFY(m_agent->updateListHrefETag(events));
+    remoteUriEtags.insert(uri, etag);
+    m_agent->updateHrefETag(nbuid, uri, etag);
     m_agent->mStorage->save();
     m_agent->mNotebook->setSyncDate(KDateTime::currentUtcDateTime());
 

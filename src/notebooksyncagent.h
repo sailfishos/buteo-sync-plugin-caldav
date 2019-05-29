@@ -80,37 +80,26 @@ private:
     void clearRequests();
     void emitFinished(int minorErrorCode, const QString &message);
 
-    void fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime);
+    void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
     bool updateIncidence(KCalCore::Incidence::Ptr incidence, const QString &resourceHref,
                          const QString &resourceEtag, bool isKnownOrphan, bool *criticalError);
     bool deleteIncidences(KCalCore::Incidence::List deletedIncidences);
-    bool updateListHrefETag(KCalCore::Incidence::List incidences);
+    void updateHrefETag(const QString &uid, const QString &href, const QString &etag) const;
 
     void sendLocalChanges();
     QString constructLocalChangeIcs(KCalCore::Incidence::Ptr updatedIncidence);
     void finalizeSendingLocalChanges();
 
-    // we cannot access custom properties of deleted incidences from mkcal
-    // so instead, we need to determine the remote etag and uri via remote etags request and cache it here.
-    struct LocalDeletion {
-        LocalDeletion(KCalCore::Incidence::Ptr deleted, const QString &etag, const QString &uri)
-            : deletedIncidence(deleted), remoteEtag(etag), hrefUri(uri) {}
-        KCalCore::Incidence::Ptr deletedIncidence;
-        QString remoteEtag;
-        QString hrefUri;
-    };
     bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
                         KCalCore::Incidence::List *localAdditions,
                         KCalCore::Incidence::List *localModifications,
-                        QList<LocalDeletion> *localDeletions,
+                        KCalCore::Incidence::List *localDeletions,
                         QList<QString> *remoteAdditions,
                         QList<QString> *remoteModifications,
                         KCalCore::Incidence::List *remoteDeletions);
-    void removePossibleLocalModificationIfIdentical(const QString &remoteUri,
-                                                    const QList<KDateTime> &recurrenceIds,
+    void removePossibleLocalModificationIfIdentical(const QList<KDateTime> &recurrenceIds,
                                                     const Reader::CalendarResource &remoteResource,
-                                                    const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
                                                     KCalCore::Incidence::List *localModifications);
 
     QNetworkAccessManager* mNetworkManager;
@@ -129,16 +118,16 @@ private:
     bool mFinished;
 
     // these are used only in quick-sync mode.
-    QHash<QString,QString> mUpdatedETags; // etags are for resources, not incidences, hence the key is URI
     // delta detection and change data
-    QMultiHash<QString, KDateTime> mAddedPersistentExceptionOccurrences;   // remoteUri to recurrenceIds.
     QMultiHash<QString, KDateTime> mPossibleLocalModificationIncidenceIds; // remoteUri to recurrenceIds.
     KCalCore::Incidence::List mLocalAdditions;
     KCalCore::Incidence::List mLocalModifications;
-    QList<LocalDeletion> mLocalDeletions;
+    KCalCore::Incidence::List mLocalDeletions;
     QList<QString> mRemoteAdditions;
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
+    QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
+                                       // local additions, modifications.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;

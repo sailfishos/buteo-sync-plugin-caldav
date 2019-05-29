@@ -94,15 +94,6 @@ namespace {
             incidence->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(hrefUri));
         }
     }
-    int findIncidenceMatchingHrefUri(KCalCore::Incidence::List incidences, const QString &hrefUri)
-    {
-        for (int i = 0; i < incidences.size(); ++i) {
-            if (incidenceHrefUri(incidences[i]) == hrefUri) {
-                return i;
-            }
-        }
-        return -1;
-    }
     QString incidenceETag(KCalCore::Incidence::Ptr incidence)
     {
         const QStringList &comments(incidence->comments());
@@ -176,25 +167,6 @@ namespace {
         // exception, see the calculateDelta() function).
         occurrence->addComment("buteo:caldav:detached-and-synced");
         return occurrence;
-    }
-
-    void uniteIncidenceLists(const KCalCore::Incidence::List &first, KCalCore::Incidence::List *second)
-    {
-        int originalSecondSize = second->size();
-        bool foundMatch = false;
-        Q_FOREACH (KCalCore::Incidence::Ptr inc, first) {
-            foundMatch = false;
-            for (int i = 0; i < originalSecondSize; ++i) {
-                if (inc->uid() == second->at(i)->uid() && inc->recurrenceId() == second->at(i)->recurrenceId()) {
-                    // found a match
-                    foundMatch = true;
-                    break;
-                }
-            }
-            if (!foundMatch) {
-                second->append(inc);
-            }
-        }
     }
 }
 
@@ -287,6 +259,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     // that may be inserted server side between now and the termination
     // of the process.
     mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
+    mFromDateTime = fromDateTime;
+    mToDateTime = toDateTime;
     if (mNotebook->syncDate().isNull()) {
 /*
     Slow sync mode:
@@ -300,8 +274,6 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
                   << "between" << fromDateTime << "to" << toDateTime);
 
         mSyncMode = SlowSync;
-        mFromDateTime = fromDateTime;
-        mToDateTime = toDateTime;
 
         sendReportRequest();
     } else {
@@ -321,10 +293,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
                   << "between" << fromDateTime << "to" << toDateTime
                   << ", sync changes since" << mNotebook->syncDate().dateTime());
         mSyncMode = QuickSync;
-        mFromDateTime = fromDateTime;
-        mToDateTime = toDateTime;
 
-        fetchRemoteChanges(mFromDateTime, mToDateTime);
+        fetchRemoteChanges();
     }
 }
 
@@ -337,7 +307,7 @@ void NotebookSyncAgent::sendReportRequest()
     report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
-void NotebookSyncAgent::fetchRemoteChanges(const QDateTime &fromDateTime, const QDateTime &toDateTime)
+void NotebookSyncAgent::fetchRemoteChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -345,7 +315,7 @@ void NotebookSyncAgent::fetchRemoteChanges(const QDateTime &fromDateTime, const 
     Report *report = new Report(mNetworkManager, mSettings);
     mRequests.insert(report);
     connect(report, SIGNAL(finished()), this, SLOT(processETags()));
-    report->getAllETags(mRemoteCalendarPath, fromDateTime, toDateTime);
+    report->getAllETags(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
 void NotebookSyncAgent::reportRequestFinished()
@@ -373,10 +343,8 @@ void NotebookSyncAgent::reportRequestFinished()
                 if (mPossibleLocalModificationIncidenceIds.contains(resource.href)) {
                     // this resource was fetched so that we could perform a field-by-field delta detection
                     // just in case the only change was the ETAG/URI value (due to previous sync).
-                    removePossibleLocalModificationIfIdentical(resource.href,
-                                                               mPossibleLocalModificationIncidenceIds.values(resource.href),
+                    removePossibleLocalModificationIfIdentical(mPossibleLocalModificationIncidenceIds.values(resource.href),
                                                                resource,
-                                                               mAddedPersistentExceptionOccurrences,
                                                                &mLocalModifications);
                 } else {
                     // these were resources fetched from m_remoteAdditions or m_remoteModifications
@@ -467,22 +435,8 @@ void NotebookSyncAgent::processETags()
         // during the next sync cycle (even though the only changes may have been
         // that ETAG+URI change).  Hence, we need to fetch all of those again, and
         // then manually check equivalence (ignoring etag+uri value) with remote copy.
-        QStringList fetchPossiblyLocallyModifiedIncidenceHrefUris;
-        Q_FOREACH (KCalCore::Incidence::Ptr possiblyModified, mLocalModifications) {
-            QString pmiHrefUri = incidenceHrefUri(possiblyModified);
-            if (pmiHrefUri.isEmpty()) {
-                // this was a modification reported to a previously partially-synced event.
-                // we always treat this as a "definite" local modification.
-            } else if (!fetchPossiblyLocallyModifiedIncidenceHrefUris.contains(pmiHrefUri)) {
-                // this was a modification reported to a successfully synced event.
-                // we always treat this as a "possible" local modification.
-                // hence, we reload from remote and perform field-by-field comparison.
-                fetchPossiblyLocallyModifiedIncidenceHrefUris.append(pmiHrefUri);
-            }
-        }
-
-        // fetch updated and new items full data if required.
-        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + fetchPossiblyLocallyModifiedIncidenceHrefUris;
+        // Also fetch updated and new items full data if required.
+        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + mPossibleLocalModificationIncidenceIds.uniqueKeys();
         if (!fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
             Report *report = new Report(mNetworkManager, mSettings);
@@ -499,7 +453,7 @@ void NotebookSyncAgent::processETags()
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
         LOG_WARNING("Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
         mRetriedReport = true;
-        fetchRemoteChanges(mFromDateTime, mToDateTime);
+        fetchRemoteChanges();
         return;
     } else if (report->networkError() == QNetworkReply::ContentNotFoundError) {
         // The remote calendar resource was removed.
@@ -532,118 +486,25 @@ void NotebookSyncAgent::sendLocalChanges()
     }
 
     bool localChangeRequestStarted = false;
-    QSet<QString> addModUids;
-    for (int i = 0; i < mLocalAdditions.count(); i++) {
-        if (addModUids.contains(mLocalAdditions[i]->uid())) {
-            LOG_DEBUG("Already handled local addition" << i << "via series update");
-            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        }
-        QString icsData = constructLocalChangeIcs(mLocalAdditions[i]);
-        if (icsData.isEmpty()) {
-            LOG_DEBUG("Skipping upload of broken local addition:" << i << ":" << mLocalAdditions[i]->uid());
-        } else {
-            LOG_DEBUG("Uploading local addition" << i << "via series PUT for uid:" << mLocalAdditions[i]->uid());
-            localChangeRequestStarted = true;
-            addModUids.insert(mLocalAdditions[i]->uid());
-            Put *put = new Put(mNetworkManager, mSettings);
-            mRequests.insert(put);
-            connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-            put->createEvent(mRemoteCalendarPath,
-                             icsData,
-                             mLocalAdditions[i]->uid());
-            LOG_DEBUG("Triggered upload of local addition" << i);
-        }
-    }
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        if (addModUids.contains(mLocalModifications[i]->uid())) {
-            LOG_DEBUG("Already handled local modification" << i << "via series update");
-            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        } else if (incidenceHrefUri(mLocalModifications[i]).isEmpty()) {
-            LOG_WARNING("error: local modification without valid url:" << mLocalModifications[i]->uid() << "->" << incidenceHrefUri(mLocalModifications[i]));
-            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         "Unable to determine remote uri for modified incidence:" + mLocalModifications[i]->uid());
-            return;
-        }
-        // first, handle updates of exceptions by uploading the entire modified series.
-        if (mLocalModifications[i]->hasRecurrenceId()) {
-            QString icsData = constructLocalChangeIcs(mLocalModifications[i]);
-            if (icsData.isEmpty()) {
-                LOG_DEBUG("Skipping upload of broken local exception modification:" << i << ":" << mLocalModifications[i]->uid());
-            } else {
-                LOG_DEBUG("Uploading exception modification via series update for local modification:" << i << ":" << mLocalModifications[i]->uid());
-                localChangeRequestStarted = true;
-                addModUids.insert(mLocalModifications[i]->uid());
-                Put *put = new Put(mNetworkManager, mSettings);
-                mRequests.insert(put);
-                connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                put->updateEvent(mRemoteCalendarPath,
-                                 icsData,
-                                 incidenceETag(mLocalModifications[i]),
-                                 incidenceHrefUri(mLocalModifications[i]),
-                                 mLocalModifications[i]->uid());
-            }
-        }
-    }
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        if (addModUids.contains(mLocalModifications[i]->uid())) {
-            LOG_DEBUG("Already handled local modification" << i << "via series update");
-            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
-        }
-        // now handle updates of base incidences (which haven't otherwise already been upsynced), via direct update.
-        // TODO: is this correct?  Or should we always generate the entire series as a resource we upload?
-        // E.g. in the case where there is a pre-existing persistent exception, and the base-event gets modified,
-        // does this PUT of the modified base-event cause (unwanted) changes/deletion of the persistent exception?
-        LOG_DEBUG("Uploading base event modification for local modification:" << i);
-        localChangeRequestStarted = true;
-        KCalCore::ICalFormat icalFormat;
-        Put *put = new Put(mNetworkManager, mSettings);
-        mRequests.insert(put);
-        connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-        put->updateEvent(mRemoteCalendarPath,
-                         icalFormat.toICalString(IncidenceHandler::incidenceToExport(mLocalModifications[i])),
-                         incidenceETag(mLocalModifications[i]),
-                         incidenceHrefUri(mLocalModifications[i]),
-                         mLocalModifications[i]->uid());
-    }
-
     // For deletions, if a persistent exception is deleted we may need to do a PUT
     // containing all of the still-existing events in the series.
     // (Alternative is to push a STATUS:CANCELLED event?)
     // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
     QMultiHash<QString, KDateTime> uidToRecurrenceIdDeletions;
-    QHash<QString, QPair<QString, QString> > uidToEtagAndUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
-    Q_FOREACH (const LocalDeletion &localDeletion, mLocalDeletions) {
-        uidToRecurrenceIdDeletions.insert(localDeletion.deletedIncidence->uid(), localDeletion.deletedIncidence->recurrenceId());
-        uidToEtagAndUri.insert(localDeletion.deletedIncidence->uid(), qMakePair(localDeletion.remoteEtag, localDeletion.hrefUri));
+    QHash<QString, QString> uidToUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
+    Q_FOREACH (KCalCore::Incidence::Ptr localDeletion, mLocalDeletions) {
+        uidToRecurrenceIdDeletions.insert(localDeletion->uid(), localDeletion->recurrenceId());
+        uidToUri.insert(localDeletion->uid(), incidenceHrefUri(localDeletion));
     }
 
     // now send DELETEs as required, and PUTs as required.
-    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.keys()) {
+    Q_FOREACH (const QString &uid, uidToRecurrenceIdDeletions.uniqueKeys()) {
         QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
         if (!recurrenceIds.contains(KDateTime())) {
-            // one or more persistent exceptions are being deleted; must PUT.
-            if (addModUids.contains(uid)) {
-                LOG_DEBUG("Already handled this exception deletion in another exception update");
-                continue;
-            }
-            KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid, KDateTime());
+            KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
             if (!recurringSeries.isNull()) {
-                QString icsData = constructLocalChangeIcs(recurringSeries);
-                if (icsData.isEmpty()) {
-                    LOG_DEBUG("Skipping upload of broken local exception deletion:" << uid << "to calendar:" << mRemoteCalendarPath);
-                } else {
-                    LOG_DEBUG("Uploading local deletion of exception via PUT to series event with uid:" << uid << "to calendar:" << mRemoteCalendarPath);
-                    localChangeRequestStarted = true;
-                    Put *put = new Put(mNetworkManager, mSettings);
-                    mRequests.insert(put);
-                    connect(put, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
-                    put->updateEvent(mRemoteCalendarPath,
-                                     icsData,
-                                     uidToEtagAndUri.value(uid).first,
-                                     uidToEtagAndUri.value(uid).second,
-                                     uid);
-                    continue; // finished with this deletion.
-                }
+                mLocalModifications.append(recurringSeries);
+                continue; // finished with this deletion.
             } else {
                 LOG_WARNING("Unable to load recurring incidence for deleted exception; deleting entire series instead");
                 // fall through to the DELETE code below.
@@ -652,12 +513,40 @@ void NotebookSyncAgent::sendLocalChanges()
 
         // the whole series is being deleted; can DELETE.
         localChangeRequestStarted = true;
-        QString remoteUri = uidToEtagAndUri.value(uid).second;
+        QString remoteUri = uidToUri.value(uid);
         LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
         Delete *del = new Delete(mNetworkManager, mSettings);
         mRequests.insert(del);
-        connect(del, SIGNAL(finished()), this, SLOT(nonReportRequestFinished()));
+        connect(del, &Delete::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
         del->deleteEvent(remoteUri);
+    }
+
+    mSentUids.clear();
+    KCalCore::Incidence::List toUpload(mLocalAdditions + mLocalModifications);
+    for (int i = 0; i < toUpload.count(); i++) {
+        bool create = false;
+        QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
+        if (href.isEmpty()) {
+            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         "Unable to determine remote uri for incidence:" + toUpload[i]->uid());
+            return;
+        }
+        if (mSentUids.contains(href)) {
+            LOG_DEBUG("Already handled upload" << i << "via series update");
+            continue; // already handled this one, as a result of a previous update of another occurrence in the series.
+        }
+        QString icsData = constructLocalChangeIcs(toUpload[i]);
+        if (icsData.isEmpty()) {
+            LOG_DEBUG("Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid());
+        } else {
+            LOG_DEBUG("Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid());
+            localChangeRequestStarted = true;
+            Put *put = new Put(mNetworkManager, mSettings);
+            mRequests.insert(put);
+            connect(put, &Put::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
+            put->sendIcalData(href, icsData, incidenceETag(toUpload[i]));
+            mSentUids.insert(href, toUpload[i]->uid());
+        }
     }
 
     if (!localChangeRequestStarted) {
@@ -684,9 +573,14 @@ void NotebookSyncAgent::nonReportRequestFinished()
     } else {
         Put *putRequest = qobject_cast<Put*>(request);
         if (putRequest) {
-            QHash<QString, QString> updatedETags = putRequest->updatedETags();
-            Q_FOREACH (const QString &uri, updatedETags.keys()) {
-                mUpdatedETags[uri] = updatedETags[uri];
+            // Apply Etag and Href changes immediately since incidences are now
+            // for sure on server.
+            for (QHash<QString, QString>::ConstIterator
+                     it = putRequest->updatedETags().constBegin();
+                 it != putRequest->updatedETags().constEnd(); ++it) {
+                if (mSentUids.contains(it.key())) {
+                    updateHrefETag(mSentUids.take(it.key()), it.key(), it.value());
+                }
             }
         }
         if (mRequests.isEmpty()) {
@@ -700,40 +594,14 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    // After upsyncing changes (additions + modifications) we need to update local incidences.
-    // For modifications, we need to get the new (server-side) etag values, and store them into those incidences.
-    // For additions, we need to do that, and ALSO update the local URI value (to remote resource path).
-    // We then set the modification date back to what is was before, so that the ETAG/URI update
-    // doesn't get reported as an event modification during our next sync cycle.
-
-    QStringList hrefsToReload;
-    for (int i = 0; i < mLocalAdditions.count(); i++) {
-        KCalCore::Incidence::Ptr &incidence = mLocalAdditions[i];
-        QString href = mRemoteCalendarPath + incidence->uid() + ".ics"; // that's where we PUT the addition.
-        if (!mUpdatedETags.contains(href)) {
-            LOG_DEBUG("Did not receive ETag for incidence " << incidence->uid() << "- will reload from server");
-            if (!hrefsToReload.contains(href)) {
-                hrefsToReload.append(href);
-            }
-        }
-    }
-
-    for (int i = 0; i < mLocalModifications.count(); i++) {
-        KCalCore::Incidence::Ptr &incidence = mLocalModifications[i];
-        QString href = incidenceHrefUri(incidence);
-        if (!mUpdatedETags.contains(href)) {
-            LOG_DEBUG("Did not receive ETag for incidence " << incidence->uid() << "- will reload from server");
-            if (!hrefsToReload.contains(href)) {
-                hrefsToReload.append(href);
-            }
-        }
-    }
-
-    if (!hrefsToReload.isEmpty()) {
+    // All PUT requests have been finished, and mSentUids have been cleared from
+    // uids that have already been updated with new etag value. Just remains
+    // the ones that requires additional retrieval to get etag values.
+    if (!mSentUids.isEmpty()) {
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);
         connect(report, SIGNAL(finished()), this, SLOT(additionalReportRequestFinished()));
-        report->multiGetEvents(mRemoteCalendarPath, hrefsToReload);
+        report->multiGetEtags(mRemoteCalendarPath, mSentUids.keys());
         return;
     } else {
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
@@ -754,11 +622,17 @@ void NotebookSyncAgent::additionalReportRequestFinished()
     report->deleteLater();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        mReceivedCalendarResources.append(report->receivedCalendarResources());
         LOG_DEBUG("Additional report request finished: received:"
                   << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
                   << report->receivedCalendarResources().count() << "incidences");
-        LOG_DEBUG("Have received" << mReceivedCalendarResources.count() << "incidences in total!");
+        for (QList<Reader::CalendarResource>::ConstIterator
+                 it = report->receivedCalendarResources().constBegin();
+             it != report->receivedCalendarResources().constEnd(); ++it) {
+            if (mSentUids.contains(it->href)) {
+                updateHrefETag(mSentUids.take(it->href), it->href, it->etag);
+            }
+        }
+        LOG_DEBUG("Remains" << mSentUids.count() << "uris not updated.");
         emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
         return;
     }
@@ -796,12 +670,6 @@ bool NotebookSyncAgent::applyRemoteChanges()
         return true;
     }
 
-    if (!updateListHrefETag(mLocalAdditions)) {
-        return false;
-    }
-    if (!updateListHrefETag(mLocalModifications)) {
-        return false;
-    }
     if (!updateIncidences(mReceivedCalendarResources)) {
         return false;
     }
@@ -848,7 +716,7 @@ bool NotebookSyncAgent::calculateDelta(
         // out parameters:
         KCalCore::Incidence::List *localAdditions,
         KCalCore::Incidence::List *localModifications,
-        QList<LocalDeletion> *localDeletions,
+        KCalCore::Incidence::List *localDeletions,
         QList<QString> *remoteAdditions,
         QList<QString> *remoteModifications,
         KCalCore::Incidence::List *remoteDeletions)
@@ -870,7 +738,6 @@ bool NotebookSyncAgent::calculateDelta(
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions and remote deletions.
-    KCalCore::Incidence::List addedPersistentExceptionOccurrences;
     QSet<QString> seenRemoteUris;
     QHash<QString, QString> previouslySyncedEtags; // remote uri to the etag we saw last time.
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, localIncidences) {
@@ -900,16 +767,19 @@ bool NotebookSyncAgent::calculateDelta(
                 LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 remoteDeletions->append(incidence);
             } else if (isCopiedDetachedIncidence(incidence)) {
-                LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
-                addedPersistentExceptionOccurrences.append(incidence);
-                mAddedPersistentExceptionOccurrences.insert(remoteUri, incidence->recurrenceId());
+                if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
+                    LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                    localAdditions->append(incidence);
+                } else {
+                    LOG_DEBUG("ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                }
             } else {
                 // this is a possibly modified or possibly unchanged, previously synced incidence.
                 // we later check to see if it was modified server-side by checking the etag value.
                 LOG_DEBUG("have possibly modified or possibly unchanged previously synced local incidence:" << remoteUri);
-                seenRemoteUris.insert(remoteUri);
-                previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
             }
+            seenRemoteUris.insert(remoteUri);
+            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
@@ -919,7 +789,6 @@ bool NotebookSyncAgent::calculateDelta(
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
-    QSet<QString> deletedSeriesUids;
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, deleted) {
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
@@ -930,18 +799,24 @@ bool NotebookSyncAgent::calculateDelta(
                 // subsequently, the user deleted the incidence.
                 // Hence, it exists remotely, and has been deleted locally.
                 LOG_DEBUG("have local deletion for partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                // We treat this as a local deletion.
+                setIncidenceHrefUri(incidence, remoteUri);
+                setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
+                localDeletions->append(incidence);
             } else {
-                // the incidence was previously synced successfully.  it has now been deleted locally.
-                LOG_DEBUG("have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
+                    // the incidence was previously synced successfully.  it has now been deleted locally.
+                    LOG_DEBUG("have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    localDeletions->append(incidence);
+                } else {
+                    // Sub-optimal case for persistent exceptions.
+                    // TODO: improve handling of this case.
+                    LOG_DEBUG("ignoring local deletion due to remote modification:"
+                              << incidence->uid() << incidence->recurrenceId().toString());
+                }
             }
-            LocalDeletion localDeletion(incidence, remoteUriEtags.value(remoteUri), remoteUri);
-            localDeletions->append(localDeletion);
             seenRemoteUris.insert(remoteUri);
-            if (incidence->recurrenceId().isNull()) {
-                // this is a deletion of an entire series.  We use this information later to remove
-                // unnecessary deletions of exception occurrences if the base series is also deleted.
-                deletedSeriesUids.insert(incidence->uid());
-            }
+            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
@@ -949,14 +824,11 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // Now determine local modifications.
-    // We unite into the reported modifications any addedPersistentExceptionOccurrences
-    // (calculated earlier) - we treat them as modifications of the series rather than additions.
     KCalCore::Incidence::List modified;
     if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
         return false;
     }
-    uniteIncidenceLists(addedPersistentExceptionOccurrences, &modified);
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, modified) {
         // if it also appears in localDeletions, ignore it - it was deleted locally.
         // if it also appears in localAdditions, ignore it - we are already uploading it.
@@ -1051,39 +923,6 @@ bool NotebookSyncAgent::calculateDelta(
         }
     }
 
-    // Now remove from the list of deletions, any deletion of a persistent exception occurrence
-    // if the base recurring series was also deleted, since the deletion of the base series
-    // will already ensure deletion of all exception occurrences when pushed to the remote.
-    // Also remove from the list of deletions, any deletion of a persistent exception occurrence
-    // if the base recurring series was modified remotely.  This one is a suboptimal case,
-    // as it will effectively "roll-back" a local deletion of an occurrence, if the remote series
-    // has changed.  But it's better than the alternative: being stuck in a sync failure loop.
-    QList<LocalDeletion>::iterator it = localDeletions->begin();
-    bool deletedIncidenceUriWasEmpty = false;
-    QString deletedIncidenceRemoteUri;
-    while (it != localDeletions->end()) {
-        if (!(*it).deletedIncidence->recurrenceId().isNull()) {
-            if (deletedSeriesUids.contains((*it).deletedIncidence->uid())) {
-                LOG_DEBUG("ignoring deletion of persistent exception already handled by series deletion:"
-                          << (*it).deletedIncidence->uid() << (*it).deletedIncidence->recurrenceId().toString());
-                it = localDeletions->erase(it);
-            } else {
-                deletedIncidenceUriWasEmpty = false;
-                deletedIncidenceRemoteUri = incidenceHrefUri((*it).deletedIncidence, mRemoteCalendarPath, &deletedIncidenceUriWasEmpty);
-                if (!deletedIncidenceUriWasEmpty && remoteModifications->contains(deletedIncidenceRemoteUri)) {
-                    // Sub-optimal case.  TODO: improve handling of this case.
-                    LOG_DEBUG("ignoring deletion of persistent exception due to remote series modification:"
-                              << (*it).deletedIncidence->uid() << (*it).deletedIncidence->recurrenceId().toString());
-                    it = localDeletions->erase(it);
-                } else {
-                    ++it;
-                }
-            }
-        } else {
-            ++it;
-        }
-    }
-
     LOG_DEBUG("Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size());
     LOG_DEBUG("Calculated remote A/M/R:" << remoteAdditions->size() << "/" << remoteModifications->size() << "/" << remoteDeletions->size());
 
@@ -1094,57 +933,42 @@ bool NotebookSyncAgent::calculateDelta(
 // We fetched the remote version of the resource so that we can detect whether the local change
 // is "real" or whether it was just reporting the local modification of the ETAG or URI field.
 void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
-        const QString &remoteUri,
         const QList<KDateTime> &recurrenceIds,
         const Reader::CalendarResource &remoteResource,
-        const QMultiHash<QString, KDateTime> &addedPersistentExceptionOccurrences,
         KCalCore::Incidence::List *localModifications)
 {
     // the remoteResource contains one ical resource fetched from the remote URI.
-    bool foundMatch = false;
     Q_FOREACH (const KDateTime &rid, recurrenceIds) {
         // find the possible local modification associated with this recurrenceId.
+        bool foundMatch = false;
         int removeIdx = -1;
         for (int i = 0; i < localModifications->size(); ++i) {
             // Only compare incidences which relate to the remote resource.
             QString hrefUri = incidenceHrefUri(localModifications->at(i));
-            if (hrefUri != remoteUri) {
+            if (hrefUri != remoteResource.href) {
                 LOG_DEBUG("skipping unrelated local modification:" << localModifications->at(i)->uid()
-                          << "(" << hrefUri << ") for remote uri:" << remoteUri);
+                          << "(" << hrefUri << ") for remote uri:" << remoteResource.href);
+                continue;
+            }
+            if (localModifications->at(i)->recurrenceId() != rid) {
                 continue;
             }
             // Note: we compare the remote resources with the "export" version of the local modifications
             // otherwise spurious differences might be detected.
             const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i), (localModifications->at(i)->recurs()) ? mCalendar->instances(localModifications->at(i)) : KCalCore::Incidence::List());
-            if (pLMod->recurrenceId() == rid) {
-                // check to see if the modification is actually an added persistent exception occurrence.
-                if (addedPersistentExceptionOccurrences.values(hrefUri).contains(rid)) {
-                    // The "modification" is actually an addition of a persistent exception occurrence
-                    // which we treat as a modification of the series, then no remote incidence will exist yet.
+            // found the local incidence.  now find the copy received from the server and detect changes.
+            Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
+                if (remoteIncidence->recurrenceId() == rid) {
+                    const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
+                    // found the remote incidence.  compare it to the local.
+                    LOG_DEBUG("comparing:" << pLMod->uid() << "to" << exportRInc->uid() << "(" << remoteResource.href << ")");
                     foundMatch = true;
-                    removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                    break;
-                }
-
-                // not a persistent exception occurrence addition, must be a "normal" local modification.
-                // found the local incidence.  now find the copy received from the server and detect changes.
-                if (remoteResource.href != remoteUri) {
-                    LOG_WARNING("error while removing spurious possible local modifications: resource uri mismatch:" << remoteResource.href << "->" << remoteUri);
-                } else {
-                    Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
-                        const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
-                        if (exportRInc->recurrenceId() == rid) {
-                            // found the remote incidence.  compare it to the local.
-                            LOG_DEBUG("comparing:" << pLMod->uid() << "(" << remoteUri << ") to:" << exportRInc->uid() << "(" << remoteResource.href << ")");
-                            foundMatch = true;
-                            if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
-                                removeIdx = i;  // this is a spurious local modification which needs to be removed.
-                            } else {
-                                removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                            }
-                            break;
-                        }
+                    if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
+                        removeIdx = i;  // this is a spurious local modification which needs to be removed.
+                    } else {
+                        removeIdx = -1; // this is a real local modification. no-op, but for completeness.
                     }
+                    break;
                 }
             }
             if (foundMatch) {
@@ -1155,10 +979,10 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
         // remove the possible local modification if it proved to be spurious
         if (foundMatch) {
             if (removeIdx >= 0) {
-                LOG_DEBUG("discarding spurious local modification to:" << remoteUri << rid.toString());
+                LOG_DEBUG("discarding spurious local modification to:" << remoteResource.href << rid.toString());
                 localModifications->remove(removeIdx);
             } else {
-                LOG_DEBUG("local modification to:" << remoteUri << rid.toString() << "is real.");
+                LOG_DEBUG("local modification to:" << remoteResource.href << rid.toString() << "is real.");
             }
         } else {
             // this is always an internal logic error.  We explicitly requested it.
@@ -1291,7 +1115,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
             LOG_DEBUG("Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString()
                                                              << resourceHref << resourceEtag);
-            mLocalDeletions.append(LocalDeletion(incidence, resourceEtag, resourceHref));
+            mLocalDeletions.append(incidence);
         } else {
             LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString()
                                                  << resourceHref << resourceEtag);
@@ -1553,38 +1377,22 @@ bool NotebookSyncAgent::deleteIncidences(KCalCore::Incidence::List deletedIncide
     return true;
 }
 
-bool NotebookSyncAgent::updateListHrefETag(KCalCore::Incidence::List incidences)
+void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
-    if (mUpdatedETags.isEmpty())
-        return true;
-
-    // After upsyncing changes (additions + modifications) we need to update local incidences.
-    // For modifications, we need to get the new (server-side) etag values, and store them into those incidences.
-    // For additions, we need to do that, and ALSO update the local URI value (to remote resource path).
-    Q_FOREACH (KCalCore::Incidence::Ptr incidence, incidences) {
-        bool setUri = false;
-        QString href = incidenceHrefUri(incidence, mRemoteCalendarPath, &setUri);
-        if (mUpdatedETags.contains(href)) {
-            const QString &etag = mUpdatedETags.take(href);
-            KCalCore::Incidence::Ptr localBaseIncidence =
-                mCalendar->incidence(incidence->uid());
-            if (localBaseIncidence) {
-                localBaseIncidence->startUpdates();
-                updateIncidenceHrefEtag(localBaseIncidence,
-                                        setUri ? href : QString(), etag);
-                localBaseIncidence->endUpdates();
-                if (localBaseIncidence->recurs()) {
-                    Q_FOREACH (KCalCore::Incidence::Ptr instance,
-                               mCalendar->instances(localBaseIncidence)) {
-                        instance->startUpdates();
-                        updateIncidenceHrefEtag(instance,
-                                                setUri ? href : QString(), etag);
-                        instance->endUpdates();
-                    }
-                }
+    KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
+    if (localBaseIncidence) {
+        localBaseIncidence->startUpdates();
+        updateIncidenceHrefEtag(localBaseIncidence, href, etag);
+        localBaseIncidence->endUpdates();
+        if (localBaseIncidence->recurs()) {
+            Q_FOREACH (KCalCore::Incidence::Ptr instance,
+                       mCalendar->instances(localBaseIncidence)) {
+                instance->startUpdates();
+                updateIncidenceHrefEtag(instance, href, etag);
+                instance->endUpdates();
             }
         }
+    } else {
+        LOG_WARNING("Unable to find base incidence: " << uid);
     }
-
-    return true;
 }
