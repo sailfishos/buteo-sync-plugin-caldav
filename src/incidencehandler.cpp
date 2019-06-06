@@ -155,6 +155,22 @@ static bool recurrenceDataEqual(const KCalCore::Recurrence *a, const KCalCore::R
     return false;
 }
 
+bool IncidenceHandler::matchIcsData(KCalCore::Incidence::Ptr incidence,
+                                    const Reader::CalendarResource &resource)
+{
+    // Find the copy received from the server and detect changes.
+    Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, resource.incidences) {
+        if (remoteIncidence->recurrenceId() == incidence->recurrenceId()) {
+            const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
+            // found the remote incidence.  compare it to the local.
+            return IncidenceHandler::copiedPropertiesAreEqual(incidence, exportRInc);
+        }
+    }
+    // this is always an internal logic error.  We explicitly requested it.
+    LOG_WARNING("error: couldn't find remote incidence matching! FIXME!");
+    return false;
+}
+
 // Checks whether a specific set of properties are equal.
 bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b)
 {

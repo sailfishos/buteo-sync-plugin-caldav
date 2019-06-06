@@ -329,7 +329,7 @@ void NotebookSyncAgent::reportRequestFinished()
     report->deleteLater();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        if (mPossibleLocalModificationIncidenceIds.isEmpty()) {
+        if (mPossibleLocalModification.isEmpty()) {
             // every received resource was from m_remoteAdditions or m_remoteModifications.
             mReceivedCalendarResources = report->receivedCalendarResources();
         } else {
@@ -342,11 +342,10 @@ void NotebookSyncAgent::reportRequestFinished()
             int originalLocalModificationsCount = mLocalModifications.size(), discardedLocalModifications = 0;
             Q_FOREACH (const Reader::CalendarResource &resource,
                        report->receivedCalendarResources()) {
-                if (mPossibleLocalModificationIncidenceIds.contains(resource.href)) {
+                if (mPossibleLocalModification.contains(resource.href)) {
                     // this resource was fetched so that we could perform a field-by-field delta detection
                     // just in case the only change was the ETAG/URI value (due to previous sync).
-                    removePossibleLocalModificationIfIdentical(mPossibleLocalModificationIncidenceIds.values(resource.href),
-                                                               resource,
+                    removePossibleLocalModificationIfIdentical(resource,
                                                                &mLocalModifications);
                 } else {
                     // these were resources fetched from m_remoteAdditions or m_remoteModifications
@@ -438,7 +437,7 @@ void NotebookSyncAgent::processETags()
         // that ETAG+URI change).  Hence, we need to fetch all of those again, and
         // then manually check equivalence (ignoring etag+uri value) with remote copy.
         // Also fetch updated and new items full data if required.
-        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + mPossibleLocalModificationIncidenceIds.uniqueKeys();
+        QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications + mPossibleLocalModification.values();
         if (!fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
             Report *report = new Report(mNetworkManager, mSettings);
@@ -903,7 +902,7 @@ bool NotebookSyncAgent::calculateDelta(
                     // because it may be being reported due solely to URI/ETAG update, we treat it as a "possible" local modification.
                     LOG_DEBUG("have possible local modification:" << incidence->uid() << incidence->recurrenceId().toString());
                     localModifications->append(incidence); // NOTE: we later reload this event from server to detect "true" delta.
-                    mPossibleLocalModificationIncidenceIds.insert(remoteUri, incidence->recurrenceId());
+                    mPossibleLocalModification.insert(remoteUri);
                 }
                 seenRemoteUris.insert(remoteUri);
             }
@@ -950,60 +949,29 @@ bool NotebookSyncAgent::calculateDelta(
 // We fetched the remote version of the resource so that we can detect whether the local change
 // is "real" or whether it was just reporting the local modification of the ETAG or URI field.
 void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
-        const QList<KDateTime> &recurrenceIds,
         const Reader::CalendarResource &remoteResource,
         KCalCore::Incidence::List *localModifications)
 {
-    // the remoteResource contains one ical resource fetched from the remote URI.
-    Q_FOREACH (const KDateTime &rid, recurrenceIds) {
-        // find the possible local modification associated with this recurrenceId.
-        bool foundMatch = false;
-        int removeIdx = -1;
-        for (int i = 0; i < localModifications->size(); ++i) {
-            // Only compare incidences which relate to the remote resource.
-            QString hrefUri = incidenceHrefUri(localModifications->at(i));
-            if (hrefUri != remoteResource.href) {
-                LOG_DEBUG("skipping unrelated local modification:" << localModifications->at(i)->uid()
-                          << "(" << hrefUri << ") for remote uri:" << remoteResource.href);
-                continue;
-            }
-            if (localModifications->at(i)->recurrenceId() != rid) {
-                continue;
-            }
-            // Note: we compare the remote resources with the "export" version of the local modifications
-            // otherwise spurious differences might be detected.
-            const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(localModifications->at(i), (localModifications->at(i)->recurs()) ? mCalendar->instances(localModifications->at(i)) : KCalCore::Incidence::List());
-            // found the local incidence.  now find the copy received from the server and detect changes.
-            Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, remoteResource.incidences) {
-                if (remoteIncidence->recurrenceId() == rid) {
-                    const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
-                    // found the remote incidence.  compare it to the local.
-                    LOG_DEBUG("comparing:" << pLMod->uid() << "to" << exportRInc->uid() << "(" << remoteResource.href << ")");
-                    foundMatch = true;
-                    if (IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc)) {
-                        removeIdx = i;  // this is a spurious local modification which needs to be removed.
-                    } else {
-                        removeIdx = -1; // this is a real local modification. no-op, but for completeness.
-                    }
-                    break;
-                }
-            }
-            if (foundMatch) {
-                break;
-            }
+    KCalCore::Incidence::List::Iterator it = localModifications->begin();
+    while (it != localModifications->end()) {
+        // Only compare incidences which relate to the remote resource.
+        QString hrefUri = incidenceHrefUri(*it);
+        if (hrefUri != remoteResource.href) {
+            LOG_DEBUG("skipping unrelated local modification:" << (*it)->uid()
+                      << "(" << hrefUri << ") for remote uri:" << remoteResource.href);
+            ++it;
+            continue;
         }
-
-        // remove the possible local modification if it proved to be spurious
-        if (foundMatch) {
-            if (removeIdx >= 0) {
-                LOG_DEBUG("discarding spurious local modification to:" << remoteResource.href << rid.toString());
-                localModifications->remove(removeIdx);
-            } else {
-                LOG_DEBUG("local modification to:" << remoteResource.href << rid.toString() << "is real.");
-            }
+        LOG_DEBUG("comparing:" << (*it)->uid() << "(" << remoteResource.href << ") with remote.");
+        // Note: we compare the remote resources with the "export" version of the local modifications
+        // otherwise spurious differences might be detected.
+        const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(*it, (*it)->recurs() ? mCalendar->instances(*it) : KCalCore::Incidence::List());
+        if (IncidenceHandler::matchIcsData(pLMod, remoteResource)) {
+            LOG_DEBUG("discarding spurious local modification to:" << remoteResource.href << pLMod->recurrenceId().toString());
+            it = localModifications->erase(it);
         } else {
-            // this is always an internal logic error.  We explicitly requested it.
-            LOG_WARNING("error: couldn't find remote incidence for possible local modification! FIXME!");
+            LOG_DEBUG("local modification to:" << remoteResource.href << pLMod->recurrenceId().toString() << "is real.");
+            ++it;
         }
     }
 }

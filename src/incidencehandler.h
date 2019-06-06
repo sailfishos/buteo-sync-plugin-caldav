@@ -28,6 +28,7 @@
 #include <todo.h>
 #include <journal.h>
 #include <attendee.h>
+#include "reader.h"
 
 namespace KCalCore {
     class Person;
@@ -36,7 +37,8 @@ namespace KCalCore {
 class IncidenceHandler
 {
 public:
-    static bool copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b);
+    static bool matchIcsData(KCalCore::Incidence::Ptr incidence,
+                             const Reader::CalendarResource &resource);
     static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
     static void prepareImportedIncidence(KCalCore::Incidence::Ptr incidence);
@@ -54,6 +56,11 @@ private:
     static bool pointerDataEqual(const QVector<QSharedPointer<T> > &vectorA, const QVector<QSharedPointer<T> > &vectorB);
 
     static void normalizePersonEmail(KCalCore::Person *p);
+
+    static bool copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b);
+    static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
+
+    friend class tst_IncidenceHandler;
 };
 
 #endif // INCIDENCEHANDLER_P_H
