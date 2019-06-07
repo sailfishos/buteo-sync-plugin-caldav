@@ -68,6 +68,9 @@ private slots:
     void oneUpSyncCycle_data();
     void oneUpSyncCycle();
 
+    void updateIncidence_data();
+    void updateIncidence();
+
 private:
     Settings m_settings;
     NotebookSyncAgent *m_agent;
@@ -112,10 +115,8 @@ void tst_NotebookSyncAgent::init()
 
 void tst_NotebookSyncAgent::cleanup()
 {
-    mKCal::Notebook::List notebookList = m_agent->mStorage->notebooks();
-    Q_FOREACH (mKCal::Notebook::Ptr notebook, notebookList) {
-        m_agent->mStorage->deleteNotebook(notebook);
-    }
+    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook("123456789");
+    m_agent->mStorage->deleteNotebook(notebook);
 
     m_agent->mStorage->save();
     m_agent->mStorage->close();
@@ -815,6 +816,73 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     QCOMPARE(m_agent->mRemoteModifications.count(), 0);
     QCOMPARE(m_agent->mRemoteDeletions.count(), 0);
 
+}
+
+void tst_NotebookSyncAgent::updateIncidence_data()
+{
+    QTest::addColumn<KCalCore::Incidence::Ptr>("incidence");
+
+    {
+        KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        ev->setUid("updateIncidence-111");
+        ev->setSummary("Simple added event");
+        QTest::newRow("simple added event") << ev;
+    }
+
+    {
+        KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        ev->setUid("updateIncidence-111");
+        ev->setSummary("Simple updated event");
+        QTest::newRow("simple updated event") << ev;
+    }
+
+    {
+        KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        ev->setUid("updateIncidence-222");
+        ev->setSummary("Recurring added event");
+        ev->setDtStart(KDateTime::currentUtcDateTime());
+        ev->recurrence()->setDaily(1);
+        QTest::newRow("Recurring added event") << ev;
+
+        KCalCore::Incidence::Ptr ex = KCalCore::Incidence::Ptr(ev->clone());
+        ex->setSummary("Added exception");
+        ex->setRecurrenceId(ev->dtStart().addDays(1));
+        QTest::newRow("Added exception") << ex;
+    }
+
+    {
+        KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        ev->setUid("updateIncidence-333");
+        ev->setSummary("Recurring added orphan");
+        ev->setDtStart(KDateTime::currentUtcDateTime());
+        ev->setRecurrenceId(ev->dtStart().addDays(1));
+        QTest::newRow("Recurring added event") << ev;
+    }
+}
+
+void tst_NotebookSyncAgent::updateIncidence()
+{
+    QFETCH(KCalCore::Incidence::Ptr, incidence);
+
+    /* We create a notebook for this test. */
+    const QString notebookId = QStringLiteral("26b24ae3-ab05-4892-ac36-632183113e2d");
+    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(notebookId);
+    if (!notebook) {
+        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookId, "test1", "test 1", "red", true, false, false, false, false));
+        m_agent->mStorage->addNotebook(notebook);
+    }
+    m_agent->mNotebook = notebook;
+
+    bool critical;
+    const bool orphan = incidence->summary().contains(QStringLiteral("orphan"));
+    m_agent->mCalendar->addNotebook(notebook->uid(), true);
+    m_agent->mCalendar->setDefaultNotebook(notebook->uid());
+    QVERIFY(m_agent->updateIncidence(incidence, QStringLiteral("uri.ics"),
+                                     QStringLiteral("etag"), orphan, &critical));
+
+    KCalCore::Incidence::Ptr fetched =
+        m_agent->mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+    QVERIFY(IncidenceHandler::copiedPropertiesAreEqual(incidence, fetched));
 }
 
 #include "tst_notebooksyncagent.moc"

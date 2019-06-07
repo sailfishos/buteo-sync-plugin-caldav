@@ -62,6 +62,7 @@ private:
     static bool copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b);
     static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
 
+    friend class tst_NotebookSyncAgent;
     friend class tst_IncidenceHandler;
 };
 

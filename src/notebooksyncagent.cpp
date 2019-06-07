@@ -978,34 +978,12 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
     mStorage->load(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
     mStorage->load(nbuid, incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
 
-    KCalCore::Incidence::Ptr storedIncidence;
-    switch (incidence->type()) {
-    case KCalCore::IncidenceBase::TypeEvent:
-        storedIncidence = mCalendar->event(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
-        if (!storedIncidence) {
-            incidence->setUid(nbuid);
-            storedIncidence = mCalendar->event(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeTodo:
-        storedIncidence = mCalendar->todo(incidence->uid());
-        if (!storedIncidence) {
-            incidence->setUid(nbuid);
-            storedIncidence = mCalendar->todo(incidence->uid());
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeJournal:
-        storedIncidence = mCalendar->journal(incidence->uid());
-        if (!storedIncidence) {
-            incidence->setUid(nbuid);
-            storedIncidence = mCalendar->journal(incidence->uid());
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeFreeBusy:
-    case KCalCore::IncidenceBase::TypeUnknown:
-        qWarning() << "Unsupported incidence type:" << incidence->type();
-        return false;
+    KCalCore::Incidence::Ptr storedIncidence = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+    if (!storedIncidence) {
+        incidence->setUid(nbuid);
+        storedIncidence = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
     }
+
     if (storedIncidence) {
         if (incidence->status() == KCalCore::Incidence::StatusCanceled
                 || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
@@ -1037,6 +1015,10 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             storedIncidence->endUpdates();
         }
     } else {
+        // Set-up the default notebook when adding new incidences.
+        mCalendar->addNotebook(mNotebook->uid(), true);
+        mCalendar->setDefaultNotebook(mNotebook->uid());
+
         // the new incidence will be either a new persistent occurrence, or a new base-series (or new non-recurring).
         LOG_DEBUG("Have new incidence:" << incidence->uid() << incidence->recurrenceId().toString()
                                         << resourceHref << resourceEtag);
@@ -1045,15 +1027,15 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         if (incidence->hasRecurrenceId()) {
             // no dissociated occurrence exists already (ie, it's not an update), so create a new one.
             // need to detach, and then copy the properties into the detached occurrence.
-            KCalCore::Incidence::Ptr recurringIncidence = mCalendar->event(incidence->uid(), KDateTime());
+            KCalCore::Incidence::Ptr recurringIncidence = mCalendar->incidence(incidence->uid());
             if (!recurringIncidence) {
-                recurringIncidence = mCalendar->event(nbuid, KDateTime());
+                recurringIncidence = mCalendar->incidence(nbuid);
             }
             if (isKnownOrphan) {
                 // construct a parent series for this orphan, or update the previously constructed one.
                 if (recurringIncidence.isNull()) {
                     // construct a recurring parent series for this orphan.
-                    KCalCore::Incidence::Ptr parentSeries = KCalCore::Incidence::Ptr(new KCalCore::Event);
+                    KCalCore::Incidence::Ptr parentSeries(incidence->clone());
                     IncidenceHandler::prepareImportedIncidence(incidence);
                     IncidenceHandler::copyIncidenceProperties(parentSeries, incidence);
                     parentSeries->setRecurrenceId(KDateTime());
@@ -1062,12 +1044,11 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                     setIncidenceHrefUri(parentSeries, resourceHref);
                     setIncidenceETag(parentSeries, resourceEtag);
                     LOG_DEBUG("creating parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
-                    bool parentAdded = mCalendar->addEvent(parentSeries.staticCast<KCalCore::Event>(), mNotebook->uid());
-                    if (!parentAdded) {
+                    if (!mCalendar->addIncidence(parentSeries)) {
                         LOG_WARNING("error: could not create parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
                     } else {
                         mStorage->load(nbuid, KDateTime());
-                        recurringIncidence = mCalendar->event(nbuid);
+                        recurringIncidence = mCalendar->incidence(nbuid);
                     }
                 } else if (!recurringIncidence.isNull()) {
                     // the parent was already added for this orphan (e.g. for a separate orphan exception occurrence)
@@ -1090,7 +1071,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
 
                 setIncidenceHrefUri(occurrence, resourceHref);
                 setIncidenceETag(occurrence, resourceEtag);
-                if (!mCalendar->addEvent(occurrence.staticCast<KCalCore::Event>(), mNotebook->uid())) {
+                if (!mCalendar->addIncidence(occurrence)) {
                     LOG_WARNING("error: could not add dissociated occurrence to calendar");
                     return false;
                 }
@@ -1107,23 +1088,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         setIncidenceHrefUri(incidence, resourceHref);
         setIncidenceETag(incidence, resourceEtag);
 
-        bool added = false;
-        switch (incidence->type()) {
-        case KCalCore::IncidenceBase::TypeEvent:
-            added = mCalendar->addEvent(incidence.staticCast<KCalCore::Event>(), mNotebook->uid());
-            break;
-        case KCalCore::IncidenceBase::TypeTodo:
-            added = mCalendar->addTodo(incidence.staticCast<KCalCore::Todo>(), mNotebook->uid());
-            break;
-        case KCalCore::IncidenceBase::TypeJournal:
-            added = mCalendar->addJournal(incidence.staticCast<KCalCore::Journal>(), mNotebook->uid());
-            break;
-        case KCalCore::IncidenceBase::TypeFreeBusy:
-        case KCalCore::IncidenceBase::TypeUnknown:
-            LOG_WARNING("Unsupported incidence type:" << incidence->type());
-            return false;
-        }
-        if (added) {
+        if (mCalendar->addIncidence(incidence)) {
             LOG_DEBUG("Added new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
         } else {
             LOG_WARNING("Unable to add incidence" << incidence->uid() << incidence->recurrenceId().toString() << "to notebook" << mNotebook->uid());
