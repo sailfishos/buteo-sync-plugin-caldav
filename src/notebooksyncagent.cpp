@@ -754,8 +754,7 @@ bool NotebookSyncAgent::calculateDelta(
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions and remote deletions.
-    QSet<QString> seenRemoteUris;
-    QHash<QString, QString> previouslySyncedEtags; // remote uri to the etag we saw last time.
+    QHash<QString, QString> localUriEtags; // remote uri to the etag we saw last time.
     Q_FOREACH (KCalCore::Incidence::Ptr incidence, localIncidences) {
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
@@ -765,9 +764,8 @@ bool NotebookSyncAgent::calculateDelta(
             if (remoteUriEtags.contains(remoteUri)) { // we saw this on remote side...
                 // previously partially upsynced, needs uri update.
                 LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
-                seenRemoteUris.insert(remoteUri);
                 // ensure that it will be seen as a remote modification and trigger download
-                previouslySyncedEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
             } else { // it doesn't exist on remote side...
                 // new local addition.
                 LOG_DEBUG("have new local addition:" << incidence->uid() << incidence->recurrenceId().toString());
@@ -794,8 +792,7 @@ bool NotebookSyncAgent::calculateDelta(
                 // we later check to see if it was modified server-side by checking the etag value.
                 LOG_DEBUG("have possibly modified or possibly unchanged previously synced local incidence:" << remoteUri);
             }
-            seenRemoteUris.insert(remoteUri);
-            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
+            localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
@@ -831,8 +828,7 @@ bool NotebookSyncAgent::calculateDelta(
                               << incidence->uid() << incidence->recurrenceId().toString());
                 }
             }
-            seenRemoteUris.insert(remoteUri);
-            previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
+            localUriEtags.insert(remoteUri, incidenceETag(incidence));
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
@@ -862,8 +858,7 @@ bool NotebookSyncAgent::calculateDelta(
                 setIncidenceHrefUri(incidence, remoteUri);
                 setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
                 localModifications->append(incidence);
-                previouslySyncedEtags.insert(remoteUri, incidenceETag(incidence));
-                seenRemoteUris.insert(remoteUri);
+                localUriEtags.insert(remoteUri, incidenceETag(incidence));
             } else if (localAdditions->contains(incidence)) {
                 LOG_DEBUG("ignoring local modification to locally added incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 continue;
@@ -873,25 +868,12 @@ bool NotebookSyncAgent::calculateDelta(
             }
         } else {
             // we have a modification to a previously-synced incidence.
-            QString localEtag = incidenceETag(incidence);
             if (!remoteUriEtags.contains(remoteUri)) {
                 LOG_DEBUG("ignoring local modification to remotely deleted incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                bool foundRemoteDeletion = false;
-                for (int i = 0; i < remoteDeletions->size(); ++i) {
-                    if (remoteDeletions->at(i)->uid() == incidence->uid() && remoteDeletions->at(i)->recurrenceId() == incidence->recurrenceId()) {
-                        foundRemoteDeletion = true;
-                        break;
-                    }
-                }
-                if (!foundRemoteDeletion) {
-                    // this should never happen, and is always an error.
-                    LOG_WARNING("But unable to find corresponding remote deletion!  Aborting sync due to unrecoverable error!");
-                    return false;
-                }
             } else {
                 // determine if the remote etag is still the same.
                 // if it is not, then the incidence was modified server-side.
-                if (localEtag != remoteUriEtags.value(remoteUri)) {
+                if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
                     // if the etags are different, then the event was also modified remotely.
                     // we only support PreferRemote conflict resolution, so we discard the local modification.
                     LOG_DEBUG("ignoring local modification to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString());
@@ -904,14 +886,13 @@ bool NotebookSyncAgent::calculateDelta(
                     localModifications->append(incidence); // NOTE: we later reload this event from server to detect "true" delta.
                     mPossibleLocalModification.insert(remoteUri);
                 }
-                seenRemoteUris.insert(remoteUri);
             }
         }
     }
 
     // now determine remote additions and modifications.
     Q_FOREACH (const QString &remoteUri, remoteUriEtags.keys()) {
-        if (!seenRemoteUris.contains(remoteUri)) {
+        if (!localUriEtags.contains(remoteUri)) {
             // this is probably a pure server-side addition, but there is one other possibility:
             // if it was newly added to the server before the previous sync cycle, then it will
             // have been added locally (due to remote addition) during the last sync cycle.
@@ -925,13 +906,10 @@ bool NotebookSyncAgent::calculateDelta(
             // list, so if we hit this branch, then it must be a new remote addition.
             LOG_DEBUG("have new remote addition:" << remoteUri);
             remoteAdditions->append(remoteUri);
-        } else if (!previouslySyncedEtags.contains(remoteUri)) {
-            // this is a server-side modification which is obsoleted by a local deletion
-            LOG_DEBUG("ignoring remote modification to locally deleted incidence at:" << remoteUri);
-        } else if (previouslySyncedEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
+        } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
             // etag changed; this is a server-side modification.
             LOG_DEBUG("have remote modification to previously synced incidence at:" << remoteUri);
-            LOG_DEBUG("previously seen ETag was:" << previouslySyncedEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri));
+            LOG_DEBUG("previously seen ETag was:" << localUriEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri));
             remoteModifications->append(remoteUri);
         } else {
             // this incidence is unchanged since last sync.
