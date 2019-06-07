@@ -29,6 +29,9 @@
 
 #include <LogMacros.h>
 
+#include <memorycalendar.h>
+#include <icalformat.h>
+
 #define PROP_DTEND_ADDED_USING_DTSTART "dtend-added-as-dtstart"
 
 #define COPY_IF_NOT_EQUAL(dest, src, get, set) \
@@ -156,14 +159,16 @@ static bool recurrenceDataEqual(const KCalCore::Recurrence *a, const KCalCore::R
 }
 
 bool IncidenceHandler::matchIcsData(KCalCore::Incidence::Ptr incidence,
+                                    KCalCore::Incidence::List instances,
                                     const Reader::CalendarResource &resource)
 {
+    const KCalCore::Incidence::Ptr &pLMod = IncidenceHandler::incidenceToExport(incidence, instances);
     // Find the copy received from the server and detect changes.
     Q_FOREACH (const KCalCore::Incidence::Ptr &remoteIncidence, resource.incidences) {
         if (remoteIncidence->recurrenceId() == incidence->recurrenceId()) {
             const KCalCore::Incidence::Ptr &exportRInc = IncidenceHandler::incidenceToExport(remoteIncidence);
             // found the remote incidence.  compare it to the local.
-            return IncidenceHandler::copiedPropertiesAreEqual(incidence, exportRInc);
+            return IncidenceHandler::copiedPropertiesAreEqual(pLMod, exportRInc);
         }
     }
     // this is always an internal logic error.  We explicitly requested it.
@@ -455,6 +460,63 @@ void IncidenceHandler::prepareImportedIncidence(KCalCore::Incidence::Ptr inciden
         // setting dtStart/End changes the allDay value, so ensure it is still set to true
         event->setAllDay(true);
     }
+}
+
+// A given incidence has been added or modified locally.
+// To upsync the change, we need to construct the .ics data to upload to server.
+// Since the incidence may be an occurrence or recurring series incidence,
+// we cannot simply convert the incidence to iCal data, but instead we have to
+// upsync an .ics containing the whole recurring series.
+QString IncidenceHandler::toIcs(KCalCore::Incidence::Ptr incidence,
+                                KCalCore::Incidence::List instances)
+{
+    KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
+
+    // create an in-memory calendar
+    // add to it the required incidences (ie, check if has recurrenceId -> load parent and all instances; etc)
+    // for each of those, we need to do the IncidenceToExport() modifications first
+    // then, export from that calendar to .ics file.
+    KCalCore::MemoryCalendar::Ptr memoryCalendar(new KCalCore::MemoryCalendar(KDateTime::UTC));
+    // store the base recurring event into the in-memory calendar
+    if (!memoryCalendar->addIncidence(exportableIncidence)) {
+        LOG_WARNING("Unable to add base series event to in-memory calendar for incidence:"
+                    << incidence->uid() << ":" << incidence->recurrenceId().toString());
+        return QString();
+    }
+    // now create the persistent occurrences in the in-memory calendar
+    Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+        // We cannot call dissociateSingleOccurrence() on the MemoryCalendar
+        // as that's an mKCal specific function.
+        // We cannot call dissociateOccurrence() because that function
+        // takes only a QDate instead of a KDateTime recurrenceId.
+        // Thus, we need to manually create an exception occurrence.
+        KCalCore::Incidence::Ptr exportableOccurrence(exportableIncidence->clone());
+        exportableOccurrence->setCreated(instance->created());
+        exportableOccurrence->setRevision(instance->revision());
+        exportableOccurrence->clearRecurrence();
+        exportableOccurrence->setRecurrenceId(instance->recurrenceId());
+        exportableOccurrence->setDtStart(instance->recurrenceId());
+
+        // add it, and then update it in-memory.
+        if (!memoryCalendar->addIncidence(exportableOccurrence)) {
+            LOG_WARNING("Unable to add this incidence to in-memory calendar for export:"
+                        << instance->uid() << instance->recurrenceId().toString());
+            return QString();
+        } else {
+            KCalCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
+            if (!reloadedOccurrence) {
+                LOG_WARNING("Unable to find this incidence within in-memory calendar for export:"
+                            << exportableIncidence->uid() << instance->recurrenceId().toString());
+                return QString();
+            }
+            reloadedOccurrence->startUpdates();
+            IncidenceHandler::copyIncidenceProperties(reloadedOccurrence, IncidenceHandler::incidenceToExport(instance));
+            reloadedOccurrence->endUpdates();
+        }
+    }
+
+    KCalCore::ICalFormat icalFormat;
+    return icalFormat.toString(memoryCalendar, QString(), false);
 }
 
 KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances)

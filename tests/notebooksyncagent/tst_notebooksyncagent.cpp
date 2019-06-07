@@ -657,15 +657,22 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
         QVERIFY(m_agent->mStorage->loadNotebookIncidences(notebook->uid()));
     } else {
         notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookId, "test1", "test 1", "red", true, false, false, false, false));
+        m_agent->mStorage->addNotebook(notebook);
     }
     m_agent->mNotebook = notebook;
     KCalCore::MemoryCalendar::Ptr memoryCalendar(new KCalCore::MemoryCalendar(KDateTime::UTC));
     for (KCalCore::Incidence::List::Iterator it = events.begin();
          it != events.end(); it++) {
         (*it)->setUid(uid);
-        const KCalCore::Incidence::Ptr &exportableIncidence =
-            IncidenceHandler::incidenceToExport(*it, events);
-        memoryCalendar->addIncidence(exportableIncidence);
+        if ((*it)->recurs()) {
+            Q_FOREACH (KCalCore::Incidence::Ptr instance, events) {
+                KCalCore::DateTimeList exDateTimes =
+                    (*it)->recurrence()->exDateTimes();
+                exDateTimes.removeAll(instance->recurrenceId());
+                (*it)->recurrence()->setExDateTimes(exDateTimes);
+            }
+        }
+        memoryCalendar->addIncidence(*it);
     }
 
     KCalCore::ICalFormat icalFormat;

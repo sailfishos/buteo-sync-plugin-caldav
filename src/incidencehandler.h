@@ -38,11 +38,13 @@ class IncidenceHandler
 {
 public:
     static bool matchIcsData(KCalCore::Incidence::Ptr incidence,
+                             KCalCore::Incidence::List instances,
                              const Reader::CalendarResource &resource);
+    static QString toIcs(KCalCore::Incidence::Ptr incidence,
+                         KCalCore::Incidence::List instances = KCalCore::Incidence::List());
     static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
     static void prepareImportedIncidence(KCalCore::Incidence::Ptr incidence);
-    static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
 
 private:
     IncidenceHandler();
