@@ -972,18 +972,18 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         return false;
     }
 
+    const QString &uid = incidence->uid();
     const QString &nbuid = QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid());
 
     // Load from storage any matching incidence by uid or modified uid.
-    mStorage->load(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
-    mStorage->load(nbuid, incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
+    mStorage->load(uid, incidence->recurrenceId());
+    mStorage->load(nbuid, incidence->recurrenceId());
 
-    KCalCore::Incidence::Ptr storedIncidence = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+    KCalCore::Incidence::Ptr storedIncidence = mCalendar->incidence(uid, incidence->recurrenceId());
     if (!storedIncidence) {
         incidence->setUid(nbuid);
-        storedIncidence = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+        storedIncidence = mCalendar->incidence(nbuid, incidence->recurrenceId());
     }
-
     if (storedIncidence) {
         if (incidence->status() == KCalCore::Incidence::StatusCanceled
                 || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
@@ -1023,11 +1023,12 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         LOG_DEBUG("Have new incidence:" << incidence->uid() << incidence->recurrenceId().toString()
                                         << resourceHref << resourceEtag);
 
-        incidence->setUid(nbuid);
         if (incidence->hasRecurrenceId()) {
             // no dissociated occurrence exists already (ie, it's not an update), so create a new one.
             // need to detach, and then copy the properties into the detached occurrence.
-            KCalCore::Incidence::Ptr recurringIncidence = mCalendar->incidence(incidence->uid());
+            mStorage->load(uid);
+            mStorage->load(nbuid);
+            KCalCore::Incidence::Ptr recurringIncidence = mCalendar->incidence(uid);
             if (!recurringIncidence) {
                 recurringIncidence = mCalendar->incidence(nbuid);
             }
@@ -1040,7 +1041,6 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                     IncidenceHandler::copyIncidenceProperties(parentSeries, incidence);
                     parentSeries->setRecurrenceId(KDateTime());
                     parentSeries->recurrence()->addRDateTime(incidence->recurrenceId());
-                    parentSeries->setUid(nbuid);
                     setIncidenceHrefUri(parentSeries, resourceHref);
                     setIncidenceETag(parentSeries, resourceEtag);
                     LOG_DEBUG("creating parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
