@@ -942,6 +942,26 @@ void NotebookSyncAgent::removePossibleLocalModificationIfIdentical(
     }
 }
 
+static QString nbUid(const QString &notebookId, const QString &uid)
+{
+    return QStringLiteral("NBUID:%1:%2").arg(notebookId).arg(uid);
+}
+
+static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid, const KDateTime &recurrenceId = KDateTime())
+{
+    const QString &nbuid = nbUid(notebookId, uid);
+
+    // Load from storage any matching incidence by uid or modified uid.
+    storage->load(uid, recurrenceId);
+    storage->load(nbuid, recurrenceId);
+
+    KCalCore::Incidence::Ptr incidence = calendar->incidence(uid, recurrenceId);
+    if (!incidence) {
+        incidence = calendar->incidence(nbuid, recurrenceId);
+    }
+    return incidence;
+}
+
 bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                                         const QString &resourceHref,
                                         const QString &resourceEtag,
@@ -956,18 +976,9 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
     IncidenceHandler::prepareImportedIncidence(incidence);
     updateIncidenceHrefEtag(incidence, resourceHref, resourceEtag);
 
-    const QString &uid = incidence->uid();
-    const QString &nbuid = QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid());
-
-    // Load from storage any matching incidence by uid or modified uid.
-    mStorage->load(uid, incidence->recurrenceId());
-    mStorage->load(nbuid, incidence->recurrenceId());
-
-    KCalCore::Incidence::Ptr storedIncidence = mCalendar->incidence(uid, incidence->recurrenceId());
-    if (!storedIncidence) {
-        incidence->setUid(nbuid);
-        storedIncidence = mCalendar->incidence(nbuid, incidence->recurrenceId());
-    }
+    KCalCore::Incidence::Ptr storedIncidence =
+        loadIncidence(mStorage, mCalendar,
+                      mNotebook->uid(), incidence->uid(), incidence->recurrenceId());
     if (storedIncidence) {
         if (incidence->status() == KCalCore::Incidence::StatusCanceled
                 || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
@@ -995,6 +1006,8 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
 
             storedIncidence->endUpdates();
         }
+        incidence->setUid(storedIncidence->uid());
+        return true;
     } else {
         // Set-up the default notebook when adding new incidences.
         mCalendar->addNotebook(mNotebook->uid(), true);
@@ -1007,24 +1020,22 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         if (incidence->hasRecurrenceId()) {
             // no dissociated occurrence exists already (ie, it's not an update), so create a new one.
             // need to detach, and then copy the properties into the detached occurrence.
-            mStorage->load(uid);
-            mStorage->load(nbuid);
-            KCalCore::Incidence::Ptr recurringIncidence = mCalendar->incidence(uid);
-            if (!recurringIncidence) {
-                recurringIncidence = mCalendar->incidence(nbuid);
-            }
+            KCalCore::Incidence::Ptr recurringIncidence =
+                loadIncidence(mStorage, mCalendar, mNotebook->uid(), incidence->uid());
             if (isKnownOrphan) {
                 // construct a parent series for this orphan, or update the previously constructed one.
                 if (recurringIncidence.isNull()) {
+                    const QString &nbuid = nbUid(mNotebook->uid(), incidence->uid());
                     // construct a recurring parent series for this orphan.
                     KCalCore::Incidence::Ptr parentSeries(incidence->clone());
                     parentSeries->setRecurrenceId(KDateTime());
+                    parentSeries->setUid(nbuid);
                     LOG_DEBUG("creating parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
                     if (!mCalendar->addIncidence(parentSeries)) {
                         LOG_WARNING("error: could not create parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
                         return false;
                     } else {
-                        mStorage->load(nbuid, KDateTime());
+                        mStorage->load(nbuid);
                         recurringIncidence = mCalendar->incidence(nbuid);
                     }
                 }
@@ -1053,6 +1064,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                     return false;
                 }
                 LOG_DEBUG("Added new occurrence incidence:" << occurrence->uid() << occurrence->recurrenceId().toString());
+                incidence->setUid(occurrence->uid());
                 return true;
             } else {
                 LOG_WARNING("error: parent recurring incidence could not be retrieved:" << incidence->uid());
@@ -1060,6 +1072,7 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             }
         }
 
+        incidence->setUid(nbUid(mNotebook->uid(), incidence->uid()));
         if (mCalendar->addIncidence(incidence)) {
             LOG_DEBUG("Added new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
         } else {
@@ -1147,7 +1160,8 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 
         // if there was a parent / base incidence, then we need to compare local/remote lists.
         // load the local (persistent) occurrences of the series.  Later we will update or remove them as required.
-        KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid, KDateTime());
+        KCalCore::Incidence::Ptr localBaseIncidence =
+            loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
         KCalCore::Incidence::List localInstances;
         if (!localBaseIncidence.isNull() && localBaseIncidence->recurs()) {
             localInstances = mCalendar->instances(localBaseIncidence); // TODO: should we use the updatedBaseIncidence here instead?
