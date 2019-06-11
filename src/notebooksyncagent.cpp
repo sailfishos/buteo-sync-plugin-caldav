@@ -123,7 +123,12 @@ namespace {
         if (!etag.isEmpty())
             setIncidenceETag(incidence, etag);
         if (incidence->recurrenceId().isValid()) {
-            // The persistent exception is now on server also.
+            // Add a flag to distinguish persistent exceptions that have
+            // been detached during the sync process (with the flag)
+            // or by a call to dissociateSingleOccurrence() outside
+            // of the sync process (in that later case, the incidence
+            // will have to be treated as a local addition of a persistent
+            // exception, see the calculateDelta() function).
             incidence->removeComment("buteo:caldav:detached-and-synced");
             incidence->addComment("buteo:caldav:detached-and-synced");
         }
@@ -141,29 +146,6 @@ namespace {
             }
         }
         return true;
-    }
-    KCalCore::Incidence::Ptr setExceptionIncidence(mKCal::ExtendedCalendar::Ptr calendar,
-                                                   KCalCore::Incidence::Ptr recurringIncidence,
-                                                   KCalCore::Incidence::Ptr exception)
-    {
-        KCalCore::Incidence::Ptr occurrence =
-            calendar->dissociateSingleOccurrence(recurringIncidence,
-                                                 exception->recurrenceId(),
-                                                 exception->recurrenceId().timeSpec());
-        if (occurrence.isNull()) {
-            return occurrence;
-        }
-
-        IncidenceHandler::prepareImportedIncidence(exception);
-        IncidenceHandler::copyIncidenceProperties(occurrence, exception);
-        // Add a flag to distinguish persistent exceptions that have
-        // been detached during the sync process (with the flag)
-        // or by a call to dissociateSingleOccurrence() outside
-        // of the sync process (in that later case, the incidence
-        // will have to be treated as a local addition of a persistent
-        // exception, see the calculateDelta() function).
-        occurrence->addComment("buteo:caldav:detached-and-synced");
-        return occurrence;
     }
 }
 
@@ -971,6 +953,8 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
     if (incidence.isNull()) {
         return false;
     }
+    IncidenceHandler::prepareImportedIncidence(incidence);
+    updateIncidenceHrefEtag(incidence, resourceHref, resourceEtag);
 
     const QString &uid = incidence->uid();
     const QString &nbuid = QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid());
@@ -994,7 +978,6 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
             LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString()
                                                  << resourceHref << resourceEtag);
             storedIncidence->startUpdates();
-            IncidenceHandler::prepareImportedIncidence(incidence);
             IncidenceHandler::copyIncidenceProperties(storedIncidence, incidence);
 
             // if this incidence is a recurring incidence, we should get all persistent occurrences
@@ -1010,8 +993,6 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 }
             }
 
-            // ensure we set the url and etag as required.
-            updateIncidenceHrefEtag(storedIncidence, resourceHref, resourceEtag);
             storedIncidence->endUpdates();
         }
     } else {
@@ -1037,40 +1018,36 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 if (recurringIncidence.isNull()) {
                     // construct a recurring parent series for this orphan.
                     KCalCore::Incidence::Ptr parentSeries(incidence->clone());
-                    IncidenceHandler::prepareImportedIncidence(incidence);
-                    IncidenceHandler::copyIncidenceProperties(parentSeries, incidence);
                     parentSeries->setRecurrenceId(KDateTime());
-                    parentSeries->recurrence()->addRDateTime(incidence->recurrenceId());
-                    setIncidenceHrefUri(parentSeries, resourceHref);
-                    setIncidenceETag(parentSeries, resourceEtag);
                     LOG_DEBUG("creating parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
                     if (!mCalendar->addIncidence(parentSeries)) {
                         LOG_WARNING("error: could not create parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
+                        return false;
                     } else {
                         mStorage->load(nbuid, KDateTime());
                         recurringIncidence = mCalendar->incidence(nbuid);
                     }
-                } else if (!recurringIncidence.isNull()) {
-                    // the parent was already added for this orphan (e.g. for a separate orphan exception occurrence)
-                    // but we still need to make sure that the rdate exists for this one.
-                    if (!recurringIncidence->recurrence()->rDateTimes().contains(incidence->recurrenceId())) {
-                        LOG_DEBUG("adding rdate to parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
-                        recurringIncidence->startUpdates();
-                        recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
-                        recurringIncidence->endUpdates();
-                    }
+                }
+                // We need to make sure that the rdate exists for this one.
+                if (recurringIncidence && !recurringIncidence->recurrence()->rDateTimes().contains(incidence->recurrenceId())) {
+                    LOG_DEBUG("adding rdate to parent series for orphan exception event:" << incidence->uid() << incidence->recurrenceId().toString());
+                    recurringIncidence->startUpdates();
+                    recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
+                    recurringIncidence->endUpdates();
                 }
             }
             // now we should have a parent series from which we can dissociate the exception occurrence.
             if (!recurringIncidence.isNull()) {
-                KCalCore::Incidence::Ptr occurrence = setExceptionIncidence(mCalendar, recurringIncidence, incidence);
+                KCalCore::Incidence::Ptr occurrence =
+                    mCalendar->dissociateSingleOccurrence(recurringIncidence,
+                                                          incidence->recurrenceId(),
+                                                          incidence->recurrenceId().timeSpec());
                 if (occurrence.isNull()) {
                     LOG_WARNING("error: could not dissociate occurrence from recurring event:" << incidence->uid() << incidence->recurrenceId().toString());
                     return false;
                 }
 
-                setIncidenceHrefUri(occurrence, resourceHref);
-                setIncidenceETag(occurrence, resourceEtag);
+                IncidenceHandler::copyIncidenceProperties(occurrence, incidence);
                 if (!mCalendar->addIncidence(occurrence)) {
                     LOG_WARNING("error: could not add dissociated occurrence to calendar");
                     return false;
@@ -1082,11 +1059,6 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 return false;
             }
         }
-
-        // just a new event without needing detach.
-        IncidenceHandler::prepareImportedIncidence(incidence);
-        setIncidenceHrefUri(incidence, resourceHref);
-        setIncidenceETag(incidence, resourceEtag);
 
         if (mCalendar->addIncidence(incidence)) {
             LOG_DEBUG("Added new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
