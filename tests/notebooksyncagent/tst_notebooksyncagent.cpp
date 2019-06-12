@@ -372,9 +372,8 @@ void tst_NotebookSyncAgent::updateEvent()
     update->setUid("123456-moz");
     update->setNonKDECustomProperty("X-MOZ-LASTACK", "20171016T174424Z");
     update->setAllDay(false);
-    bool success = true;
-    m_agent->updateIncidence(update, "/testPath/123456.ics", "\"123456\"", false, &success);
-    QVERIFY(success);
+    update->addComment(QStringLiteral("buteo:caldav:uri:plop.ics"));
+    m_agent->updateIncidence(update, incidence);
 
     // Check that custom property is updated as well.
     incidence = m_agent->mCalendar->event(QStringLiteral("123456-moz"));
@@ -873,12 +872,11 @@ void tst_NotebookSyncAgent::updateIncidence()
     }
     m_agent->mNotebook = notebook;
 
-    bool critical;
-    const bool orphan = incidence->summary().contains(QStringLiteral("orphan"));
-    m_agent->mCalendar->addNotebook(notebook->uid(), true);
-    m_agent->mCalendar->setDefaultNotebook(notebook->uid());
-    QVERIFY(m_agent->updateIncidence(incidence, QStringLiteral("uri.ics"),
-                                     QStringLiteral("etag"), orphan, &critical));
+    Reader::CalendarResource resource;
+    resource.href = QStringLiteral("uri.ics");
+    resource.etag = QStringLiteral("etag");
+    resource.incidences << incidence;
+    QVERIFY(m_agent->updateIncidences(QList<Reader::CalendarResource>() << resource));
 
     KCalCore::Incidence::Ptr fetched =
         m_agent->mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
