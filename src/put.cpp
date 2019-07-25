@@ -75,9 +75,7 @@ void Put::sendIcalData(const QString &uri, const QString &icalData,
     request.setHeader(QNetworkRequest::ContentLengthHeader, data.length());
     request.setHeader(QNetworkRequest::ContentTypeHeader, "text/calendar; charset=utf-8");
 
-    QBuffer *buffer = new QBuffer(this);
-    buffer->setData(data);
-    QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
+    QNetworkReply *reply = mNAManager->put(request, data);
     reply->setProperty(PROP_INCIDENCE_URI, uri);
     debugRequest(request, data);
     connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
