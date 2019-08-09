@@ -168,6 +168,8 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mNotebookNeedsDeletion(false)
     , mFinished(false)
     , mResults(QString(), Buteo::ItemCounts(), Buteo::ItemCounts())
+    , mEnableUpsync(true)
+    , mEnableDownsync(true)
 {
 }
 
@@ -228,7 +230,8 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
 }
 
 void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
-                                  const QDateTime &toDateTime)
+                                  const QDateTime &toDateTime,
+                                  bool withUpsync, bool withDownsync)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -243,6 +246,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
     mFromDateTime = fromDateTime;
     mToDateTime = toDateTime;
+    mEnableUpsync = withUpsync;
+    mEnableDownsync = withDownsync;
     if (mNotebook->syncDate().isNull()) {
 /*
     Slow sync mode:
@@ -254,9 +259,10 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
  */
         LOG_DEBUG("Start slow sync for notebook:" << mNotebook->name() << "for account" << mNotebook->account()
                   << "between" << fromDateTime << "to" << toDateTime);
-
         mSyncMode = SlowSync;
 
+        // Even if down sync is disabled in profile, we down sync the
+        // remote calendar the first time, by design.
         sendReportRequest();
     } else {
 /*
@@ -280,13 +286,17 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     }
 }
 
-void NotebookSyncAgent::sendReportRequest()
+void NotebookSyncAgent::sendReportRequest(const QStringList &remoteUris)
 {
     // must be m_syncMode = SlowSync.
     Report *report = new Report(mNetworkManager, mSettings);
     mRequests.insert(report);
     connect(report, SIGNAL(finished()), this, SLOT(reportRequestFinished()));
-    report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
+    if (remoteUris.isEmpty()) {
+        report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
+    } else {
+        report->multiGetEvents(mRemoteCalendarPath, remoteUris);
+    }
 }
 
 void NotebookSyncAgent::fetchRemoteChanges()
@@ -407,17 +417,13 @@ void NotebookSyncAgent::processETags()
         // then manually check equivalence (ignoring etag+uri value) with remote copy.
         // Also fetch updated and new items full data if required.
         QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications;
-        if (!fetchRemoteHrefUris.isEmpty()) {
+        if (mEnableDownsync && !fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
-            Report *report = new Report(mNetworkManager, mSettings);
-            mRequests.insert(report);
-            connect(report, SIGNAL(finished()), this, SLOT(reportRequestFinished()));
-            report->multiGetEvents(mRemoteCalendarPath, fetchRemoteHrefUris);
-            return;
+            sendReportRequest(fetchRemoteHrefUris);
+        } else {
+            // no remote modifications/additions we need to fetch; just upsync local changes.
+            sendLocalChanges();
         }
-
-        // no remote modifications/additions we need to fetch; just upsync local changes.
-        sendLocalChanges();
         return;
     } else if (report->networkError() == QNetworkReply::AuthenticationRequiredError && !mRetriedReport) {
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
@@ -450,6 +456,10 @@ void NotebookSyncAgent::sendLocalChanges()
         // we're finished syncing.
         LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
         emitFinished(Buteo::SyncResults::NO_ERROR);
+        return;
+    } else if (!mEnableUpsync) {
+        LOG_DEBUG("Not upsyncing local changes, upsync disable in profile.");
+        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
         return;
     } else {
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
@@ -634,7 +644,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     // mNotebook may not exist in mStorage, because it is new, or
     // database has been modified and notebooks been reloaded.
     mKCal::Notebook::Ptr notebook(mStorage->notebook(mNotebook->uid()));
-    if (mNotebookNeedsDeletion) {
+    if (mEnableDownsync && mNotebookNeedsDeletion) {
         // delete the notebook from local database
         if (notebook && !mStorage->deleteNotebook(notebook)) {
             LOG_WARNING("Cannot delete notebook" << notebook->name() << "from storage.");
@@ -651,10 +661,11 @@ bool NotebookSyncAgent::applyRemoteChanges()
         notebook = mNotebook;
     }
 
-    if (!updateIncidences(mReceivedCalendarResources)) {
+    if ((mEnableDownsync || mSyncMode == SlowSync)
+        && !updateIncidences(mReceivedCalendarResources)) {
         return false;
     }
-    if (!deleteIncidences(mRemoteDeletions)) {
+    if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
         return false;
     }
 
@@ -700,7 +711,7 @@ bool NotebookSyncAgent::isFinished() const
 
 bool NotebookSyncAgent::isDeleted() const
 {
-    return mNotebookNeedsDeletion;
+    return (mEnableDownsync && mNotebookNeedsDeletion);
 }
 
 const QString& NotebookSyncAgent::path() const

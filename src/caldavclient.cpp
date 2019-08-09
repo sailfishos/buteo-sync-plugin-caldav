@@ -652,7 +652,9 @@ void CalDavClient::syncCalendars()
                 this, &CalDavClient::notebookSyncFinished);
         mNotebookSyncAgents.append(agent);
 
-        agent->startSync(fromDateTime, toDateTime);
+        agent->startSync(fromDateTime, toDateTime,
+                         mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_FROM_REMOTE,
+                         mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_TO_REMOTE);
     }
     if (mNotebookSyncAgents.isEmpty()) {
         syncFinished(Buteo::SyncResults::INTERNAL_ERROR,

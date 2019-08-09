@@ -61,7 +61,8 @@ public:
                              const QString &syncProfile);
 
     void startSync(const QDateTime &fromDateTime,
-                   const QDateTime &toDateTime);
+                   const QDateTime &toDateTime,
+                   bool withUpsync, bool withDownsync);
 
     void abort();
     bool applyRemoteChanges();
@@ -82,7 +83,7 @@ private slots:
     void nonReportRequestFinished();
     void processETags();
 private:
-    void sendReportRequest();
+    void sendReportRequest(const QStringList &remoteUris = QStringList());
     void clearRequests();
     void emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
                       const QString &message = QString());
@@ -125,6 +126,7 @@ private:
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
     bool mFinished;
     Buteo::TargetResults mResults;
+    bool mEnableUpsync, mEnableDownsync;
 
     // these are used only in quick-sync mode.
     // delta detection and change data
