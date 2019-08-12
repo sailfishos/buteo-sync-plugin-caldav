@@ -1077,10 +1077,8 @@ bool NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
     const QString &nbuid = QStringLiteral("NBUID:%1:%2").arg(mNotebook->uid()).arg(incidence->uid());
 
     // Load from storage any matching incidence by uid or modified uid.
-    if (!mStorage->load(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime())) {
-        if (mStorage->load(nbuid, incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime()))
-            incidence->setUid(nbuid);
-    }
+    mStorage->load(incidence->uid(), incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
+    mStorage->load(nbuid, incidence->hasRecurrenceId() ? incidence->recurrenceId() : KDateTime());
 
     KCalCore::Incidence::Ptr storedIncidence;
     switch (incidence->type()) {
