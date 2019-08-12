@@ -26,6 +26,7 @@
 #include <QDebug>
 #include <QUrl>
 #include <QList>
+#include <QRegExp>
 #include <QByteArray>
 #include <QXmlStreamReader>
 
@@ -62,7 +63,13 @@ namespace {
                 line.replace("&lt;",   "<");
                 line.replace("&gt;",   ">");
                 // Then, fix for malformed input:
-                line.replace('&',  "&amp;");
+                QString lineStr(line);
+                // RegExp should avoid escaping & when this character is starting
+                // a valid numeric character reference (decimal or hexadecimal).
+                // Other HTLML entities like &nbsp; seems to make iCal parser
+                // fails, so we're encoding them.
+                lineStr.replace(QRegExp("&(?!#[0-9]+;|#x[0-9A-Fa-f]+;)"), "&amp;");
+                line = lineStr.toUtf8();
                 line.replace('"',  "&quot;");
                 line.replace('\'', "&apos;");
                 line.replace('<',  "&lt;");

@@ -193,7 +193,7 @@ void tst_Reader::readICal_data()
         << 1
         << 1
         << QStringLiteral("123456789")
-        << QStringLiteral("Sieger F - Zweiter E")
+        << QStringLiteral("Chrzęst gąsienic été")
         << QStringLiteral("&a<b>c<d>e</d>f&g")
         << false
         << 0;
