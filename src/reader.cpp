@@ -46,15 +46,18 @@ namespace {
     QByteArray xmlSanitiseIcsData(const QByteArray &data) {
         QList<QByteArray> lines = data.split('\n');
         int depth = 0;
+        bool inCData = false;
         QByteArray retn;
         retn.reserve(data.size());
         for (QList<QByteArray>::const_iterator it = lines.constBegin(); it != lines.constEnd(); it++) {
             QByteArray line = *it;
             if (line.contains("BEGIN:VCALENDAR")) {
                 depth += 1;
+                inCData = line.contains("<![CDATA[");
             } else if (line.contains("END:VCALENDAR")) {
                 depth -= 1;
-            } else if (depth > 0) {
+                inCData = false;
+            } else if (depth > 0 && !inCData) {
                 // We're inside a VCALENDAR/ics block.
                 // First, hack to turn sanitised input into malformed input:
                 line.replace("&amp;",  "&");

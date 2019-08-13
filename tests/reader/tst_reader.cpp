@@ -197,6 +197,16 @@ void tst_Reader::readICal_data()
         << QStringLiteral("&a<b>c<d>e</d>f&g")
         << false
         << 0;
+    QTest::newRow("xml tags and entities within cdata")
+        << QStringLiteral("data/reader_cdata.xml")
+        << true
+        << 1
+        << 1
+        << QStringLiteral("123456789")
+        << QStringLiteral("Regarder l'hôtel en Espagne")
+        << QStringLiteral("&amp;a&lt;b&gt;c<d>e</d>f&g")
+        << false
+        << 0;
     QTest::newRow("url within ics description")
         << QStringLiteral("data/reader_urldescription.xml")
         << true

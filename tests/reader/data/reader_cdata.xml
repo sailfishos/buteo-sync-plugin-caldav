@@ -1,0 +1,20 @@
+<d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+  <d:response>
+    <d:href>/user/cal.ics/</d:href>
+    <d:propstat>
+      <d:prop>
+        <cal:calendar-data><![CDATA[BEGIN:VCALENDAR
+PRODID:-//ownCloud calendar v1.2.2
+BEGIN:VEVENT
+DTSTART:20160626T190000Z
+DTEND:20160626T210000Z
+UID:123456789
+DESCRIPTION:&amp;a&lt;b&gt;c<d>e</d>f&g
+SUMMARY:Regarder l'hôtel en Espagne
+END:VEVENT
+END:VCALENDAR]]>
+        </cal:calendar-data>
+      </d:prop>
+    </d:propstat>
+  </d:response>
+</d:multistatus>
