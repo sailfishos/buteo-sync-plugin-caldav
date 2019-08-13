@@ -147,7 +147,14 @@ void Request::prepareRequest(QNetworkRequest *request, const QString &requestPat
         url.setUserName(mSettings->username());
         url.setPassword(mSettings->password());
     }
-    url.setPath(requestPath);
+    // If the server returns paths in percent-encoded form,
+    // avoid double encoding when calling QUrl::setPath()
+    // by using the strict mode.
+    if (requestPath.contains('%')) {
+        url.setPath(requestPath, QUrl::StrictMode);
+    } else {
+        url.setPath(requestPath);
+    }
     request->setUrl(url);
 }
 
