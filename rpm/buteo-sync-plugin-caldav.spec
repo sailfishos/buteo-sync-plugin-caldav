@@ -3,8 +3,8 @@ Summary:    Syncs calendar data from CalDAV services
 Version:    0.1.50
 Release:    1
 Group:      System/Libraries
-License:    LGPLv2.1
-URL:        https://github.com/nemomobile/buteo-sync-plugin-caldav
+License:    LGPLv2
+URL:        https://git.sailfishos.org/mer-core/buteo-sync-plugin-caldav
 Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5Gui)
