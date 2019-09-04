@@ -650,24 +650,24 @@ bool NotebookSyncAgent::applyRemoteChanges()
         return false;
     }
 
-    if (mSyncMode == SlowSync) {
-        if (mNotebookNeedsDeletion) {
-            // the calendar was deleted remotely prior to being synced locally.
-            // simply don't create a local notebook for the nonexistent calendar.
-            return true;
-        }
-
-        // If current notebook is not already in storage, we add it.
-        if (!mStorage->notebook(mNotebook->uid())) {
-            if (!mStorage->addNotebook(mNotebook)) {
-                LOG_DEBUG("Unable to (re)create notebook" << mNotebook->name() << "during slow sync for account" << mNotebook->account() << ":" << mRemoteCalendarPath);
-                return false;
-            }
-        }
-    } else if (mNotebookNeedsDeletion) {
+    // mNotebook may not exist in mStorage, because it is new, or
+    // database has been modified and notebooks been reloaded.
+    mKCal::Notebook::Ptr notebook(mStorage->notebook(mNotebook->uid()));
+    if (mNotebookNeedsDeletion) {
         // delete the notebook from local database
-        mStorage->deleteNotebook(mNotebook);
+        if (notebook && !mStorage->deleteNotebook(notebook)) {
+            LOG_WARNING("Cannot delete notebook" << notebook->name() << "from storage.");
+        }
         return true;
+    }
+
+    // If current notebook is not already in storage, we add it.
+    if (!notebook) {
+        if (!mStorage->addNotebook(mNotebook)) {
+            LOG_DEBUG("Unable to (re)create notebook" << mNotebook->name() << "for account" << mNotebook->account() << ":" << mRemoteCalendarPath);
+            return false;
+        }
+        notebook = mNotebook;
     }
 
     if (!updateIncidences(mReceivedCalendarResources)) {
@@ -677,8 +677,13 @@ bool NotebookSyncAgent::applyRemoteChanges()
         return false;
     }
 
-    mNotebook->setSyncDate(mNotebookSyncedDateTime);
-    mStorage->updateNotebook(mNotebook);
+    notebook->setSyncDate(mNotebookSyncedDateTime);
+    notebook->setName(mNotebook->name());
+    notebook->setColor(mNotebook->color());
+    if (!mStorage->updateNotebook(notebook)) {
+        LOG_WARNING("Cannot update notebook" << notebook->name() << "in storage.");
+        return false;
+    }
 
     return true;
 }
