@@ -3,24 +3,16 @@
     <d:href>/user/cal.ics/</d:href>
     <d:propstat>
       <d:prop>
-        <cal:calendar-data>
-BEGIN:VCALENDAR
+        <cal:calendar-data><![CDATA[BEGIN:VCALENDAR
 PRODID:-//ownCloud calendar v1.2.2
 BEGIN:VEVENT
 DTSTART:20160626T190000Z
 DTEND:20160626T210000Z
-DTSTAMP:20160606T193516Z
 UID:123456789
-CREATED:20151216T030251Z
 DESCRIPTION:&amp;a&lt;b&gt;c<d>e</d>f&g
-LAST-MODIFIED:20160531T063923Z
-LOCATION:Toulouse
-SEQUENCE:0
-STATUS:CONFIRMED
-SUMMARY:Chrz&#281;st g&#261;sienic &#x00E9;t&#xE9;
-TRANSP:OPAQUE
+SUMMARY:Regarder l'hôtel en Espagne
 END:VEVENT
-END:VCALENDAR
+END:VCALENDAR]]>
         </cal:calendar-data>
       </d:prop>
     </d:propstat>

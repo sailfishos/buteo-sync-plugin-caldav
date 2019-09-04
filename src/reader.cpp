@@ -26,6 +26,7 @@
 #include <QDebug>
 #include <QUrl>
 #include <QList>
+#include <QRegExp>
 #include <QByteArray>
 #include <QXmlStreamReader>
 
@@ -45,15 +46,18 @@ namespace {
     QByteArray xmlSanitiseIcsData(const QByteArray &data) {
         QList<QByteArray> lines = data.split('\n');
         int depth = 0;
+        bool inCData = false;
         QByteArray retn;
         retn.reserve(data.size());
         for (QList<QByteArray>::const_iterator it = lines.constBegin(); it != lines.constEnd(); it++) {
             QByteArray line = *it;
             if (line.contains("BEGIN:VCALENDAR")) {
                 depth += 1;
+                inCData = line.contains("<![CDATA[");
             } else if (line.contains("END:VCALENDAR")) {
                 depth -= 1;
-            } else if (depth > 0) {
+                inCData = false;
+            } else if (depth > 0 && !inCData) {
                 // We're inside a VCALENDAR/ics block.
                 // First, hack to turn sanitised input into malformed input:
                 line.replace("&amp;",  "&");
@@ -62,7 +66,13 @@ namespace {
                 line.replace("&lt;",   "<");
                 line.replace("&gt;",   ">");
                 // Then, fix for malformed input:
-                line.replace('&',  "&amp;");
+                QString lineStr(line);
+                // RegExp should avoid escaping & when this character is starting
+                // a valid numeric character reference (decimal or hexadecimal).
+                // Other HTLML entities like &nbsp; seems to make iCal parser
+                // fails, so we're encoding them.
+                lineStr.replace(QRegExp("&(?!#[0-9]+;|#x[0-9A-Fa-f]+;)"), "&amp;");
+                line = lineStr.toUtf8();
                 line.replace('"',  "&quot;");
                 line.replace('\'', "&apos;");
                 line.replace('<',  "&lt;");
