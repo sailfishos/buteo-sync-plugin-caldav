@@ -156,6 +156,7 @@ void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &re
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/xml; charset=utf-8");
     QBuffer *buffer = new QBuffer(this);
     buffer->setData(requestData);
+    // TODO: when Qt5.8 is available, remove the use of buffer, and pass requestData directly.
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     debugRequest(request, buffer->buffer());
     connect(reply, SIGNAL(finished()), this, SLOT(processResponse()));
@@ -179,6 +180,7 @@ void Report::processResponse()
         finishedWithInternalError();
         return;
     }
+    reply->deleteLater();
     if (reply->error() != QNetworkReply::NoError) {
         finishedWithReplyResult(reply->error());
         return;
@@ -189,14 +191,12 @@ void Report::processResponse()
         if (status > 299) {
             finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
                               QString("Got error status response for REPORT: %1").arg(status));
-            reply->deleteLater();
             return;
         }
     }
 
     QByteArray data = reply->readAll();
     debugReply(*reply, data);
-    reply->deleteLater();
 
     if (!data.isNull() && !data.isEmpty()) {
         Reader reader;

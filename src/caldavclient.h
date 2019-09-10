@@ -139,6 +139,7 @@ public Q_SLOTS:
 private Q_SLOTS:
     void start();
     void authenticationError();
+    void syncCalendars();
     void notebookSyncFinished(int errorCode, const QString &errorString);
 
 private:
@@ -152,6 +153,8 @@ private:
     bool cleanSyncRequired(int accountId);
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
     QList<Settings::CalendarInfo> loadCalendars(Accounts::Account *account, Accounts::Service srv) const;
+    void mergeCalendars(const QList<Settings::CalendarInfo> &calendars);
+    void removeCalendars(const QStringList &paths);
 
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();

@@ -13,6 +13,7 @@ SOURCES += \
         $$PWD/report.cpp \
         $$PWD/put.cpp \
         $$PWD/delete.cpp \
+        $$PWD/propfind.cpp \
         $$PWD/reader.cpp \
         $$PWD/settings.cpp \
         $$PWD/request.cpp \
@@ -26,6 +27,7 @@ HEADERS += \
         $$PWD/report.h \
         $$PWD/put.h \
         $$PWD/delete.h \
+        $$PWD/propfind.h \
         $$PWD/reader.h \
         $$PWD/settings.h \
         $$PWD/request.h \

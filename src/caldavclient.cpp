@@ -22,6 +22,7 @@
  */
 
 #include "caldavclient.h"
+#include "propfind.h"
 #include "notebooksyncagent.h"
 
 #include <sailfishkeyprovider_iniparser.h>
@@ -263,39 +264,192 @@ void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool a
     }
 }
 
+static Accounts::Account* getAccountForCalendars(Accounts::Manager *manager,
+                                                 int accountId,
+                                                 Accounts::Service *service)
+{
+    Accounts::Account *account = manager->account(accountId);
+    if (!account) {
+        LOG_WARNING("cannot find account" << accountId);
+        return NULL;
+    }
+    if (!account->enabled()) {
+        LOG_WARNING("Account" << accountId << "is disabled!");
+        return NULL;
+    }
+    Accounts::Service calendarService;
+    Q_FOREACH (const Accounts::Service &currService, account->services("caldav")) {
+        account->selectService(currService);
+        if (!account->value("calendars").toStringList().isEmpty()) {
+            calendarService = currService;
+            break;
+        }
+    }
+    if (!calendarService.isValid()) {
+        LOG_WARNING("cannot find a service for account" << accountId << "with a valid calendar list");
+        return NULL;
+    }
+
+    account->selectService(calendarService);
+    if (!account->enabled()) {
+        LOG_WARNING("Account" << accountId << "service:" << service->name() << "is disabled!");
+        return NULL;
+    }
+
+    if (service) {
+        *service = calendarService;
+    }
+    return account;
+}
+
+struct CalendarSettings
+{
+public:
+    CalendarSettings(Accounts::Account *account)
+        : paths(account->value("calendars").toStringList())
+        , displayNames(account->value("calendar_display_names").toStringList())
+        , colors(account->value("calendar_colors").toStringList())
+        , enabled(account->value("enabled_calendars").toStringList())
+    {
+        if (enabled.count() > paths.count()
+            || paths.count() != displayNames.count()
+            || paths.count() != colors.count()) {
+            LOG_WARNING("Bad calendar data for account" << account->id());
+            paths.clear();
+            displayNames.clear();
+            colors.clear();
+            enabled.clear();
+        }
+    };
+    QList<Settings::CalendarInfo> enabledCalendars(const QString &serverAddress)
+    {
+        if (!enabled.count()) {
+            return QList<Settings::CalendarInfo>();
+        }
+        QList<Settings::CalendarInfo> allCalendarInfo;
+        for (int i = 0; i < paths.count(); i++) {
+            if (!enabled.contains(paths[i])) {
+                continue;
+            }
+            // the calendar path may be percent-encoded.  Return UTF-8 QString.
+            QString remotePath = QUrl::fromPercentEncoding(paths[i].toUtf8());
+            // Yahoo! seems to double-percent-encode for some reason
+            if (serverAddress.contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
+                remotePath = QUrl::fromPercentEncoding(remotePath.toUtf8());
+            }
+            allCalendarInfo << Settings::CalendarInfo{remotePath,
+                    displayNames[i], colors[i]};
+        }
+        return allCalendarInfo;
+    };
+    void add(const Settings::CalendarInfo &infos)
+    {
+        paths.append(infos.remotePath);
+        enabled.append(infos.remotePath);
+        displayNames.append(infos.displayName);
+        colors.append(infos.color);
+    };
+    bool update(const Settings::CalendarInfo &infos, bool &modified)
+    {
+        int i = paths.indexOf(infos.remotePath);
+        if (i < 0) {
+            return false;
+        }
+        if (displayNames[i] != infos.displayName || colors[i] != infos.color) {
+            displayNames[i] = infos.displayName;
+            colors[i] = infos.color;
+            modified = true;
+        }
+        return true;
+    };
+    bool remove(const QString &path)
+    {
+        int at = paths.indexOf(path);
+        if (at >= 0) {
+            paths.removeAt(at);
+            enabled.removeAll(path);
+            displayNames.removeAt(at);
+            colors.removeAt(at);
+        }
+        return (at >= 0);
+    }
+    void store(Accounts::Account *account, const Accounts::Service &srv)
+    {
+        account->selectService(srv);
+        account->setValue("calendars", paths);
+        account->setValue("enabled_calendars", enabled);
+        account->setValue("calendar_display_names", displayNames);
+        account->setValue("calendar_colors", colors);
+        account->selectService(Accounts::Service());
+        account->syncAndBlock();
+    };
+private:
+    QStringList paths;
+    QStringList displayNames;
+    QStringList colors;
+    QStringList enabled;
+};
+
 QList<Settings::CalendarInfo> CalDavClient::loadCalendars(Accounts::Account *account, Accounts::Service srv) const
 {
     if (!account || !srv.isValid()) {
         return QList<Settings::CalendarInfo>();
     }
     account->selectService(srv);
-    QStringList calendarPaths = account->value("calendars").toStringList();
-    QStringList enabledCalendars = account->value("enabled_calendars").toStringList();
-    QStringList displayNames = account->value("calendar_display_names").toStringList();
-    QStringList colors = account->value("calendar_colors").toStringList();
+    struct CalendarSettings calendarSettings(account);
     account->selectService(Accounts::Service());
 
-    if (enabledCalendars.count() > calendarPaths.count()
-            || calendarPaths.count() != displayNames.count()
-            || calendarPaths.count() != colors.count()) {
-        LOG_WARNING("Bad calendar data for account" << account->id() << "and service" << srv.name());
-        return QList<Settings::CalendarInfo>();
+    return calendarSettings.enabledCalendars(mSettings.serverAddress());
+}
+
+void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars)
+{
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    if (!account) {
+        return;
     }
-    QList<Settings::CalendarInfo> allCalendarInfo;
-    for (int i=0; i<calendarPaths.count(); i++) {
-        if (!enabledCalendars.contains(calendarPaths[i])) {
-            continue;
+    struct CalendarSettings calendarSettings(account);
+    account->selectService(Accounts::Service());
+
+    bool modified = false;
+    for (QList<Settings::CalendarInfo>::ConstIterator it = calendars.constBegin();
+         it != calendars.constEnd(); ++it) {
+        if (!calendarSettings.update(*it, modified)) {
+            LOG_DEBUG("Found a new upstream calendar:" << it->remotePath << it->displayName);
+            calendarSettings.add(*it);
+            modified = true;
+        } else {
+            LOG_DEBUG("Already existing calendar:" << it->remotePath << it->displayName << it->color);
         }
-        // the calendar path may be percent-encoded.  Return UTF-8 QString.
-        QString remoteCalendarPath = QUrl::fromPercentEncoding(calendarPaths[i].toUtf8());
-        if (mSettings.serverAddress().contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
-            // Yahoo! seems to double-percent-encode for some reason
-            remoteCalendarPath = QUrl::fromPercentEncoding(remoteCalendarPath.toUtf8());
-        }
-        Settings::CalendarInfo info = { remoteCalendarPath, displayNames[i], colors[i] };
-        allCalendarInfo << info;
     }
-    return allCalendarInfo;
+    if (modified) {
+        calendarSettings.store(account, srv);
+        mSettings.setCalendars(loadCalendars(account, srv));
+    }
+}
+
+void CalDavClient::removeCalendars(const QStringList &paths)
+{
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    if (!account) {
+        return;
+    }
+    struct CalendarSettings calendarSettings(account);
+    account->selectService(Accounts::Service());
+
+    bool modified = false;
+    for (QStringList::ConstIterator it = paths.constBegin();
+         it != paths.constEnd(); ++it) {
+        if (calendarSettings.remove(*it)) {
+            LOG_DEBUG("Found a deleted upstream calendar:" << *it);
+            modified = true;
+        }
+    }
+    if (modified) {
+        calendarSettings.store(account, srv);
+    }
 }
 
 bool CalDavClient::initConfig()
@@ -315,33 +469,13 @@ bool CalDavClient::initConfig()
         return false;
     }
     mAccountId = accountId;
-    Accounts::Account *account = mManager->account(accountId);
-    if (!account) {
-        LOG_WARNING("cannot find account" << accountId);
-        return false;
-    }
-    if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "is disabled!");
-        return false;
-    }
+
     Accounts::Service srv;
-    Q_FOREACH (const Accounts::Service &currService, account->services()) {
-        account->selectService(currService);
-        if (!account->value("calendars").toStringList().isEmpty()) {
-            srv = currService;
-            break;
-        }
-    }
-    if (!srv.isValid()) {
-        LOG_WARNING("cannot find a service for account" << accountId << "with a valid calendar list");
+    Accounts::Account *account = getAccountForCalendars(mManager, accountId, &srv);
+    if (!account) {
         return false;
     }
 
-    account->selectService(srv);
-    if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "service:" << srv.name() << "is disabled!");
-        return false;
-    }
     mSettings.setServerAddress(account->value("server_address").toString());
     if (mSettings.serverAddress().isEmpty()) {
         LOG_WARNING("remote_address not found in service settings");
@@ -457,6 +591,30 @@ void CalDavClient::start()
         syncFinished(Buteo::SyncResults::NO_ERROR, "No calendars for this account");
         return;
     }
+    PropFind *calendarRequest = new PropFind(mNAManager, &mSettings, this);
+    connect(calendarRequest, &Request::finished, this, &CalDavClient::syncCalendars);
+    // Hacky here, try to guess the root for calendars from known
+    // calendar paths, by removing one level.
+    int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
+    calendarRequest->listCalendars(allCalendarInfo[0].remotePath.left(lastIndex + 1));
+}
+
+void CalDavClient::syncCalendars()
+{
+    PropFind *request = qobject_cast<PropFind*>(sender());
+    request->deleteLater();
+
+    if (request->errorCode() == Buteo::SyncResults::NO_ERROR) {
+        mergeCalendars(request->calendars());
+    } else {
+        LOG_WARNING("Unable to list calendars from server.");
+    }
+
+    QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
+    if (allCalendarInfo.isEmpty()) {
+        syncFinished(Buteo::SyncResults::NO_ERROR, "No calendars for this account");
+        return;
+    }
     mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(KDateTime::Spec::UTC()));
     mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
     if (!mStorage || !mStorage->open()) {
@@ -540,15 +698,20 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         }
     }
     if (finished && !mSyncAborted) {
+        QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
                 syncFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("unable to write notebook changes"));
                 return;
             }
+            if (mNotebookSyncAgents[i]->isDeleted()) {
+                deletedNotebooks += mNotebookSyncAgents[i]->path();
+            }
             mNotebookSyncAgents[i]->finalize();
         }
         if (mStorage->save()) {
+            removeCalendars(deletedNotebooks);
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
             syncFinished(errorCode, errorString); // NO_ERROR, QString()
         } else {

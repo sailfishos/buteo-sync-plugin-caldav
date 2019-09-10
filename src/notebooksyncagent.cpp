@@ -232,6 +232,8 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             if (!mStorage->loadNotebookIncidences(notebook->uid()))
                 return false;
             mNotebook = notebook;
+            mNotebook->setColor(color);
+            mNotebook->setName(notebookName);
             return true;
         }
     }
@@ -709,6 +711,16 @@ void NotebookSyncAgent::finalize()
 bool NotebookSyncAgent::isFinished() const
 {
     return mFinished;
+}
+
+bool NotebookSyncAgent::isDeleted() const
+{
+    return mNotebookNeedsDeletion;
+}
+
+const QString& NotebookSyncAgent::path() const
+{
+    return mRemoteCalendarPath;
 }
 
 // ------------------------------ Utility / implementation functions.
