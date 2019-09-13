@@ -55,9 +55,6 @@ private slots:
     void insertMultipleEvents_data();
     void insertMultipleEvents();
 
-    void removePossibleLocal_data();
-    void removePossibleLocal();
-
     void updateEvent();
     void updateHrefETag();
     void calculateDelta();
@@ -244,50 +241,6 @@ void tst_NotebookSyncAgent::insertMultipleEvents()
     }
 }
 
-void tst_NotebookSyncAgent::removePossibleLocal_data()
-{
-    QTest::addColumn<IncidenceDescr>("remoteIncidence");
-    QTest::addColumn<QList<IncidenceDescr> >("localIncidences");
-    QTest::addColumn<bool>("expectedRemoval");
-    
-    IncidenceDescr remote;
-    remote.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
-    remote.insert("recurrenceId", QStringLiteral("2017-03-15T14:46:08Z"));
-
-    {
-        QList<IncidenceDescr> locals;
-        IncidenceDescr event;
-        event.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
-        event.insert("recurrenceId", QStringLiteral("2017-03-15T14:46:08Z"));
-        locals << event;
-        event.clear();
-        event.insert("uri", QStringLiteral("/alice/calendar/147852369.ics"));
-        event.insert("recurrenceId", QStringLiteral("2017-03-16T05:12:45Z"));
-        locals << event;
-        QTest::newRow("not a local modification")
-            << remote
-            << locals
-            << true;
-    }
-
-    {
-        QList<IncidenceDescr> locals;
-        IncidenceDescr event;
-        event.insert("uri", QStringLiteral("/bob/calendar/12346789.ics"));
-        event.insert("recurrenceId", QStringLiteral("2017-03-15T14:46:08Z"));
-        event.insert("description", QStringLiteral("modified description"));
-        locals << event;
-        event.clear();
-        event.insert("uri", QStringLiteral("/alice/calendar/147852369.ics"));
-        event.insert("recurrenceId", QStringLiteral("2017-03-16T05:12:45Z"));
-        locals << event;
-        QTest::newRow("a valid local modification")
-            << remote
-            << locals
-            << false;
-    }
-}
-
 static QString fetchUri(KCalCore::Incidence::Ptr incidence)
 {
     Q_FOREACH (const QString &comment, incidence->comments()) {
@@ -307,43 +260,6 @@ static QString fetchETag(KCalCore::Incidence::Ptr incidence)
         }
     }
     return QString();
-}
-
-void tst_NotebookSyncAgent::removePossibleLocal()
-{
-    QFETCH(IncidenceDescr, remoteIncidence);
-    QFETCH(QList<IncidenceDescr>, localIncidences);
-    QFETCH(bool, expectedRemoval);
-
-    KCalCore::Incidence::List localModifications;
-    Q_FOREACH (const IncidenceDescr &descr, localIncidences) {
-        KCalCore::Incidence::Ptr local = KCalCore::Incidence::Ptr(new KCalCore::Event);
-        local->setRecurrenceId(KDateTime::fromString(descr["recurrenceId"]));
-        local->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(descr["uri"]));
-        if (descr.contains("description"))
-            local->setDescription(descr["description"]);
-        localModifications << local;
-    }
-
-    Reader::CalendarResource resource;
-    resource.href = remoteIncidence["uri"];
-    KCalCore::Incidence::Ptr remote = KCalCore::Incidence::Ptr(new KCalCore::Event);
-    remote->setRecurrenceId(KDateTime::fromString(remoteIncidence["recurrenceId"]));
-    resource.incidences << remote;
-
-    m_agent->removePossibleLocalModificationIfIdentical(resource, &localModifications);
-
-    /* Check if remote is still or not in localModifications. */
-    bool found = false;
-    Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, localModifications) {
-        if (fetchUri(incidence) == remoteIncidence["uri"]) {
-            found = true;
-        }
-    }
-    if (expectedRemoval && found)
-        QFAIL("Expected removal but still present.");
-    if (!expectedRemoval && !found)
-        QFAIL("Local modification not found anymore.");
 }
 
 void tst_NotebookSyncAgent::updateEvent()
@@ -846,6 +762,7 @@ void tst_NotebookSyncAgent::updateIncidence_data()
         KCalCore::Incidence::Ptr ex = KCalCore::Incidence::Ptr(ev->clone());
         ex->setSummary("Added exception");
         ex->setRecurrenceId(ev->dtStart().addDays(1));
+        ex->clearRecurrence();
         QTest::newRow("Added exception") << ex;
     }
 
@@ -880,7 +797,14 @@ void tst_NotebookSyncAgent::updateIncidence()
 
     KCalCore::Incidence::Ptr fetched =
         m_agent->mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
-    QVERIFY(IncidenceHandler::copiedPropertiesAreEqual(incidence, fetched));
+    // Created date may differ on dissociated occurrences, artificially set it.
+    incidence->setCreated(fetched->created());
+    // Fetched will have an added end date because of dissociateSingleOccurrence()
+    if (fetched->type() == KCalCore::Incidence::TypeEvent
+        && fetched.staticCast<KCalCore::Event>()->hasEndDate()) {
+        incidence.staticCast<KCalCore::Event>()->setDtEnd(fetched.staticCast<KCalCore::Event>()->dtEnd());
+    }
+    QCOMPARE(*incidence, *fetched);
 }
 
 #include "tst_notebooksyncagent.moc"

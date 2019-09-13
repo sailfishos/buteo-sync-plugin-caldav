@@ -105,8 +105,6 @@ private:
                         QList<QString> *remoteAdditions,
                         QList<QString> *remoteModifications,
                         KCalCore::Incidence::List *remoteDeletions);
-    void removePossibleLocalModificationIfIdentical(const Reader::CalendarResource &remoteResource,
-                                                    KCalCore::Incidence::List *localModifications);
 
     QNetworkAccessManager* mNetworkManager;
     Settings *mSettings;
@@ -125,8 +123,6 @@ private:
 
     // these are used only in quick-sync mode.
     // delta detection and change data
-    QSet<QString> mPossibleLocalModification; // remoteUri fetched to
-                                              // check possible local modifications.
     KCalCore::Incidence::List mLocalAdditions;
     KCalCore::Incidence::List mLocalModifications;
     KCalCore::Incidence::List mLocalDeletions;
