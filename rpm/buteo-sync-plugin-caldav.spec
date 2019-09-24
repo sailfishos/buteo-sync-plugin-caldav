@@ -1,6 +1,6 @@
 Name:       buteo-sync-plugin-caldav
 Summary:    Syncs calendar data from CalDAV services
-Version:    0.1.52
+Version:    0.1.53
 Release:    1
 Group:      System/Libraries
 License:    LGPLv2
@@ -66,6 +66,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 /opt/tests/buteo/plugins/caldav/data/reader_xmltag.xml
 /opt/tests/buteo/plugins/caldav/data/reader_urldescription.xml
 /opt/tests/buteo/plugins/caldav/data/reader_relativealarm.xml
+/opt/tests/buteo/plugins/caldav/data/reader_cdata.xml
 
 %prep
 %setup -q -n %{name}-%{version}
