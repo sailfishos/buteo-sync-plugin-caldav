@@ -20,7 +20,7 @@ BuildRequires:  pkgconfig(buteosyncfw5)
 BuildRequires:  pkgconfig(accounts-qt5)
 BuildRequires:  pkgconfig(signon-oauth2plugin)
 Requires: buteo-syncfw-qt5-msyncd
-Requires: mkcal-qt5
+Requires: mkcal-qt5 >= 0.5.6
 
 %description
 A Buteo plugin which syncs calendar data from CalDAV services

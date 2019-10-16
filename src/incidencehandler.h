@@ -28,6 +28,7 @@
 #include <todo.h>
 #include <journal.h>
 #include <attendee.h>
+#include "reader.h"
 
 namespace KCalCore {
     class Person;
@@ -36,24 +37,25 @@ namespace KCalCore {
 class IncidenceHandler
 {
 public:
-    static bool copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b);
+    static QString toIcs(KCalCore::Incidence::Ptr incidence,
+                         KCalCore::Incidence::List instances = KCalCore::Incidence::List());
     static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
     static void prepareImportedIncidence(KCalCore::Incidence::Ptr incidence);
-    static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
 
 private:
     IncidenceHandler();
     ~IncidenceHandler();
 
-    static bool eventsEqual(const KCalCore::Event::Ptr &a, const KCalCore::Event::Ptr &b);
-    static bool todosEqual(const KCalCore::Todo::Ptr &a, const KCalCore::Todo::Ptr &b);
-    static bool journalsEqual(const KCalCore::Journal::Ptr &a, const KCalCore::Journal::Ptr &b);
-
     template <typename T>
     static bool pointerDataEqual(const QVector<QSharedPointer<T> > &vectorA, const QVector<QSharedPointer<T> > &vectorB);
 
     static void normalizePersonEmail(KCalCore::Person *p);
+
+    static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
+
+    friend class tst_NotebookSyncAgent;
+    friend class tst_IncidenceHandler;
 };
 
 #endif // INCIDENCEHANDLER_P_H

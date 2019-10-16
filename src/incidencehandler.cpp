@@ -29,6 +29,9 @@
 
 #include <LogMacros.h>
 
+#include <memorycalendar.h>
+#include <icalformat.h>
+
 #define PROP_DTEND_ADDED_USING_DTSTART "dtend-added-as-dtstart"
 
 #define COPY_IF_NOT_EQUAL(dest, src, get, set) \
@@ -86,201 +89,6 @@ bool IncidenceHandler::pointerDataEqual(const QVector<QSharedPointer<T> > &vecto
             return false;
         }
     }
-    return true;
-}
-
-static bool ruleDataEqual(const KCalCore::RecurrenceRule *a, const KCalCore::RecurrenceRule *b)
-{
-    if (*a == *b) {
-        return true;
-    }
-
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, recurrenceType(), "recurrenceType");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, duration(), "duration");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, startDt().dateTime(), "startDt");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, endDt().dateTime(), "endDt");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, frequency(), "frequency");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, allDay(), "allDay");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, isReadOnly(), "isReadOnly");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, bySeconds(), "bySeconds");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMinutes(), "byMinutes");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byHours(), "byHours");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays().count(), "byDays.count");
-    for (int i = 0; i < a->byDays().count(); i++) {
-        RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays()[i].day(), "byDays[i].day");
-        RETURN_FALSE_IF_NOT_EQUAL(a, b, byDays()[i].pos(), "byDays[i].pos");
-    }
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMonthDays(), "byMonthDays");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byYearDays(), "byYearDays");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byWeekNumbers(), "byWeekNumbers");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, byMonths(), "byMonths");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, bySetPos(), "bySetPos");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, weekStart(), "weekStart");
-    LOG_DEBUG("unknown difference in recurrence rules:" << a->rrule() << b->rrule());
-    return false;
-}
-
-static bool recurrenceDataEqual(const KCalCore::Recurrence *a, const KCalCore::Recurrence *b)
-{
-    if (*a == *b) {
-        return true;
-    }
-
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, startDateTime().dateTime(), "startDateTime");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, allDay(), "allDay");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, recurReadOnly(), "recurReadOnly");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, exDates(), "exDates");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, rDates(), "rDates");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, exDateTimes().count(), "exDateTimes.count");
-    for (int i = 0; i < a->exDateTimes().count(); i++) {
-        RETURN_FALSE_IF_NOT_EQUAL(a, b, exDateTimes()[i].dateTime(), "exDateTimes[i]");
-    }
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, rDateTimes().count(), "rDateTimes.count");
-    for (int i = 0; i < a->rDateTimes().count(); i++) {
-        RETURN_FALSE_IF_NOT_EQUAL(a, b, rDateTimes()[i].dateTime(), "rDateTimes[i]");
-    }
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, exRules().count(), "exRules.count");
-    for (int i = 0; i < a->exRules().count(); i++) {
-        if (!ruleDataEqual(a->exRules()[i], b->exRules()[i])) {
-            return false;
-        }
-    }
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, rRules().count(), "rRules.count");
-    for (int i = 0; i < a->rRules().count(); i++) {
-        if (!ruleDataEqual(a->rRules()[i], b->rRules()[i])) {
-            return false;
-        }
-    }
-    LOG_DEBUG("unknown difference in recurrences.");
-    return false;
-}
-
-// Checks whether a specific set of properties are equal.
-bool IncidenceHandler::copiedPropertiesAreEqual(const KCalCore::Incidence::Ptr &a, const KCalCore::Incidence::Ptr &b)
-{
-    if (!a || !b) {
-        qWarning() << "Invalid paramters! a:" << a << "b:" << b;
-        return false;
-    }
-
-    // Do not compare created() or lastModified() because we don't update these fields when
-    // an incidence is updated by copyIncidenceProperties(), so they are guaranteed to be unequal.
-    // Don't compare resources() for now because KCalCore may insert QStringList("") as the resources
-    // when in fact it should be QStringList(), which causes the comparison to fail.
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, type(), "type");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, duration(), "duration");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, hasDuration(), "hasDuration");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, isReadOnly(), "isReadOnly");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, comments(), "comments");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, contacts(), "contacts");
-    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, altDescription(), "altDescription");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, categories(), "categories");
-    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, customStatus(), "customStatus");
-    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, description(), "description");
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(!qFuzzyCompare(a->geoLatitude(), b->geoLatitude()), "geoLatitude", (QString("%1 != %2").arg(a->geoLatitude()).arg(b->geoLatitude())));
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(!qFuzzyCompare(a->geoLongitude(), b->geoLongitude()), "geoLongitude", (QString("%1 != %2").arg(a->geoLongitude()).arg(b->geoLongitude())));
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, hasGeo(), "hasGeo");
-    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, location(), "location");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, secrecy(), "secrecy");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, status(), "status");
-    RETURN_FALSE_IF_NOT_TRIMMED_EQUAL(a, b, summary(), "summary");
-
-    // check recurrence information. Note that we only need to check the recurrence rules for equality if they both recur.
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->recurs() != b->recurs(), "recurs", a->recurs() + " != " + b->recurs());
-    if (a->recurs() && !recurrenceDataEqual(a->recurrence(), b->recurrence())) {
-        return false;
-    }
-
-    // some special handling for dtStart() depending on whether it's an all-day event or not.
-    if (a->allDay() && b->allDay()) {
-        RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtStart().date() != b->dtStart().date(), "dtStart", (a->dtStart().toString() + " != " + b->dtStart().toString()));
-    } else {
-        RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtStart() != b->dtStart(), "dtStart", (a->dtStart().toString() + " != " + b->dtStart().toString()));
-    }
-
-    // Some servers insert a mailto: in the organizer email address, so ignore this when comparing organizers
-    KCalCore::Person personA(*a->organizer().data());
-    KCalCore::Person personB(*b->organizer().data());
-    normalizePersonEmail(&personA);
-    normalizePersonEmail(&personB);
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(personA != personB, "organizer", (personA.fullName() + " != " + personB.fullName()));
-
-    if (!pointerDataEqual(a->alarms(), b->alarms()))
-        return false;
-    if (!pointerDataEqual(a->attachments(), b->attachments()))
-        return false;
-
-    switch (a->type()) {
-    case KCalCore::IncidenceBase::TypeEvent:
-        if (!eventsEqual(a.staticCast<KCalCore::Event>(), b.staticCast<KCalCore::Event>())) {
-            return false;
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeTodo:
-        if (!todosEqual(a.staticCast<KCalCore::Todo>(), b.staticCast<KCalCore::Todo>())) {
-            return false;
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeJournal:
-        if (!journalsEqual(a.staticCast<KCalCore::Journal>(), b.staticCast<KCalCore::Journal>())) {
-            return false;
-        }
-        break;
-    case KCalCore::IncidenceBase::TypeFreeBusy:
-    case KCalCore::IncidenceBase::TypeUnknown:
-        break;
-    }
-    return true;
-}
-
-bool IncidenceHandler::eventsEqual(const KCalCore::Event::Ptr &a, const KCalCore::Event::Ptr &b)
-{
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dateEnd() != b->dateEnd(), "dateEnd", (a->dateEnd().toString() + " != " + b->dateEnd().toString()));
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, transparency(), "transparency");
-
-    // some special handling for dtEnd() depending on whether it's an all-day event or not.
-    if (a->allDay() && b->allDay()) {
-        RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtEnd().date() != b->dtEnd().date(), "dtEnd", (a->dtEnd().toString() + " != " + b->dtEnd().toString()));
-    } else {
-        RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtEnd() != b->dtEnd(), "dtEnd", (a->dtEnd().toString() + " != " + b->dtEnd().toString()));
-    }
-
-    // some special handling for isMultiday() depending on whether it's an all-day event or not.
-    if (a->allDay() && b->allDay()) {
-        // here we assume that both events are in "export form" (that is, exclusive DTEND)
-        if (a->dtEnd().date() != b->dtEnd().date()) {
-            LOG_WARNING("have a->dtStart()" << a->dtStart().toString() << ", a->dtEnd()" << a->dtEnd().toString());
-            LOG_WARNING("have b->dtStart()" << b->dtStart().toString() << ", b->dtEnd()" << b->dtEnd().toString());
-            LOG_WARNING("have a->isMultiDay()" << a->isMultiDay() << ", b->isMultiDay()" << b->isMultiDay());
-            return false;
-        }
-    } else {
-        RETURN_FALSE_IF_NOT_EQUAL(a, b, isMultiDay(), "multiday");
-    }
-
-    // Don't compare hasEndDate() as Event(Event*) does not initialize it based on the validity of
-    // dtEnd(), so it could be false when dtEnd() is valid. The dtEnd comparison above is sufficient.
-
-    return true;
-}
-
-bool IncidenceHandler::todosEqual(const KCalCore::Todo::Ptr &a, const KCalCore::Todo::Ptr &b)
-{
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, hasCompletedDate(), "hasCompletedDate");
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtRecurrence() != b->dtRecurrence(), "dtRecurrence", (a->dtRecurrence().toString() + " != " + b->dtRecurrence().toString()));
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, hasDueDate(), "hasDueDate");
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->dtDue() != b->dtDue(), "dtDue", (a->dtDue().toString() + " != " + b->dtDue().toString()));
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, hasStartDate(), "hasStartDate");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, isCompleted(), "isCompleted");
-    RETURN_FALSE_IF_NOT_EQUAL_CUSTOM(a->completed() != b->completed(), "completed", (a->completed().toString() + " != " + b->completed().toString()));
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, isOpenEnded(), "isOpenEnded");
-    RETURN_FALSE_IF_NOT_EQUAL(a, b, percentComplete(), "percentComplete");
-    return true;
-}
-
-bool IncidenceHandler::journalsEqual(const KCalCore::Journal::Ptr &, const KCalCore::Journal::Ptr &)
-{
-    // no journal-specific properties; it only uses the base incidence properties
     return true;
 }
 
@@ -423,101 +231,144 @@ void IncidenceHandler::prepareImportedIncidence(KCalCore::Incidence::Ptr inciden
         LOG_WARNING("unable to handle imported non-event incidence; skipping");
         return;
     }
-    KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
 
-    if (event->allDay()) {
-        KDateTime dtStart = event->dtStart();
-        KDateTime dtEnd = event->dtEnd();
+    switch (incidence->type()) {
+    case KCalCore::IncidenceBase::TypeEvent: {
+        KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
 
-        // calendar processing requires all-day events to have a dtEnd
-        if (!dtEnd.isValid()) {
-            LOG_DEBUG("Adding DTEND to" << incidence->uid() << "as" << dtStart.toString());
-            event->setCustomProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART, PROP_DTEND_ADDED_USING_DTSTART);
-            event->setDtEnd(dtStart);
+        if (event->allDay()) {
+            KDateTime dtStart = event->dtStart();
+            KDateTime dtEnd = event->dtEnd();
+
+            // calendar processing requires all-day events to have a dtEnd
+            if (!dtEnd.isValid()) {
+                LOG_DEBUG("Adding DTEND to" << incidence->uid() << "as" << dtStart.toString());
+                event->setCustomProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART, PROP_DTEND_ADDED_USING_DTSTART);
+                event->setDtEnd(dtStart);
+            }
+
+            // setting dtStart/End changes the allDay value, so ensure it is still set to true
+            event->setAllDay(true);
         }
-
-        // setting dtStart/End changes the allDay value, so ensure it is still set to true
-        event->setAllDay(true);
+        break;
     }
+    default:
+        break;
+    }
+}
+
+// A given incidence has been added or modified locally.
+// To upsync the change, we need to construct the .ics data to upload to server.
+// Since the incidence may be an occurrence or recurring series incidence,
+// we cannot simply convert the incidence to iCal data, but instead we have to
+// upsync an .ics containing the whole recurring series.
+QString IncidenceHandler::toIcs(KCalCore::Incidence::Ptr incidence,
+                                KCalCore::Incidence::List instances)
+{
+    KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
+
+    // create an in-memory calendar
+    // add to it the required incidences (ie, check if has recurrenceId -> load parent and all instances; etc)
+    // for each of those, we need to do the IncidenceToExport() modifications first
+    // then, export from that calendar to .ics file.
+    KCalCore::MemoryCalendar::Ptr memoryCalendar(new KCalCore::MemoryCalendar(KDateTime::UTC));
+    // store the base recurring event into the in-memory calendar
+    if (!memoryCalendar->addIncidence(exportableIncidence)) {
+        LOG_WARNING("Unable to add base series event to in-memory calendar for incidence:"
+                    << incidence->uid() << ":" << incidence->recurrenceId().toString());
+        return QString();
+    }
+    // now create the persistent occurrences in the in-memory calendar
+    Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+        // We cannot call dissociateSingleOccurrence() on the MemoryCalendar
+        // as that's an mKCal specific function.
+        // We cannot call dissociateOccurrence() because that function
+        // takes only a QDate instead of a KDateTime recurrenceId.
+        // Thus, we need to manually create an exception occurrence.
+        KCalCore::Incidence::Ptr exportableOccurrence(exportableIncidence->clone());
+        exportableOccurrence->setCreated(instance->created());
+        exportableOccurrence->setRevision(instance->revision());
+        exportableOccurrence->clearRecurrence();
+        exportableOccurrence->setRecurrenceId(instance->recurrenceId());
+        exportableOccurrence->setDtStart(instance->recurrenceId());
+
+        // add it, and then update it in-memory.
+        if (!memoryCalendar->addIncidence(exportableOccurrence)) {
+            LOG_WARNING("Unable to add this incidence to in-memory calendar for export:"
+                        << instance->uid() << instance->recurrenceId().toString());
+            return QString();
+        } else {
+            KCalCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
+            if (!reloadedOccurrence) {
+                LOG_WARNING("Unable to find this incidence within in-memory calendar for export:"
+                            << exportableIncidence->uid() << instance->recurrenceId().toString());
+                return QString();
+            }
+            reloadedOccurrence->startUpdates();
+            IncidenceHandler::copyIncidenceProperties(reloadedOccurrence, IncidenceHandler::incidenceToExport(instance));
+            reloadedOccurrence->endUpdates();
+        }
+    }
+
+    KCalCore::ICalFormat icalFormat;
+    return icalFormat.toString(memoryCalendar, QString(), false);
 }
 
 KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances)
 {
-    if (sourceIncidence->type() != KCalCore::IncidenceBase::TypeEvent) {
-        LOG_DEBUG("Incidence not an event; cannot create exportable version");
-        return sourceIncidence;
-    }
-
     KCalCore::Incidence::Ptr incidence = QSharedPointer<KCalCore::Incidence>(sourceIncidence->clone());
-    KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
 
     // check to see if the UID is of the special form: NBUID:NotebookUid:EventUid.  If so, trim it.
-    if (event->uid().startsWith(QStringLiteral("NBUID:"))) {
-        QString oldUid = event->uid();
+    if (incidence->uid().startsWith(QStringLiteral("NBUID:"))) {
+        QString oldUid = incidence->uid();
         QString trimmedUid = oldUid.mid(oldUid.indexOf(':', 6)+1); // remove NBUID:NotebookUid:
-        event->setUid(trimmedUid); // leaving just the EventUid.
-    }
-
-    bool eventIsAllDay = event->allDay();
-    if (eventIsAllDay) {
-        bool sendWithoutDtEnd = !event->customProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART).isEmpty()
-                && (event->dtStart() == event->dtEnd());
-        event->removeCustomProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART);
-
-        if (sendWithoutDtEnd) {
-            // A single-day all-day event was received without a DTEND, and it is still a single-day
-            // all-day event, so remove the DTEND before upsyncing.
-            LOG_DEBUG("Removing DTEND from" << incidence->uid());
-            event->setDtEnd(KDateTime());
-        } else {
-            KDateTime dt;
-            if (event->hasEndDate()) {
-                // Event::dtEnd() is inclusive, but DTEND in iCalendar format is exclusive.
-                dt = KDateTime(event->dtEnd().addDays(1).date(), KDateTime::Spec::ClockTime());
-                LOG_DEBUG("Adding +1 day to DTEND to make exclusive DTEND for" << incidence->uid() << ":" << dt.toString());
-            } else {
-                // No DTEND exists in event, but it's all day.  Set to DTSTART+1 to make exclusive DTEND.
-                dt = KDateTime(event->dtStart().addDays(1).date(), KDateTime::Spec::ClockTime());
-                LOG_DEBUG("Setting DTEND to DTSTART+1 for" << incidence->uid() << ":" << dt.toString());
-            }
-            dt.setDateOnly(true);
-            LOG_DEBUG("Stripping time from date-only DTEND:" << dt.toString());
-            event->setDtEnd(dt);
-        }
-    }
-
-    if (event->dtStart().isDateOnly()) {
-        KDateTime dt = KDateTime(event->dtStart().date(), KDateTime::Spec::ClockTime());
-        dt.setDateOnly(true);
-        event->setDtStart(dt);
-        LOG_DEBUG("Stripping time from date-only DTSTART:" << dt.toString());
-    }
-
-    // setting dtStart/End changes the allDay value, so ensure it is still set to true if needed.
-    if (eventIsAllDay) {
-        event->setAllDay(true);
+        incidence->setUid(trimmedUid); // leaving just the EventUid.
     }
 
     // remove any (obsolete) markers that tell us that the time was added by us
-    event->removeCustomProperty("buteo", "dtstart-date_only");
-    event->removeCustomProperty("buteo", "dtend-date_only");
+    incidence->removeCustomProperty("buteo", "dtstart-date_only");
+    incidence->removeCustomProperty("buteo", "dtend-date_only");
 
     // remove any URI or ETAG data we insert into the event for sync purposes.
-    event->removeCustomProperty("buteo", "uri");
-    event->removeCustomProperty("buteo", "etag");
-    const QStringList &comments(event->comments());
+    incidence->removeCustomProperty("buteo", "uri");
+    incidence->removeCustomProperty("buteo", "etag");
+    const QStringList &comments(incidence->comments());
     Q_FOREACH (const QString &comment, comments) {
         if (comment.startsWith("buteo:caldav:uri:") ||
             comment.startsWith("buteo:caldav:detached-and-synced") ||
             comment.startsWith("buteo:caldav:etag:")) {
             LOG_DEBUG("Discarding buteo-prefixed comment:" << comment);
-            event->removeComment(comment);
+            incidence->removeComment(comment);
+        }
+    }
+
+    // The default storage implementation applies the organizer as an attendee by default.
+    // Undo this as it turns the incidence into a scheduled event requiring acceptance/rejection/etc.
+    const KCalCore::Person::Ptr organizer = incidence->organizer();
+    if (organizer) {
+        Q_FOREACH (const KCalCore::Attendee::Ptr &attendee, incidence->attendees()) {
+            if (attendee->email() == organizer->email() && attendee->fullName() == organizer->fullName()) {
+                LOG_DEBUG("Discarding organizer as attendee" << attendee->fullName());
+                incidence->deleteAttendee(attendee);
+            } else {
+                LOG_DEBUG("Not discarding attendee:" << attendee->fullName() << attendee->email() << ": not organizer:" << organizer->fullName() << organizer->email());
+            }
+        }
+    }
+
+    // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
+    if (incidence->recurs()) {
+        Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+            KCalCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
+            exDateTimes.removeAll(instance->recurrenceId());
+            incidence->recurrence()->setExDateTimes(exDateTimes);
+            LOG_DEBUG("Discarding exdate:" << instance->recurrenceId().toString());
         }
     }
 
     // Icalformat from kcalcore converts second-type duration into day-type duration
     // whenever possible. We do the same to have consistent comparisons.
-    KCalCore::Alarm::List alarms = event->alarms();
+    KCalCore::Alarm::List alarms = incidence->alarms();
     Q_FOREACH (KCalCore::Alarm::Ptr alarm, alarms) {
         if (!alarm->hasTime()) {
             KCalCore::Duration offset(0);
@@ -535,29 +386,56 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
         }
     }
 
-    // The default storage implementation applies the organizer as an attendee by default.
-    // Undo this as it turns the incidence into a scheduled event requiring acceptance/rejection/etc.
-    const KCalCore::Person::Ptr organizer = event->organizer();
-    if (organizer) {
-        Q_FOREACH (const KCalCore::Attendee::Ptr &attendee, event->attendees()) {
-            if (attendee->email() == organizer->email() && attendee->fullName() == organizer->fullName()) {
-                LOG_DEBUG("Discarding organizer as attendee" << attendee->fullName());
-                event->deleteAttendee(attendee);
+    switch (incidence->type()) {
+    case KCalCore::IncidenceBase::TypeEvent: {
+        KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
+        bool eventIsAllDay = event->allDay();
+        if (eventIsAllDay) {
+            bool sendWithoutDtEnd = !event->customProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART).isEmpty()
+                && (event->dtStart() == event->dtEnd());
+            event->removeCustomProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART);
+
+            if (sendWithoutDtEnd) {
+                // A single-day all-day event was received without a DTEND, and it is still a single-day
+                // all-day event, so remove the DTEND before upsyncing.
+                LOG_DEBUG("Removing DTEND from" << incidence->uid());
+                event->setDtEnd(KDateTime());
             } else {
-                LOG_DEBUG("Not discarding attendee:" << attendee->fullName() << attendee->email() << ": not organizer:" << organizer->fullName() << organizer->email());
+                KDateTime dt;
+                if (event->hasEndDate()) {
+                    // Event::dtEnd() is inclusive, but DTEND in iCalendar format is exclusive.
+                    dt = KDateTime(event->dtEnd().addDays(1).date(), KDateTime::Spec::ClockTime());
+                    LOG_DEBUG("Adding +1 day to DTEND to make exclusive DTEND for" << incidence->uid() << ":" << dt.toString());
+                } else {
+                    // No DTEND exists in event, but it's all day.  Set to DTSTART+1 to make exclusive DTEND.
+                    dt = KDateTime(event->dtStart().addDays(1).date(), KDateTime::Spec::ClockTime());
+                    LOG_DEBUG("Setting DTEND to DTSTART+1 for" << incidence->uid() << ":" << dt.toString());
+                }
+                dt.setDateOnly(true);
+                LOG_DEBUG("Stripping time from date-only DTEND:" << dt.toString());
+                event->setDtEnd(dt);
             }
         }
-    }
 
-    // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
-    if (incidence->recurs()) {
-        Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
-            KCalCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
-            exDateTimes.removeAll(instance->recurrenceId());
-            incidence->recurrence()->setExDateTimes(exDateTimes);
-            LOG_DEBUG("Discarding exdate:" << instance->recurrenceId().toString());
+        if (event->dtStart().isDateOnly()) {
+            KDateTime dt = KDateTime(event->dtStart().date(), KDateTime::Spec::ClockTime());
+            dt.setDateOnly(true);
+            event->setDtStart(dt);
+            LOG_DEBUG("Stripping time from date-only DTSTART:" << dt.toString());
         }
+
+        // setting dtStart/End changes the allDay value, so ensure it is still set to true if needed.
+        if (eventIsAllDay) {
+            event->setAllDay(true);
+        }
+        break;
+    }
+    case KCalCore::IncidenceBase::TypeTodo:
+        break;
+    default:
+        LOG_DEBUG("Incidence type not supported; cannot create proper exportable version");
+        break;
     }
 
-    return event;
+    return incidence;
 }
