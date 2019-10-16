@@ -84,7 +84,8 @@ private slots:
 private:
     void sendReportRequest();
     void clearRequests();
-    void emitFinished(int minorErrorCode, const QString &message);
+    void emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
+                      const QString &message = QString());
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);

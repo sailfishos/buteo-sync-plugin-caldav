@@ -41,7 +41,7 @@ Request::Request(QNetworkAccessManager *manager,
     mSelfPointer = this;
 }
 
-int Request::errorCode() const
+Buteo::SyncResults::MinorCode Request::errorCode() const
 {
     return mMinorCode;
 }
@@ -72,7 +72,7 @@ void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
         LOG_DEBUG("The" << command() << "operation requested on the remote content is not permitted");
         finishedWithSuccess();
     } else {
-        int errorCode = Buteo::SyncResults::INTERNAL_ERROR;
+        Buteo::SyncResults::MinorCode errorCode = Buteo::SyncResults::INTERNAL_ERROR;
         if (error == QNetworkReply::SslHandshakeFailedError || error == QNetworkReply::ContentAccessDenied ||
                 error == QNetworkReply::AuthenticationRequiredError) {
             errorCode = Buteo::SyncResults::AUTHENTICATION_FAILURE;
@@ -100,7 +100,7 @@ void Request::slotSslErrors(QList<QSslError> errors)
     }
 }
 
-void Request::finishedWithError(int minorCode, const QString &errorString)
+void Request::finishedWithError(Buteo::SyncResults::MinorCode minorCode, const QString &errorString)
 {
     if (minorCode != Buteo::SyncResults::NO_ERROR) {
         LOG_WARNING(REQUEST_TYPE << "request failed." << minorCode << errorString);

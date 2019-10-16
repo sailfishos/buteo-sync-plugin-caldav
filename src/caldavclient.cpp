@@ -124,9 +124,10 @@ void CalDavClient::abortSync(Sync::SyncStatus aStatus)
 
 void CalDavClient::abort(Sync::SyncStatus status)
 {
+    Q_UNUSED(status);
     FUNCTION_CALL_TRACE;
     mSyncAborted = true;
-    syncFinished(status, QStringLiteral("Sync aborted"));
+    syncFinished(Buteo::SyncResults::ABORTED, QLatin1String("Sync aborted"));
 }
 
 bool CalDavClient::cleanUp()
@@ -504,7 +505,8 @@ bool CalDavClient::initConfig()
     return true;
 }
 
-void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
+void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
+                                const QString &message)
 {
     FUNCTION_CALL_TRACE;
 
@@ -540,7 +542,8 @@ void CalDavClient::syncFinished(int minorErrorCode, const QString &message)
 
 void CalDavClient::authenticationError()
 {
-    syncFinished(Buteo::SyncResults::AUTHENTICATION_FAILURE, QStringLiteral("Authentication failed"));
+    syncFinished(Buteo::SyncResults::AUTHENTICATION_FAILURE,
+                 QLatin1String("Authentication failed"));
 }
 
 Buteo::SyncProfile::SyncDirection CalDavClient::syncDirection()
@@ -588,7 +591,8 @@ void CalDavClient::start()
 
     QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
     if (allCalendarInfo.isEmpty()) {
-        syncFinished(Buteo::SyncResults::NO_ERROR, "No calendars for this account");
+        syncFinished(Buteo::SyncResults::NO_ERROR,
+                     QLatin1String("No calendars for this account"));
         return;
     }
     PropFind *calendarRequest = new PropFind(mNAManager, &mSettings, this);
@@ -612,13 +616,15 @@ void CalDavClient::syncCalendars()
 
     QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
     if (allCalendarInfo.isEmpty()) {
-        syncFinished(Buteo::SyncResults::NO_ERROR, "No calendars for this account");
+        syncFinished(Buteo::SyncResults::NO_ERROR,
+                     QLatin1String("No calendars for this account"));
         return;
     }
     mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(KDateTime::Spec::UTC()));
     mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
     if (!mStorage || !mStorage->open()) {
-        syncFinished(Buteo::SyncResults::DATABASE_FAILURE, "unable to open calendar storage");
+        syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                     QLatin1String("unable to open calendar storage"));
         return;
     }
 
@@ -642,7 +648,7 @@ void CalDavClient::syncCalendars()
                                         getPluginName(),
                                         getProfileName())) {
             syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                         "unable to load calendar storage");
+                         QLatin1String("unable to load calendar storage"));
             return;
         }
         connect(agent, SIGNAL(finished(int,QString)),
@@ -652,7 +658,8 @@ void CalDavClient::syncCalendars()
         agent->startSync(fromDateTime, toDateTime);
     }
     if (mNotebookSyncAgents.isEmpty()) {
-        syncFinished(Buteo::SyncResults::INTERNAL_ERROR, "Could not add or find existing notebooks for this account");
+        syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                     QLatin1String("Could not add or find existing notebooks for this account"));
     }
 }
 
@@ -681,13 +688,13 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
     if (!mStorage->save()) {
         LOG_WARNING("Unable to save calendar storage after etag changes!");
         syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                     QStringLiteral("unable to save upstream etags"));
+                     QLatin1String("unable to save upstream etags"));
         return;
     }
 
     if (errorCode != Buteo::SyncResults::NO_ERROR) {
         LOG_WARNING("Aborting! Notebook synchronisation failed:" << errorCode << ":" << errorString);
-        syncFinished(errorCode, errorString);
+        syncFinished(static_cast<Buteo::SyncResults::MinorCode>(errorCode), errorString);
         return;
     }
     bool finished = true;
@@ -702,7 +709,8 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
-                syncFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("unable to write notebook changes"));
+                syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                             QLatin1String("unable to write notebook changes"));
                 return;
             }
             if (mNotebookSyncAgents[i]->isDeleted()) {
@@ -715,10 +723,11 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         if (mStorage->save()) {
             removeCalendars(deletedNotebooks);
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
-            syncFinished(errorCode, errorString); // NO_ERROR, QString()
+            syncFinished(Buteo::SyncResults::NO_ERROR);
         } else {
             LOG_WARNING("Unable to save calendar storage after writing notebook changes!");
-            syncFinished(Buteo::SyncResults::DATABASE_FAILURE, QStringLiteral("unable to save calendar storage"));
+            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                         QLatin1String("unable to save calendar storage"));
         }
     }
 }

@@ -347,7 +347,7 @@ void NotebookSyncAgent::reportRequestFinished()
         // In this case, we just skip sync of this calendar, as it was deleted.
         mNotebookNeedsDeletion = true;
         LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, skipping sync locally.");
-        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     }
 
@@ -371,7 +371,8 @@ void NotebookSyncAgent::processETags()
                    report->receivedCalendarResources()) {
             if (!resource.href.contains(mRemoteCalendarPath)) {
                 LOG_WARNING("href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath);
-                emitFinished(Buteo::SyncResults::INTERNAL_ERROR, "unable to calculate remote resource uids");
+                emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                             QLatin1String("unable to calculate remote resource uids"));
                 return;
             }
             remoteHrefUriToEtags.insert(resource.href, resource.etag);
@@ -386,7 +387,8 @@ void NotebookSyncAgent::processETags()
                             &mRemoteModifications,
                             &mRemoteDeletions)) {
             LOG_WARNING("unable to calculate the sync delta for:" << mRemoteCalendarPath);
-            emitFinished(Buteo::SyncResults::INTERNAL_ERROR, "unable to calculate sync delta");
+            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         QLatin1String("unable to calculate sync delta"));
             return;
         }
         mResults = Buteo::TargetResults
@@ -430,7 +432,7 @@ void NotebookSyncAgent::processETags()
         // In this situation, we need to delete the local calendar.
         mNotebookNeedsDeletion = true;
         LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, marking for deletion locally:" << mNotebook->name());
-        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     }
 
@@ -447,7 +449,7 @@ void NotebookSyncAgent::sendLocalChanges()
         // no local changes to upsync.
         // we're finished syncing.
         LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     } else {
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
@@ -496,7 +498,7 @@ void NotebookSyncAgent::sendLocalChanges()
         QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
         if (href.isEmpty()) {
             emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         "Unable to determine remote uri for incidence:" + toUpload[i]->uid());
+                         QString::fromLatin1("Unable to determine remote uri for incidence: %1").arg(toUpload[i]->uid()));
             return;
         }
         if (mSentUids.contains(href)) {
@@ -529,7 +531,7 @@ void NotebookSyncAgent::sendLocalChanges()
 
     if (!localChangeRequestStarted) {
         LOG_WARNING("local change upsync skipped due to bad data - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        emitFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 
@@ -540,7 +542,8 @@ void NotebookSyncAgent::nonReportRequestFinished()
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
         LOG_WARNING("Report request finished but request is invalid, aborting sync for calendar:" << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::INTERNAL_ERROR, QStringLiteral("Invalid request object"));
+        emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                     QLatin1String("Invalid request object"));
         return;
     }
     mRequests.remove(request);
@@ -582,7 +585,7 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
         report->multiGetEtags(mRemoteCalendarPath, mSentUids.keys());
         return;
     } else {
-        emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
+        emitFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 
@@ -611,7 +614,7 @@ void NotebookSyncAgent::additionalReportRequestFinished()
             }
         }
         LOG_DEBUG("Remains" << mSentUids.count() << "uris not updated.");
-        emitFinished(Buteo::SyncResults::NO_ERROR, QStringLiteral("Finished requests for %1").arg(mNotebook->account()));
+        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     }
 
@@ -671,7 +674,8 @@ Buteo::TargetResults NotebookSyncAgent::result() const
     return mResults;
 }
 
-void NotebookSyncAgent::emitFinished(int minorErrorCode, const QString &message)
+void NotebookSyncAgent::emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
+                                     const QString &message)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -729,7 +733,7 @@ bool NotebookSyncAgent::calculateDelta(
     KCalCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
         LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid());
-        emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString("Unable to load storage incidences for notebook: %1").arg(mNotebook->uid()));
+        emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString::fromLatin1("Unable to load storage incidences for notebook: %1").arg(mNotebook->uid()));
         return false;
     }
 
