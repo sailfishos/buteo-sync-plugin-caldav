@@ -70,7 +70,6 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     , mAuth(0)
     , mCalendar(0)
     , mStorage(0)
-    , mSyncAborted(false)
     , mAccountId(0)
 {
     FUNCTION_CALL_TRACE;
@@ -118,15 +117,13 @@ bool CalDavClient::startSync()
 
 void CalDavClient::abortSync(Sync::SyncStatus aStatus)
 {
+    Q_UNUSED(aStatus);
     FUNCTION_CALL_TRACE;
-    abort(aStatus);
-}
-
-void CalDavClient::abort(Sync::SyncStatus status)
-{
-    Q_UNUSED(status);
-    FUNCTION_CALL_TRACE;
-    mSyncAborted = true;
+    for (NotebookSyncAgent *agent: mNotebookSyncAgents) {
+        disconnect(agent, &NotebookSyncAgent::finished,
+                   this, &CalDavClient::notebookSyncFinished);
+        agent->abort();
+    }
     syncFinished(Buteo::SyncResults::ABORTED, QLatin1String("Sync aborted"));
 }
 
@@ -651,8 +648,8 @@ void CalDavClient::syncCalendars()
                          QLatin1String("unable to load calendar storage"));
             return;
         }
-        connect(agent, SIGNAL(finished(int,QString)),
-                this, SLOT(notebookSyncFinished(int,QString)));
+        connect(agent, &NotebookSyncAgent::finished,
+                this, &CalDavClient::notebookSyncFinished);
         mNotebookSyncAgents.append(agent);
 
         agent->startSync(fromDateTime, toDateTime);
@@ -704,7 +701,7 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
             break;
         }
     }
-    if (finished && !mSyncAborted) {
+    if (finished) {
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {

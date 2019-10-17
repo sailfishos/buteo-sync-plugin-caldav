@@ -143,7 +143,6 @@ private Q_SLOTS:
     void notebookSyncFinished(int errorCode, const QString &errorString);
 
 private:
-    void abort(Sync::SyncStatus aStatus = Sync::SYNC_ABORTED);
     bool initConfig();
     void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
@@ -173,7 +172,6 @@ private:
     Buteo::SyncProfile::SyncDirection mSyncDirection;
     Buteo::SyncProfile::ConflictResolutionPolicy mConflictResPolicy;
     Settings                    mSettings;
-    bool                        mSyncAborted;
     int                         mAccountId;
 };
 
