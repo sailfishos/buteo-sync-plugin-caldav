@@ -123,8 +123,8 @@ void AuthHandler::sessionResponse(const SessionData &sessionData)
     FUNCTION_CALL_TRACE;
 
     if (mMethod.compare("password", Qt::CaseInsensitive) == 0) {
-        QStringList propertyList = sessionData.propertyNames();
-        Q_FOREACH (const QString &propertyName, propertyList) {
+        const QStringList propertyList = sessionData.propertyNames();
+        for (const QString &propertyName : propertyList) {
             if (propertyName.compare("username", Qt::CaseInsensitive) == 0) {
                 mUsername = sessionData.getProperty( propertyName ).toString();
             } else if (propertyName.compare("secret", Qt::CaseInsensitive) == 0) {

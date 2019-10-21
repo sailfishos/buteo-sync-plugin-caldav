@@ -142,28 +142,32 @@ bool Request::wasDeleted() const
 
 void Request::debugRequest(const QNetworkRequest &request, const QByteArray &data)
 {
-    Q_FOREACH (QString line, debuggingString(request, data).split('\n', QString::SkipEmptyParts)) {
+    const QStringList lines = debuggingString(request, data).split('\n', QString::SkipEmptyParts);
+    for (QString line : lines) {
         LOG_PROTOCOL(line.replace('\r', ' '));
     }
 }
 
 void Request::debugRequest(const QNetworkRequest &request, const QString &data)
 {
-    Q_FOREACH (QString line, debuggingString(request, data.toUtf8()).split('\n', QString::SkipEmptyParts)) {
+    const QStringList lines = debuggingString(request, data.toUtf8()).split('\n', QString::SkipEmptyParts);
+    for (QString line : lines) {
         LOG_PROTOCOL(line.replace('\r', ' '));
     }
 }
 
 void Request::debugReply(const QNetworkReply &reply, const QByteArray &data)
 {
-    Q_FOREACH (QString line, debuggingString(reply, data).split('\n', QString::SkipEmptyParts)) {
+    const QStringList lines = debuggingString(reply, data).split('\n', QString::SkipEmptyParts);
+    for (QString line : lines) {
         LOG_PROTOCOL(line.replace('\r', ' '));
     }
 }
 
 void Request::debugReplyAndReadAll(QNetworkReply *reply)
 {
-    Q_FOREACH (QString line, debuggingString(*reply, reply->readAll()).split('\n', QString::SkipEmptyParts)) {
+    const QStringList lines = debuggingString(*reply, reply->readAll()).split('\n', QString::SkipEmptyParts);
+    for (QString line : lines) {
         LOG_PROTOCOL(line.replace('\r', ' '));
     }
 }
@@ -173,7 +177,7 @@ QString Request::debuggingString(const QNetworkRequest &request, const QByteArra
     QStringList text;
     text += "---------------------------------------------------------------------";
     const QList<QByteArray> &rawHeaderList = request.rawHeaderList();
-    Q_FOREACH (const QByteArray &rawHeader, rawHeaderList) {
+    for (const QByteArray &rawHeader : rawHeaderList) {
         text += rawHeader + " : " + request.rawHeader(rawHeader);
     }
     QUrl censoredUrl = request.url();
@@ -190,10 +194,10 @@ QString Request::debuggingString(const QNetworkReply &reply, const QByteArray &d
     QStringList text;
     text += "---------------------------------------------------------------------";
     text += REQUEST_TYPE + " response status code: " + reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toString();
-    QList<QNetworkReply::RawHeaderPair> headers = reply.rawHeaderPairs();
+    const QList<QNetworkReply::RawHeaderPair> headers = reply.rawHeaderPairs();
     text += REQUEST_TYPE + " response headers:";
-    for (int i=0; i<headers.count(); i++) {
-        text += "\t" + headers[i].first + " : " + headers[i].second;
+    for (const QNetworkReply::RawHeaderPair header : headers) {
+        text += "\t" + header.first + " : " + header.second;
     }
     if (!data.isEmpty()) {
         text += REQUEST_TYPE + " response data:" + data;

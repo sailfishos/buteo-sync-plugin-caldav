@@ -90,7 +90,7 @@ private:
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
-    bool deleteIncidences(KCalCore::Incidence::List deletedIncidences);
+    bool deleteIncidences(const KCalCore::Incidence::List deletedIncidences);
     void updateIncidence(KCalCore::Incidence::Ptr incidence,
                          KCalCore::Incidence::Ptr storedIncidence);
     bool addIncidence(KCalCore::Incidence::Ptr incidence);

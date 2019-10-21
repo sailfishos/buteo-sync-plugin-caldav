@@ -133,7 +133,7 @@ void Report::sendMultiQuery(const QString &remoteCalendarPath, const QStringList
         requestData += "<c:calendar-data />";
     }
     requestData += "</d:prop>";
-    Q_FOREACH (const QString &eventHref , eventHrefList) {
+    for (const QString &eventHref : eventHrefList) {
         requestData.append("<d:href>");
         requestData.append(eventHref.toUtf8());
         requestData.append("</d:href>");

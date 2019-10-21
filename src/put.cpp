@@ -107,8 +107,8 @@ void Put::requestFinished()
     const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
     if (reply->error() != QNetworkReply::ContentOperationNotPermittedError) {
         // Server may update the etag as soon as the modification is received and send back a new etag
-        Q_FOREACH (const QNetworkReply::RawHeaderPair &header, reply->rawHeaderPairs()) {
-            if (header.first.toLower() == QStringLiteral("etag")) {
+        for (const QNetworkReply::RawHeaderPair &header : reply->rawHeaderPairs()) {
+            if (header.first.toLower() == QByteArray("etag")) {
                 mUpdatedETags.insert(uri, header.second);
             }
         }

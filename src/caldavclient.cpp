@@ -163,10 +163,10 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalen
     if (storage) {
         QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
         QString accountIdStr = QString::number(accountId);
-        mKCal::Notebook::List notebookList = storage->notebooks();
+        const mKCal::Notebook::List notebookList = storage->notebooks();
         LOG_DEBUG("Total Number of Notebooks in device = " << notebookList.count());
         int deletedCount = 0;
-        Q_FOREACH (mKCal::Notebook::Ptr notebook, notebookList) {
+        for (mKCal::Notebook::Ptr notebook : notebookList) {
             if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
                 if (storage->deleteNotebook(notebook)) {
                     deletedCount++;
@@ -201,8 +201,8 @@ bool CalDavClient::cleanSyncRequired(int accountId)
         LOG_WARNING("Deleting caldav notebooks associated with nonexistent accounts due to clean sync");
         // a) find out which accounts are associated with each of our notebooks.
         QList<int> notebookAccountIds;
-        mKCal::Notebook::List allNotebooks = mStorage->notebooks();
-        Q_FOREACH (mKCal::Notebook::Ptr nb, allNotebooks) {
+        const mKCal::Notebook::List allNotebooks = mStorage->notebooks();
+        for (mKCal::Notebook::Ptr nb : allNotebooks) {
             QString nbAccount = nb->account();
             if (!nbAccount.isEmpty() && nb->pluginName().contains(QStringLiteral("caldav"))) {
                 // caldav notebook->account() values used to be like: "55-/user/calendars/someCalendar"
@@ -225,7 +225,7 @@ bool CalDavClient::cleanSyncRequired(int accountId)
         }
         // b) find out if any of those accounts don't exist - if not,
         Accounts::AccountIdList accountIdList = mManager->accountList();
-        Q_FOREACH (int notebookAccountId, notebookAccountIds) {
+        for (int notebookAccountId : const_cast<const QList<int>&>(notebookAccountIds)) {
             if (!accountIdList.contains(notebookAccountId)) {
                 LOG_WARNING("purging notebooks for deleted caldav account" << notebookAccountId);
                 deleteNotebooksForAccount(notebookAccountId, mCalendar, mStorage);
@@ -276,7 +276,8 @@ static Accounts::Account* getAccountForCalendars(Accounts::Manager *manager,
         return NULL;
     }
     Accounts::Service calendarService;
-    Q_FOREACH (const Accounts::Service &currService, account->services("caldav")) {
+    const Accounts::ServiceList caldavServices = account->services("caldav");
+    for (const Accounts::Service &currService : caldavServices) {
         account->selectService(currService);
         if (!account->value("calendars").toStringList().isEmpty()) {
             calendarService = currService;
@@ -611,7 +612,7 @@ void CalDavClient::syncCalendars()
         LOG_WARNING("Unable to list calendars from server.");
     }
 
-    QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
+    const QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
     if (allCalendarInfo.isEmpty()) {
         syncFinished(Buteo::SyncResults::NO_ERROR,
                      QLatin1String("No calendars for this account"));
@@ -634,7 +635,7 @@ void CalDavClient::syncCalendars()
     // for each calendar path we need to sync:
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
-    Q_FOREACH (const Settings::CalendarInfo &calendarInfo, allCalendarInfo) {
+    for (const Settings::CalendarInfo &calendarInfo : allCalendarInfo) {
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
             (mCalendar, mStorage, mNAManager, &mSettings,
@@ -735,7 +736,8 @@ void CalDavClient::setCredentialsNeedUpdate(int accountId)
 {
     Accounts::Account *account = mManager->account(accountId);
     if (account) {
-        Q_FOREACH (const Accounts::Service &currService, account->services()) {
+        const Accounts::ServiceList services = account->services();
+        for (const Accounts::Service &currService : services) {
             account->selectService(currService);
             if (!account->value("calendars").toStringList().isEmpty()) {
                 account->setValue(QStringLiteral("CredentialsNeedUpdate"), QVariant::fromValue<bool>(true));

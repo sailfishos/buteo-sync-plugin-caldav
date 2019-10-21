@@ -37,8 +37,8 @@ namespace KCalCore {
 class IncidenceHandler
 {
 public:
-    static QString toIcs(KCalCore::Incidence::Ptr incidence,
-                         KCalCore::Incidence::List instances = KCalCore::Incidence::List());
+    static QString toIcs(const KCalCore::Incidence::Ptr incidence,
+                         const KCalCore::Incidence::List instances = KCalCore::Incidence::List());
     static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
     static void prepareImportedIncidence(KCalCore::Incidence::Ptr incidence);

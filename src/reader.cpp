@@ -238,13 +238,13 @@ void Reader::readResponse()
             }
         }
         if (parsed) {
-            KCalCore::Incidence::List incidences = cal->incidences();
+            const KCalCore::Incidence::List incidences = cal->incidences();
             LOG_DEBUG("iCal data contains" << incidences.count() << " incidences");
             if (incidences.count()) {
                 QString uid = incidences.first()->uid();
                 // In case of more than one incidence, it contains some
                 // recurring event information, with exception / RECURRENCE-ID defined.
-                Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, incidences) {
+                for (const KCalCore::Incidence::Ptr &incidence : incidences) {
                     if (incidence->uid() != uid) {
                         LOG_WARNING("iCal data contains invalid incidences with conflicting uids");
                         uid.clear();
@@ -252,7 +252,7 @@ void Reader::readResponse()
                     }
                 }
                 if (!uid.isEmpty()) {
-                    Q_FOREACH (const KCalCore::Incidence::Ptr &incidence, incidences) {
+                    for (const KCalCore::Incidence::Ptr &incidence : incidences) {
                         if (incidence->type() == KCalCore::IncidenceBase::TypeEvent
                             || incidence->type() == KCalCore::IncidenceBase::TypeTodo)
                             resource.incidences.append(incidence);
