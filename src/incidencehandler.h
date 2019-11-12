@@ -41,8 +41,6 @@ public:
                          const KCalCore::Incidence::List instances = KCalCore::Incidence::List());
     static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
-    static void prepareImportedIncidence(KCalCore::Incidence::Ptr incidence);
-
 private:
     IncidenceHandler();
     ~IncidenceHandler();

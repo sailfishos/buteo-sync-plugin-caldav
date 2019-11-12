@@ -1127,7 +1127,6 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             if (!resource.incidences[i]->hasRecurrenceId()) {
                 parentIndex = i;
             }
-            IncidenceHandler::prepareImportedIncidence(resource.incidences[i]);
             updateIncidenceHrefEtag(resource.incidences[i], resource.href, resource.etag);
         }
 

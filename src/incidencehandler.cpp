@@ -230,38 +230,6 @@ void IncidenceHandler::copyIncidenceProperties(KCalCore::Incidence::Ptr dest, co
     }
 }
 
-void IncidenceHandler::prepareImportedIncidence(KCalCore::Incidence::Ptr incidence)
-{
-    if (incidence->type() != KCalCore::IncidenceBase::TypeEvent) {
-        LOG_WARNING("unable to handle imported non-event incidence; skipping");
-        return;
-    }
-
-    switch (incidence->type()) {
-    case KCalCore::IncidenceBase::TypeEvent: {
-        KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
-
-        if (event->allDay()) {
-            KDateTime dtStart = event->dtStart();
-            KDateTime dtEnd = event->dtEnd();
-
-            // calendar processing requires all-day events to have a dtEnd
-            if (!dtEnd.isValid()) {
-                LOG_DEBUG("Adding DTEND to" << incidence->uid() << "as" << dtStart.toString());
-                event->setCustomProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART, PROP_DTEND_ADDED_USING_DTSTART);
-                event->setDtEnd(dtStart);
-            }
-
-            // setting dtStart/End changes the allDay value, so ensure it is still set to true
-            event->setAllDay(true);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-}
-
 // A given incidence has been added or modified locally.
 // To upsync the change, we need to construct the .ics data to upload to server.
 // Since the incidence may be an occurrence or recurring series incidence,
