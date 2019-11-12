@@ -45,7 +45,7 @@ public:
                      QObject *parent = 0);
 
     QString command() const;
-    int errorCode() const;
+    Buteo::SyncResults::MinorCode errorCode() const;
     QString errorString() const;
     QNetworkReply::NetworkError networkError() const;
 
@@ -61,7 +61,7 @@ protected:
     bool wasDeleted() const;
 
     void finishedWithSuccess();
-    void finishedWithError(int minorCode, const QString &errorString);
+    void finishedWithError(Buteo::SyncResults::MinorCode minorCode, const QString &errorString);
     void finishedWithInternalError(const QString &errorString = QString());
     void finishedWithReplyResult(QNetworkReply::NetworkError error);
 
@@ -78,7 +78,7 @@ protected:
     Settings* mSettings;
     QPointer<Request> mSelfPointer;
     QNetworkReply::NetworkError mNetworkError;
-    int mMinorCode;
+    Buteo::SyncResults::MinorCode mMinorCode;
     QString mErrorString;
 };
 

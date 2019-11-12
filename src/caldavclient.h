@@ -143,10 +143,9 @@ private Q_SLOTS:
     void notebookSyncFinished(int errorCode, const QString &errorString);
 
 private:
-    void abort(Sync::SyncStatus aStatus = Sync::SYNC_ABORTED);
     bool initConfig();
     void closeConfig();
-    void syncFinished(int minorErrorCode, const QString &message);
+    void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
     void clearAgents();
     bool deleteNotebook(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage, mKCal::Notebook::Ptr notebook);
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
@@ -173,7 +172,6 @@ private:
     Buteo::SyncProfile::SyncDirection mSyncDirection;
     Buteo::SyncProfile::ConflictResolutionPolicy mConflictResPolicy;
     Settings                    mSettings;
-    bool                        mSyncAborted;
     int                         mAccountId;
 };
 

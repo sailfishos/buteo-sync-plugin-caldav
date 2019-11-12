@@ -30,6 +30,8 @@
 
 #include <QDateTime>
 
+#include <SyncResults.h>
+
 class QNetworkAccessManager;
 class Request;
 class Settings;
@@ -63,6 +65,7 @@ public:
 
     void abort();
     bool applyRemoteChanges();
+    Buteo::TargetResults result() const;
     void finalize();
 
     bool isFinished() const;
@@ -81,7 +84,8 @@ private slots:
 private:
     void sendReportRequest();
     void clearRequests();
-    void emitFinished(int minorErrorCode, const QString &message);
+    void emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
+                      const QString &message = QString());
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
@@ -120,6 +124,7 @@ private:
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
     bool mFinished;
+    Buteo::TargetResults mResults;
 
     // these are used only in quick-sync mode.
     // delta detection and change data
