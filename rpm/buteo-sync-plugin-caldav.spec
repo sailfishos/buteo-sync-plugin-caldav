@@ -34,12 +34,14 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 
 %files
 %defattr(-,root,root,-)
-#out-of-process-plugin
-/usr/lib/buteo-plugins-qt5/oopp/caldav-client
-#in-process-plugin
-#/usr/lib/buteo-plugins-qt5/libcaldav-client.so
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
+#out-of-process-plugin
+%{_libdir}/buteo-plugins-qt5/oopp/caldav-client
+#in-process-plugin
+#%{_libdir}/buteo-plugins-qt5/libcaldav-client.so
+#mkcal invitation plugin
+%{_libdir}/mkcalplugins/libcaldavinvitationplugin.so
 
 %files tests
 %defattr(-,root,root,-)
