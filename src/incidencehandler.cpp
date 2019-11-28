@@ -161,20 +161,23 @@ void IncidenceHandler::copyIncidenceProperties(KCalCore::Incidence::Ptr dest, co
 
     if (!pointerDataEqual(src->attendees(), dest->attendees())) {
         dest->clearAttendees();
-        Q_FOREACH (const KCalCore::Attendee::Ptr &attendee, src->attendees()) {
+        const KCalCore::Attendee::List attendees = src->attendees();
+        for (const KCalCore::Attendee::Ptr &attendee : attendees) {
             dest->addAttendee(attendee);
         }
     }
 
     if (src->comments() != dest->comments()) {
         dest->clearComments();
-        Q_FOREACH (const QString &comment, src->comments()) {
+        const QStringList comments = src->comments();
+        for (const QString &comment : comments) {
             dest->addComment(comment);
         }
     }
     if (src->contacts() != dest->contacts()) {
         dest->clearContacts();
-        Q_FOREACH (const QString &contact, src->contacts()) {
+        const QStringList contacts = src->contacts();
+        for (const QString &contact : contacts) {
             dest->addContact(contact);
         }
     }
@@ -195,14 +198,16 @@ void IncidenceHandler::copyIncidenceProperties(KCalCore::Incidence::Ptr dest, co
 
     if (!pointerDataEqual(src->alarms(), dest->alarms())) {
         dest->clearAlarms();
-        Q_FOREACH (const KCalCore::Alarm::Ptr &alarm, src->alarms()) {
+        const KCalCore::Alarm::List alarms = src->alarms();
+        for (const KCalCore::Alarm::Ptr &alarm : alarms) {
             dest->addAlarm(alarm);
         }
     }
 
     if (!pointerDataEqual(src->attachments(), dest->attachments())) {
         dest->clearAttachments();
-        Q_FOREACH (const KCalCore::Attachment::Ptr &attachment, src->attachments()) {
+        const KCalCore::Attachment::List attachments = src->attachments();
+        for (const KCalCore::Attachment::Ptr &attachment : attachments) {
             dest->addAttachment(attachment);
         }
     }
@@ -262,8 +267,8 @@ void IncidenceHandler::prepareImportedIncidence(KCalCore::Incidence::Ptr inciden
 // Since the incidence may be an occurrence or recurring series incidence,
 // we cannot simply convert the incidence to iCal data, but instead we have to
 // upsync an .ics containing the whole recurring series.
-QString IncidenceHandler::toIcs(KCalCore::Incidence::Ptr incidence,
-                                KCalCore::Incidence::List instances)
+QString IncidenceHandler::toIcs(const KCalCore::Incidence::Ptr incidence,
+                                const KCalCore::Incidence::List instances)
 {
     KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
 
@@ -279,7 +284,7 @@ QString IncidenceHandler::toIcs(KCalCore::Incidence::Ptr incidence,
         return QString();
     }
     // now create the persistent occurrences in the in-memory calendar
-    Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+    for (KCalCore::Incidence::Ptr instance : instances) {
         // We cannot call dissociateSingleOccurrence() on the MemoryCalendar
         // as that's an mKCal specific function.
         // We cannot call dissociateOccurrence() because that function
@@ -333,7 +338,7 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
     incidence->removeCustomProperty("buteo", "uri");
     incidence->removeCustomProperty("buteo", "etag");
     const QStringList &comments(incidence->comments());
-    Q_FOREACH (const QString &comment, comments) {
+    for (const QString &comment : comments) {
         if (comment.startsWith("buteo:caldav:uri:") ||
             comment.startsWith("buteo:caldav:detached-and-synced") ||
             comment.startsWith("buteo:caldav:etag:")) {
@@ -346,7 +351,8 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
     // Undo this as it turns the incidence into a scheduled event requiring acceptance/rejection/etc.
     const KCalCore::Person::Ptr organizer = incidence->organizer();
     if (organizer) {
-        Q_FOREACH (const KCalCore::Attendee::Ptr &attendee, incidence->attendees()) {
+        const KCalCore::Attendee::List attendees = incidence->attendees();
+        for (const KCalCore::Attendee::Ptr &attendee : attendees) {
             if (attendee->email() == organizer->email() && attendee->fullName() == organizer->fullName()) {
                 LOG_DEBUG("Discarding organizer as attendee" << attendee->fullName());
                 incidence->deleteAttendee(attendee);
@@ -358,7 +364,7 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
 
     // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
     if (incidence->recurs()) {
-        Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+        for (KCalCore::Incidence::Ptr instance : instances) {
             KCalCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
             exDateTimes.removeAll(instance->recurrenceId());
             incidence->recurrence()->setExDateTimes(exDateTimes);
@@ -368,8 +374,8 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
 
     // Icalformat from kcalcore converts second-type duration into day-type duration
     // whenever possible. We do the same to have consistent comparisons.
-    KCalCore::Alarm::List alarms = incidence->alarms();
-    Q_FOREACH (KCalCore::Alarm::Ptr alarm, alarms) {
+    const KCalCore::Alarm::List alarms = incidence->alarms();
+    for (KCalCore::Alarm::Ptr alarm : alarms) {
         if (!alarm->hasTime()) {
             KCalCore::Duration offset(0);
             if (alarm->hasEndOffset())
