@@ -709,6 +709,7 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
+                mResults = Buteo::SyncResults();
                 syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
                              QLatin1String("unable to write notebook changes"));
                 return;
@@ -726,6 +727,7 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
             syncFinished(Buteo::SyncResults::NO_ERROR);
         } else {
             LOG_WARNING("Unable to save calendar storage after writing notebook changes!");
+            mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
                          QLatin1String("unable to save calendar storage"));
         }
