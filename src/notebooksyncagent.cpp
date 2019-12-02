@@ -199,6 +199,7 @@ void NotebookSyncAgent::clearRequests()
     mRequests.clear();
 }
 
+static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
 bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                                             const QString &color,
                                             const QString &accountId,
@@ -210,13 +211,15 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     const mKCal::Notebook::List notebooks = mStorage->notebooks();
     for (mKCal::Notebook::Ptr notebook : notebooks) {
         if (notebook->account() == accountId
-            && notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath))) {
+            && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
+                || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
             LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
             if (!mStorage->loadNotebookIncidences(notebook->uid()))
                 return false;
             mNotebook = notebook;
             mNotebook->setColor(color);
             mNotebook->setName(notebookName);
+            mNotebook->setSyncProfile(syncProfile);
             return true;
         }
     }
@@ -225,7 +228,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookName, QString()));
     mNotebook->setAccount(accountId);
     mNotebook->setPluginName(pluginName);
-    mNotebook->setSyncProfile(syncProfile + ":" + mRemoteCalendarPath); // ugly hack because mkcal API is deficient.  I wanted to use uid field but it won't save.
+    mNotebook->setSyncProfile(syncProfile);
     mNotebook->setColor(color);
     return true;
 }
@@ -674,6 +677,8 @@ bool NotebookSyncAgent::applyRemoteChanges()
     notebook->setSyncDate(mNotebookSyncedDateTime);
     notebook->setName(mNotebook->name());
     notebook->setColor(mNotebook->color());
+    notebook->setSyncProfile(mNotebook->syncProfile());
+    notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
     if (!mStorage->updateNotebook(notebook)) {
         LOG_WARNING("Cannot update notebook" << notebook->name() << "in storage.");
         return false;
