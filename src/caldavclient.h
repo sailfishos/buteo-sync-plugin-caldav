@@ -139,6 +139,7 @@ public Q_SLOTS:
 private Q_SLOTS:
     void start();
     void authenticationError();
+    void listCalendars();
     void syncCalendars();
     void notebookSyncFinished(int errorCode, const QString &errorString);
 

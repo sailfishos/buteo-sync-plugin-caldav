@@ -34,6 +34,7 @@ public:
         QString remotePath;
         QString displayName;
         QString color;
+        QString userPrincipal;
     };
 
     Settings();
@@ -56,11 +57,19 @@ public:
     void setServerAddress(const QString &serverAddress);
     QString serverAddress() const;
 
+    void setUserPrincipal(const QString &href);
+    QString userPrincipal() const;
+
+    void setUserMailtoHref(const QString &href);
+    QString userMailtoHref() const;
+
     void setCalendars(const QList<CalendarInfo> &calendars);
     QList<CalendarInfo> calendars() const;
 
 private:
     QList<CalendarInfo> mCalendars;
+    QString mUserPrincipal;
+    QString mUserMailtoHref;
     QString mServerAddress;
     QString mOAuthToken;
     QString mUsername;
