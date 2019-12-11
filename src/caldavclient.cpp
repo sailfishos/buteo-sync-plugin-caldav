@@ -721,7 +721,7 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
                 mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             mNotebookSyncAgents[i]->finalize();
         }
-        if (mStorage->save()) {
+        if (mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
             removeCalendars(deletedNotebooks);
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
             syncFinished(Buteo::SyncResults::NO_ERROR);

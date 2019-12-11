@@ -505,6 +505,8 @@ void NotebookSyncAgent::sendLocalChanges()
         connect(del, &Delete::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
         del->deleteEvent(remoteUri);
     }
+    // Incidence will be actually purged only if all operations succeed.
+    mPurgeList += mLocalDeletions;
 
     mSentUids.clear();
     KCalCore::Incidence::List toUpload(mLocalAdditions + mLocalModifications);
@@ -673,6 +675,10 @@ bool NotebookSyncAgent::applyRemoteChanges()
     if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
         return false;
     }
+    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
+        // Silently ignore failed purge action in database.
+        LOG_WARNING("Cannot purge from database the marked as deleted incidences.");
+    }
 
     notebook->setSyncDate(mNotebookSyncedDateTime);
     notebook->setName(mNotebook->name());
@@ -832,6 +838,7 @@ bool NotebookSyncAgent::calculateDelta(
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
+            mPurgeList.append(incidence);
         }
     }
 
