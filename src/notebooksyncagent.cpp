@@ -916,8 +916,8 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         // single instances will correspond to an EXDATE, but most sync servers do not (and
         // so will not include the RECURRENCE-ID values as EXDATEs of the parent).
         if (storedIncidence->recurs()) {
-            KCalCore::Incidence::List instances = mCalendar->instances(incidence);
-            Q_FOREACH (KCalCore::Incidence::Ptr instance, instances) {
+            const KCalCore::Incidence::List instances = mCalendar->instances(storedIncidence);
+            for (KCalCore::Incidence::Ptr instance : instances) {
                 if (instance->hasRecurrenceId()) {
                     storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
                 }
