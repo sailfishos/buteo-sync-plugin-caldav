@@ -136,6 +136,7 @@ private:
     QList<QString> mRemoteAdditions;
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
+    KCalCore::Incidence::List mPurgeList;
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
 
