@@ -1,0 +1,38 @@
+<d:multistatus xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:card="urn:ietf:params:xml:ns:carddav" xmlns:cs="http://calendarserver.org/ns/" xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns" xmlns:s="http://sabredav.org/ns">
+ <d:response>
+  <d:href>/calendars/9e3e9495-7fca-46b1-9ae4-207f3a1a9148.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>"78f7040fc1d488f57e1ea7a551c70d14"</d:getetag>
+    <cal:calendar-data>BEGIN:VCALENDAR
+PRODID:-//K Desktop Environment//NONSGML libkcal 4.3//EN
+VERSION:2.0
+BEGIN:VEVENT
+DTSTAMP:20191126T111854Z
+CREATED:20191126T095627Z
+UID:9e3e9495-7fca-46b1-9ae4-207f3a1a9148
+LAST-MODIFIED:20191126T111854Z
+SUMMARY:EXAMPLE
+RECURRENCE-ID;VALUE=DATE:20190724
+DTSTART;TZID=Europe/Vienna:20190724T133000
+DTEND;TZID=Europe/Vienna:20190724T143000
+TRANSP:OPAQUE
+END:VEVENT
+BEGIN:VEVENT
+DTSTAMP:20191126T095627Z
+CREATED:20190724T075519Z
+UID:9e3e9495-7fca-46b1-9ae4-207f3a1a9148
+LAST-MODIFIED:20191126T095627Z
+EXDATE;VALUE=DATE:20190724
+RDATE;VALUE=DATE:20190724
+DTSTART;VALUE=DATE:20190724
+DTEND;VALUE=DATE:20190725
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+</cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>
