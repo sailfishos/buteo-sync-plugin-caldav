@@ -954,6 +954,23 @@ bool NotebookSyncAgent::addException(KCalCore::Incidence::Ptr incidence,
                && !recurringIncidence->recursAt(incidence->recurrenceId())) {
         recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
     }
+    // Some faulty servers may use an exdate for exceptions, ensure that
+    // exceptions can be dissociated in that case anyway.
+    if (recurringIncidence->allDay()) {
+        KCalCore::DateList exDates = recurringIncidence->recurrence()->exDates();
+        int faultyId = exDates.findSorted(incidence->recurrenceId().date());
+        if (faultyId != -1) {
+            exDates.removeAt(faultyId);
+            recurringIncidence->recurrence()->setExDates(exDates);
+        }
+    } else {
+        KCalCore::DateTimeList exDateTimes = recurringIncidence->recurrence()->exDateTimes();
+        int faultyId = exDateTimes.findSorted(incidence->recurrenceId());
+        if (faultyId != -1) {
+            exDateTimes.removeAt(faultyId);
+            recurringIncidence->recurrence()->setExDateTimes(exDateTimes);
+        }
+    }
     // need to detach, and then copy the properties into the detached occurrence.
     KCalCore::Incidence::Ptr occurrence =
         mCalendar->dissociateSingleOccurrence(recurringIncidence,

@@ -148,6 +148,12 @@ void tst_NotebookSyncAgent::insertEvent_data()
         << QStringLiteral("My Event 2")
         << QString()
         << 0;
+    QTest::newRow("insert an exception at an EXDATE")
+        << "data/notebooksyncagent_insert_exdate.xml"
+        << QStringLiteral("NBUID:123456789:9e3e9495-7fca-46b1-9ae4-207f3a1a9148")
+        << QStringLiteral("EXAMPLE")
+        << QStringLiteral("2019-07-24")
+        << 0;
 }
 
 void tst_NotebookSyncAgent::insertEvent()
@@ -167,8 +173,6 @@ void tst_NotebookSyncAgent::insertEvent()
     rd.read(f.readAll());
 
     QVERIFY(m_agent->updateIncidences(rd.results()));
-
-    KCalCore::Incidence::List incidences = m_agent->mCalendar->incidences();
 
     KCalCore::Incidence::Ptr ev;
     if (expectedRecurrenceID.isEmpty())
@@ -773,6 +777,27 @@ void tst_NotebookSyncAgent::updateIncidence_data()
         ev->setDtStart(KDateTime::currentUtcDateTime());
         ev->setRecurrenceId(ev->dtStart().addDays(1));
         QTest::newRow("Recurring added event") << ev;
+    }
+
+    {
+        KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
+        ev->setUid("updateIncidence-444");
+        ev->setSummary("Recurring added event with an EXDATE");
+        ev->setDtStart(KDateTime::currentUtcDateTime());
+        ev->recurrence()->setDaily(1);
+        ev->recurrence()->addExDateTime(ev->dtStart().addDays(1));
+        QTest::newRow("Recurring added event with an EXDATE") << ev;
+
+        // Normally, one should not add an exception at an exdate,
+        // but some faulty servers are sending recurring events with exdates
+        // and exceptions during these exdates. Since, the exception
+        // is actually known, it's better for the user to relax
+        // this case and add the exception anyway.
+        KCalCore::Incidence::Ptr ex = KCalCore::Incidence::Ptr(ev->clone());
+        ex->setSummary("Added exception at a faulty EXDATE");
+        ex->setRecurrenceId(ev->dtStart().addDays(1));
+        ex->clearRecurrence();
+        QTest::newRow("Added exception at a faulty EXDATE") << ex;
     }
 }
 
