@@ -107,6 +107,16 @@ void tst_Reader::readICal_data()
         << QString()
         << false
         << 0;
+    QTest::newRow("unexpected prop elements in response")
+        << QStringLiteral("data/reader_unexpected_elements.xml")
+        << true
+        << 1
+        << 1
+        << QString("D77EB0B9-B481-44D3-A109-3D2BD7CE5A36")
+        << QString("Bob")
+        << QString()
+        << true
+        << 0;
     QTest::newRow("no incidence response")
         << QStringLiteral("data/reader_noevent.xml")
         << true
