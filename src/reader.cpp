@@ -189,6 +189,8 @@ void Reader::readMultiStatus()
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "response") {
             readResponse();
+        } else {
+            mReader->skipCurrentElement();
         }
     }
 }
@@ -201,6 +203,8 @@ void Reader::readResponse()
             resource.href = QUrl::fromPercentEncoding(mReader->readElementText().toLatin1());
         } else if (mReader->name() == "propstat") {
             readPropStat(resource);
+        } else {
+            mReader->skipCurrentElement();
         }
     }
     if (resource.href.isEmpty()) {
@@ -275,6 +279,8 @@ void Reader::readPropStat(CalendarResource &resource)
             readProp(resource);
         } else if (mReader->name() == "status") {
             resource.status = mReader->readElementText();
+        } else {
+            mReader->skipCurrentElement();
         }
     }
 }
@@ -286,6 +292,8 @@ void Reader::readProp(CalendarResource &resource)
             resource.etag = mReader->readElementText();
         } else if (mReader->name() == "calendar-data") {
             resource.iCalData = mReader->readElementText(QXmlStreamReader::IncludeChildElements);
+        } else {
+            mReader->skipCurrentElement();
         }
     }
 }

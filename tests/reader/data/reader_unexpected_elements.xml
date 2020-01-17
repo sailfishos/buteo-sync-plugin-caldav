@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?><d:multistatus xmlns:d="DAV:" xmlns:cs="http://calendarserver.org/ns/" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response>
+        <d:href>/calendars/p-47525/D77EB0B9-B481-44D3-A109-3D2BD7CE5A36.ics</d:href>
+        <d:propstat>
+        <d:prop>
+          <d:getetag>"1274112-1"</d:getetag><d:getcontenttype>text/calendar</d:getcontenttype><c:calendar-data>BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+BEGIN:VTIMEZONE
+TZID:Europe/Zurich
+BEGIN:STANDARD
+TZNAME:CET
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+DTSTART:19701025T030000
+END:STANDARD
+BEGIN:DAYLIGHT
+TZNAME:CEST
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+DTSTART:19700329T020000
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+DTSTAMP:20191015T062350Z
+DTSTART;TZID=Europe/Zurich:20181015T090000
+DTEND;TZID=Europe/Zurich:20181015T100000
+SUMMARY:Bob
+UID:D77EB0B9-B481-44D3-A109-3D2BD7CE5A36
+RRULE:FREQ=YEARLY
+EXDATE;TZID=Europe/Zurich:20181015T090000
+EXDATE;TZID=Europe/Zurich:20191015T090000
+CREATED:20191015T062350Z
+LAST-MODIFIED:20191015T062350Z
+END:VEVENT
+END:VCALENDAR
+</c:calendar-data>
+        </d:prop>
+        <d:status>HTTP/1.1 200 OK</d:status>
+      </d:propstat>
+      </d:response></d:multistatus>
