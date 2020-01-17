@@ -984,6 +984,16 @@ bool NotebookSyncAgent::addIncidence(KCalCore::Incidence::Ptr incidence)
 {
     LOG_DEBUG("Adding new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
     incidence->setUid(nbUid(mNotebook->uid(), incidence->uid()));
+    // To avoid spurious appearings of added events when later
+    // calling addedIncidences() and modifiedIncidences(), we
+    // set the creation date and modification date by hand, since
+    // libical has put them to now when they don't exist.
+    if (incidence->created() > mNotebookSyncedDateTime) {
+        incidence->setCreated(mNotebookSyncedDateTime.addSecs(-2));
+    }
+    if (incidence->lastModified() > mNotebookSyncedDateTime) {
+        incidence->setLastModified(incidence->created());
+    }
 
     // Set-up the default notebook when adding new incidences.
     mCalendar->addNotebook(mNotebook->uid(), true);

@@ -534,6 +534,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle_data()
 
     ev = KCalCore::Incidence::Ptr(new KCalCore::Event);
     ev->setSummary("Simple event");
+    ev->setCreated(KDateTime::currentUtcDateTime().addDays(-1));
     QTest::newRow("simple event")
         << QStringLiteral("notebook-down-1")
         << QStringLiteral("111") << (KCalCore::Incidence::List() << ev);
@@ -595,6 +596,11 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
         memoryCalendar->addIncidence(*it);
     }
 
+    // The sync date is the one at the start of the process. Due to network
+    // latencies, the actual updateIncidences() call may happen some seconds
+    // after the stored sync date. We simulate this here with a -2 time shift.
+    m_agent->mNotebookSyncedDateTime = KDateTime::currentUtcDateTime().addSecs(-2);
+
     KCalCore::ICalFormat icalFormat;
     QString uri(QStringLiteral("/testCal/%1.ics").arg(uid));
     QString etag(QStringLiteral("\"etag-%1\"").arg(uid));
@@ -624,7 +630,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
 
     QVERIFY(m_agent->updateIncidences(QList<Reader::CalendarResource>() << reader.results()));
     m_agent->mStorage->save();
-    m_agent->mNotebook->setSyncDate(KDateTime::currentUtcDateTime());
+    m_agent->mNotebook->setSyncDate(m_agent->mNotebookSyncedDateTime);
 
     // Compute delta and check that nothing has changed indeed.
     QVERIFY(m_agent->calculateDelta(remoteUriEtags,
