@@ -147,6 +147,17 @@ namespace {
         }
         return true;
     }
+
+    bool incidenceWithin(KCalCore::Incidence::Ptr incidence,
+                         const QDateTime &from, const QDateTime &to)
+    {
+        return incidence->dtStart().dateTime() <= to
+            && (!incidence->recurs()
+                || !incidence->recurrence()->endDateTime().isValid()
+                || incidence->recurrence()->endDateTime().dateTime() >= from)
+            && (incidence->recurs()
+                || incidence->dateTime(KCalCore::Incidence::RoleDisplayEnd).dateTime() >= from);
+    }
 }
 
 
@@ -788,8 +799,12 @@ bool NotebookSyncAgent::calculateDelta(
             // this is a previously-synced incidence with a remote uri,
             // OR a newly-added persistent occurrence to a previously-synced recurring series.
             if (!remoteUriEtags.contains(remoteUri)) {
-                LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                remoteDeletions->append(incidence);
+                if (!incidenceWithin(incidence, mFromDateTime, mToDateTime)) {
+                    LOG_DEBUG("ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                } else {
+                    LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    remoteDeletions->append(incidence);
+                }
             } else if (isCopiedDetachedIncidence(incidence)) {
                 if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
                     LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);

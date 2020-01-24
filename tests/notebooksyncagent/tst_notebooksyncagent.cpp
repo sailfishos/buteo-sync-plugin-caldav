@@ -384,6 +384,7 @@ static bool incidenceListContains(const KCalCore::Incidence::List &list,
 void tst_NotebookSyncAgent::calculateDelta()
 {
     QHash<QString, QString> remoteUriEtags;
+    KDateTime cur = KDateTime::currentUtcDateTime();
 
     // Populate the database.
     KCalCore::Incidence::Ptr ev222 = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -408,6 +409,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     ev555->addComment(QStringLiteral("buteo:caldav:uri:%1555.ics").arg(m_agent->mRemoteCalendarPath));
     ev555->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag555"));
     ev555->setSummary("local modification discarded by a remote deletion");
+    ev555->setDtStart(cur);
     m_agent->mCalendar->addEvent(ev555.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
     KCalCore::Incidence::Ptr ev666 = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -420,6 +422,8 @@ void tst_NotebookSyncAgent::calculateDelta()
     ev777->addComment(QStringLiteral("buteo:caldav:uri:%1777.ics").arg(m_agent->mRemoteCalendarPath));
     ev777->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag777"));
     ev777->setSummary("remote deletion");
+    ev777->setDtStart(cur.addDays(-1));
+    ev777.staticCast<KCalCore::Event>()->setDtEnd(cur.addDays(1));
     m_agent->mCalendar->addEvent(ev777.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
     KCalCore::Incidence::Ptr ev888 = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -436,13 +440,19 @@ void tst_NotebookSyncAgent::calculateDelta()
     ev112->setSummary("partial local addition, need download");
     m_agent->mCalendar->addEvent(ev112.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
-    m_agent->mStorage->save();
     KCalCore::Incidence::Ptr ev113 = KCalCore::Incidence::Ptr(new KCalCore::Event);
     ev113->setSummary("partial local modification, need upload");
     m_agent->mCalendar->addEvent(ev113.staticCast<KCalCore::Event>(),
                                  m_agent->mNotebook->uid());
-    m_agent->mStorage->save();
+    KCalCore::Incidence::Ptr ev001 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    ev001->setSummary("shared event, out-side sync window");
+    ev001->setDtStart(cur.addDays(-7));
+    ev001->addComment(QStringLiteral("buteo:caldav:uri:%1001.ics").arg(m_agent->mRemoteCalendarPath));
+    ev001->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag001"));
+    m_agent->mCalendar->addEvent(ev001.staticCast<KCalCore::Event>(),
+                                 m_agent->mNotebook->uid());
 
+    m_agent->mStorage->save();
     KDateTime lastSync = KDateTime::currentUtcDateTime();
     m_agent->mNotebook->setSyncDate(lastSync.addSecs(1));
 
@@ -487,6 +497,9 @@ void tst_NotebookSyncAgent::calculateDelta()
     remoteUriEtags.insert(QStringLiteral("%1888.ics").arg(m_agent->mRemoteCalendarPath),
                           QStringLiteral("\"etag888\""));
 
+    // Create the sync window by hand.
+    m_agent->mFromDateTime = cur.addSecs(-1).dateTime();
+    m_agent->mToDateTime = cur.addSecs(30).dateTime();
     QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
@@ -514,14 +527,18 @@ void tst_NotebookSyncAgent::calculateDelta()
             (QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath)));
     QVERIFY(m_agent->mRemoteModifications.contains
             (QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath)));
-    uint nFound = 0;
+    uint nFound = 0, nNotFound = 0;
     Q_FOREACH(const KCalCore::Incidence::Ptr &incidence, m_agent->mRemoteDeletions) {
         if (incidence->uid() == ev555->uid()
             || incidence->uid() == ev777->uid()) {
             nFound += 1;
         }
+        if (incidence->uid() == ev001->uid()) {
+            nNotFound += 1;
+        }
     }
     QCOMPARE(nFound, uint(2));
+    QCOMPARE(nNotFound, uint(0));
 }
 
 Q_DECLARE_METATYPE(KCalCore::Incidence::Ptr)
