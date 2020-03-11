@@ -337,7 +337,7 @@ public:
                 remotePath = QUrl::fromPercentEncoding(remotePath.toUtf8());
             }
             allCalendarInfo << Settings::CalendarInfo{remotePath,
-                    displayNames[i], colors[i]};
+                    displayNames[i], colors[i], QString() };
         }
         return allCalendarInfo;
     };
@@ -424,7 +424,7 @@ void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars
     }
     if (modified) {
         calendarSettings.store(account, srv);
-        mSettings.setCalendars(loadCalendars(account, srv));
+        mSettings.setCalendars(calendars);
     }
 }
 
@@ -587,6 +587,31 @@ void CalDavClient::start()
     }
     mSettings.setAuthToken(mAuth->token());
 
+    // read the calendar user address set, to get their mailto href.
+    PropFind *userAddressSetRequest = new PropFind(mNAManager, &mSettings, this);
+    connect(userAddressSetRequest, &Request::finished, [this, userAddressSetRequest] {
+        const QString userPrincipal = userAddressSetRequest->userPrincipal();
+        userAddressSetRequest->deleteLater();
+        if (!userPrincipal.isEmpty()) {
+            // determine the mailto href for this user.
+            mSettings.setUserPrincipal(userPrincipal);
+            PropFind *userMailtoHrefRequest = new PropFind(mNAManager, &mSettings, this);
+            connect(userMailtoHrefRequest, &Request::finished, [this, userMailtoHrefRequest] {
+                userMailtoHrefRequest->deleteLater();
+                mSettings.setUserMailtoHref(userMailtoHrefRequest->userMailtoHref());
+                listCalendars();
+            });
+            userMailtoHrefRequest->listUserAddressSet(userPrincipal);
+        } else {
+            // just continue normal calendar sync.
+            listCalendars();
+        }
+    });
+    userAddressSetRequest->listCurrentUserPrincipal();
+}
+
+void CalDavClient::listCalendars()
+{
     QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
     if (allCalendarInfo.isEmpty()) {
         syncFinished(Buteo::SyncResults::NO_ERROR,
@@ -598,7 +623,7 @@ void CalDavClient::start()
     // Hacky here, try to guess the root for calendars from known
     // calendar paths, by removing one level.
     int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
-    calendarRequest->listCalendars(allCalendarInfo[0].remotePath.left(lastIndex + 1));
+    calendarRequest->listCalendars(allCalendarInfo[0].remotePath.left(lastIndex + 1), mSettings.userPrincipal());
 }
 
 void CalDavClient::syncCalendars()
@@ -642,6 +667,9 @@ void CalDavClient::syncCalendars()
              calendarInfo.remotePath, this);
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
+                                        calendarInfo.userPrincipal == mSettings.userPrincipal()
+                                                ? mSettings.userMailtoHref()
+                                                : QString(),
                                         QString::number(mAccountId),
                                         getPluginName(),
                                         getProfileName())) {

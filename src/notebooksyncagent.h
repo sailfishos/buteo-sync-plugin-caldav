@@ -56,6 +56,7 @@ public:
 
     bool setNotebookFromInfo(const QString &notebookName,
                              const QString &color,
+                             const QString &userEmail,
                              const QString &accountId,
                              const QString &pluginName,
                              const QString &syncProfile);

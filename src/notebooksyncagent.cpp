@@ -211,8 +211,10 @@ void NotebookSyncAgent::clearRequests()
 }
 
 static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
+static const QByteArray EMAIL_PROPERTY = QByteArrayLiteral("userPrincipalEmail");
 bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                                             const QString &color,
+                                            const QString &userEmail,
                                             const QString &accountId,
                                             const QString &pluginName,
                                             const QString &syncProfile)
@@ -231,6 +233,8 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             mNotebook->setColor(color);
             mNotebook->setName(notebookName);
             mNotebook->setSyncProfile(syncProfile);
+            mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
+            mNotebook->setPluginName(pluginName);
             return true;
         }
     }
@@ -240,6 +244,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     mNotebook->setAccount(accountId);
     mNotebook->setPluginName(pluginName);
     mNotebook->setSyncProfile(syncProfile);
+    mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
     mNotebook->setColor(color);
     return true;
 }

@@ -32,6 +32,9 @@
 
 static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
 {
+    /* e.g.:
+        <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
+    */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar") {
             *isCalendar = true;
@@ -43,10 +46,18 @@ static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
     return false;
 }
 
-static bool readProp(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color)
+static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal)
 {
+    /* e.g.:
+        <D:prop>
+            <D:displayname>My events</D:displayname>
+            <calendar-color xmlns=\"http://apple.com/ns/ical/\">#4887e1ff</calendar-color>
+            <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
+        </D:prop>
+    */
     QString displayName;
     QString displayColor;
+    QString currentUserPrincipal;
     *isCalendar = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
@@ -58,7 +69,10 @@ static bool readProp(QXmlStreamReader *reader, bool *isCalendar, QString *label,
                 displayColor = displayColor.left(7);
             }
         }
-        if (reader->name() == "resourcetype") {
+        if (reader->name() == "current-user-principal" && reader->isStartElement()) {
+            currentUserPrincipal = reader->readElementText();
+        }
+        if (reader->name() == "resourcetype" && reader->isStartElement()) {
             if (!readResourceType(reader, isCalendar)) {
                 return false;
             }
@@ -67,6 +81,7 @@ static bool readProp(QXmlStreamReader *reader, bool *isCalendar, QString *label,
             if (*isCalendar) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
                 *color = displayColor;
+                *userPrincipal = currentUserPrincipal;
             }
             return true;
         }
@@ -74,11 +89,21 @@ static bool readProp(QXmlStreamReader *reader, bool *isCalendar, QString *label,
     return false;
 }
 
-static bool readPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color)
+static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal)
 {
+    /* e.g.:
+        <D:propstat>
+            <D:prop>
+                <D:displayname>My events</D:displayname>
+                <calendar-color xmlns=\"http://apple.com/ns/ical/\">#4887e1ff</calendar-color>
+                <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
+            </D:prop>
+            <status xmlns=\"DAV:\">HTTP/1.1 200 OK</status>
+        </D:propstat>
+    */
     for (; !reader->atEnd(); reader->readNext()) {
-        if (reader->name() == "prop") {
-            if (!readProp(reader, isCalendar, label, color)) {
+        if (reader->name() == "prop" && reader->isStartElement()) {
+            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal)) {
                 return false;
             }
         }
@@ -89,32 +114,154 @@ static bool readPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *la
     return false;
 }
 
-static bool readResponse(QXmlStreamReader *reader, QList<Settings::CalendarInfo> *calendars)
+static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::CalendarInfo> *calendars, const QString &defaultUserPrincipal)
 {
-    bool isCalendar = false;
-    QString href;
-    QString label;
-    QString color;
+    /* e.g.:
+        <D:response>
+            <href xmlns=\"DAV:\">/calendars/username%40server.tld/events-calendar/</href>
+            <D:propstat>
+                <D:prop>
+                    <D:displayname>My events</D:displayname>
+                    <calendar-color xmlns=\"http://apple.com/ns/ical/\">#4887e1ff</calendar-color>
+                    <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
+                </D:prop>
+                <status xmlns=\"DAV:\">HTTP/1.1 200 OK</status>
+            </D:propstat>
+            <D:propstat>
+                <D:prop>
+                    <D:current-user-principal/>
+                </D:prop>
+                <status xmlns=\"DAV:\">HTTP/1.1 404 Not Found</status>
+            </D:propstat>
+        </D:response>
+    */
+
+    bool responseIsCalendar = false;
+    Settings::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
-        if (reader->name() == "href" && reader->isStartElement()) {
-            href = reader->readElementText();
+        if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
+            calendarInfo.remotePath = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
         }
-        if (reader->name() == "propstat") {
-            if (!readPropStat(reader, &isCalendar, &label, &color)) {
+
+        bool propStatIsCalendar = false;
+        Settings::CalendarInfo tempCalendarInfo;
+        if (reader->name() == "propstat" && reader->isStartElement()) {
+            if (!readCalendarPropStat(reader, &propStatIsCalendar,
+                                      &tempCalendarInfo.displayName,
+                                      &tempCalendarInfo.color,
+                                      &tempCalendarInfo.userPrincipal)) {
                 return false;
+            } else if (propStatIsCalendar) {
+                responseIsCalendar = true;
+                calendarInfo.displayName = tempCalendarInfo.displayName;
+                calendarInfo.color = tempCalendarInfo.color;
+                calendarInfo.userPrincipal = tempCalendarInfo.userPrincipal;
+                if (calendarInfo.userPrincipal.trimmed().isEmpty()) {
+                    calendarInfo.userPrincipal = defaultUserPrincipal;
+                }
             }
         }
+
         if (reader->name() == "response" && reader->isEndElement()) {
-            if (!isCalendar) {
+            if (!responseIsCalendar) {
                 return true;
             }
-            if (href.isEmpty()) {
+
+            if (calendarInfo.remotePath.isEmpty()) {
                 return false;
             }
-            calendars->append(Settings::CalendarInfo{href, label, color});
+
+            calendars->append(calendarInfo);
             return true;
         }
     }
+
+    return false;
+}
+
+static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailtoHref)
+{
+    /* expect a response like:
+        <?xml version='1.0' encoding='utf-8'?>
+        <D:multistatus xmlns:D="DAV:">
+            <D:response>
+                <href xmlns="DAV:">/principals/users/username%40server.tld/</href>
+                <D:propstat>
+                    <D:prop>
+                        <C:calendar-user-address-set xmlns:C="urn:ietf:params:xml:ns:caldav">
+                            <D:href>mailto:username@server.tld</D:href>
+                            <D:href>/principals/users/username%40server.tld/</D:href>
+                        </C:calendar-user-address-set>
+                    </D:prop>
+                    <status xmlns="DAV:">HTTP/1.1 200 OK</status>
+                </D:propstat>
+            </D:response>
+        </D:multistatus>
+    */
+
+    QString href;
+    bool canReadMailtoHref = false;
+    for (; !reader->atEnd(); reader->readNext()) {
+        if (reader->name() == "calendar-user-address-set") {
+            if (reader->isStartElement()) {
+                canReadMailtoHref = true;
+            } else if (reader->isEndElement()) {
+                canReadMailtoHref = false;
+                return true;
+            }
+        } else if (reader->name() == "href"
+                && reader->isStartElement()
+                && canReadMailtoHref) {
+            href = reader->readElementText();
+            if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
+                *mailtoHref = href.mid(7); // chop off "mailto:"
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool readUserPrincipalResponse(QXmlStreamReader *reader, QString *userPrincipal)
+{
+    /* expect a response like:
+        <?xml version='1.0' encoding='utf-8'?>
+        <D:multistatus xmlns:D="DAV:">
+            <D:response>
+                <href xmlns="DAV:">/</href>
+                <D:propstat>
+                    <D:prop>
+                        <D:current-user-principal>
+                            <D:href>/principals/users/username%40server.tld/</D:href>
+                        </D:current-user-principal>
+                    </D:prop>
+                    <status xmlns="DAV:">HTTP/1.1 200 OK</status>
+                </D:propstat>
+            </D:response>
+        </D:multistatus>
+    */
+
+    QString href;
+    bool canReadUserPrincipalHref = false;
+    for (; !reader->atEnd(); reader->readNext()) {
+        if (reader->name() == "current-user-principal") {
+            if (reader->isStartElement()) {
+                canReadUserPrincipalHref = true;
+            } else if (reader->isEndElement()) {
+                canReadUserPrincipalHref = false;
+                if (href.isEmpty()) {
+                    return false;
+                }
+                *userPrincipal = href;
+                return true;
+            }
+        } else if (reader->name() == "href"
+                && reader->isStartElement()
+                && canReadUserPrincipalHref) {
+            href = reader->readElementText();
+        }
+    }
+
     return false;
 }
 
@@ -124,7 +271,7 @@ PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *
     FUNCTION_CALL_TRACE;
 }
 
-void PropFind::listCalendars(const QString &calendarsPath)
+void PropFind::listCalendars(const QString &calendarsPath, const QString &defaultUserPrincipal)
 {
     QByteArray requestData("<d:propfind xmlns:d=\"DAV:\" xmlns:a=\"http://apple.com/ns/ical/\">"   \
                            " <d:prop>"                       \
@@ -135,12 +282,42 @@ void PropFind::listCalendars(const QString &calendarsPath)
                            " </d:prop>"                      \
                            "</d:propfind>");
     mCalendars.clear();
-    sendRequest(calendarsPath, requestData);
+    // if the calendar isn't owned by someone else (i.e. shared) use the default user principal.
+    mDefaultUserPrincipal = defaultUserPrincipal;
+    sendRequest(calendarsPath, requestData, ListCalendars);
 }
 
-void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData)
+void PropFind::listUserAddressSet(const QString &userPrincipal)
+{
+    const QByteArray requestData(QByteArrayLiteral(
+            "<d:propfind xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
+            "  <d:prop>"
+            "    <c:calendar-user-address-set />"
+            "  </d:prop>"
+            "</d:propfind>"
+    ));
+    mUserMailtoHref.clear();
+    sendRequest(userPrincipal, requestData, UserAddressSet);
+}
+
+void PropFind::listCurrentUserPrincipal()
+{
+    const QByteArray requestData(QByteArrayLiteral(
+            "<d:propfind xmlns:d=\"DAV:\">"
+            "  <d:prop>"
+            "    <d:current-user-principal />"
+            "  </d:prop>"
+            "</d:propfind>"
+    ));
+    mUserPrincipal.clear();
+    sendRequest(QStringLiteral("/"), requestData, UserPrincipal);
+}
+
+void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType)
 {
     FUNCTION_CALL_TRACE;
+
+    mPropFindRequestType = reqType;
 
     QNetworkRequest request;
     prepareRequest(&request, remotePath);
@@ -201,8 +378,13 @@ void PropFind::processResponse()
     QXmlStreamReader reader(data);
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
-        if (reader.name() == "response") {
-            if (!readResponse(&reader, &mCalendars)) {
+        if (reader.name() == "response" && reader.isStartElement()) {
+            const bool parsedResponse = (mPropFindRequestType == UserPrincipal)
+                                      ? readUserPrincipalResponse(&reader, &mUserPrincipal)
+                                      : ((mPropFindRequestType == UserAddressSet)
+                                        ? readUserAddressSetResponse(&reader, &mUserMailtoHref)
+                                        : readCalendarsResponse(&reader, &mCalendars, mDefaultUserPrincipal));
+            if (!parsedResponse) {
                 finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
                                   QString("Cannot parse response body for PROPFIND"));
                 return;
@@ -216,4 +398,14 @@ void PropFind::processResponse()
 const QList<Settings::CalendarInfo>& PropFind::calendars() const
 {
     return mCalendars;
+}
+
+QString PropFind::userPrincipal() const
+{
+    return mUserPrincipal;
+}
+
+QString PropFind::userMailtoHref() const
+{
+    return mUserMailtoHref;
 }

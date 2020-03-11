@@ -89,6 +89,26 @@ QString Settings::serverAddress() const
     return mServerAddress;
 }
 
+void Settings::setUserPrincipal(const QString &href)
+{
+    mUserPrincipal = href;
+}
+
+QString Settings::userPrincipal() const
+{
+    return mUserPrincipal;
+}
+
+void Settings::setUserMailtoHref(const QString &href)
+{
+    mUserMailtoHref = href;
+}
+
+QString Settings::userMailtoHref() const
+{
+    return mUserMailtoHref;
+}
+
 void Settings::setCalendars(const QList<CalendarInfo> &calendars)
 {
     mCalendars = calendars;

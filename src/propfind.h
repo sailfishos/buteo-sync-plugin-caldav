@@ -36,15 +36,30 @@ class PropFind : public Request
 public:
     explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
-    void listCalendars(const QString &calendarsPath);
+    void listCurrentUserPrincipal();
+    QString userPrincipal() const;
+
+    void listUserAddressSet(const QString &userPrincipal);
+    QString userMailtoHref() const;
+
+    void listCalendars(const QString &calendarsPath, const QString &defaultUserPrincipal);
     const QList<Settings::CalendarInfo>& calendars() const;
 
 private Q_SLOTS:
     void processResponse();
 
 private:
-    void sendRequest(const QString &remotePath, const QByteArray &requestData);
+    enum PropFindRequestType {
+        UserPrincipal,
+        UserAddressSet,
+        ListCalendars
+    };
+    void sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType);
     QList<Settings::CalendarInfo> mCalendars;
+    QString mDefaultUserPrincipal;
+    QString mUserPrincipal;
+    QString mUserMailtoHref;
+    PropFindRequestType mPropFindRequestType = UserPrincipal;
 };
 
 #endif
