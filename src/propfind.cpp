@@ -70,7 +70,14 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
             }
         }
         if (reader->name() == "current-user-principal" && reader->isStartElement()) {
-            currentUserPrincipal = reader->readElementText();
+            for (;!reader->atEnd(); reader->readNext()) {
+                if (reader->name() == "href" && reader->isStartElement()) {
+                    currentUserPrincipal = reader->readElementText();
+                    break;
+                } else if (reader->name() == "current-user-principal" && reader->isEndElement()) {
+                    break;
+                }
+            }
         }
         if (reader->name() == "resourcetype" && reader->isStartElement()) {
             if (!readResourceType(reader, isCalendar)) {
