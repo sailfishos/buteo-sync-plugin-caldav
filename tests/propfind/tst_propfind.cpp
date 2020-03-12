@@ -125,26 +125,37 @@ void tst_Propfind::parseUserAddressSetResponse_data()
     QTest::addColumn<QByteArray>("data");
     QTest::addColumn<bool>("success");
     QTest::addColumn<QString>("userMailtoHref");
+    QTest::addColumn<QString>("userHomeHref");
 
     QTest::newRow("empty response")
         << QByteArray()
         << false
+        << QString()
         << QString();
 
     QTest::newRow("invalid response")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:'><D:response><D:href>/principals/users/username%40server.tld/</D:href></D:response></D:multistatus>")
         << false
+        << QString()
         << QString();
 
     QTest::newRow("forbidden access")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/principals/users/username%40server.tld/</D:href><D:propstat><D:prop><c:calendar-user-address-set /></D:prop><D:status>HTTP/1.1 403</D:status></D:propstat></D:response></D:multistatus>")
         << false
+        << QString()
         << QString();
 
-    QTest::newRow("valid response")
+    QTest::newRow("valid mailto")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/principals/users/username%40server.tld/</D:href><D:propstat><D:prop><c:calendar-user-address-set><D:href>mailto:username@server.tld</D:href><D:href>/principals/users/username%40server.tld/</D:href></c:calendar-user-address-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << QString::fromLatin1("username@server.tld");
+        << QString::fromLatin1("username@server.tld")
+        << QString();
+
+    QTest::newRow("valid home")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/principals/users/username%40server.tld/</D:href><D:propstat><D:prop><c:calendar-home-set><D:href>/caldav/</D:href></c:calendar-home-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><c:calendar-user-address-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
+        << true
+        << QString()
+        << QString("/caldav/");
 }
 
 void tst_Propfind::parseUserAddressSetResponse()

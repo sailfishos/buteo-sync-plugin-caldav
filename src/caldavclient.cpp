@@ -593,13 +593,13 @@ void CalDavClient::start()
         if (!userPrincipal.isEmpty()) {
             // determine the mailto href for this user.
             mSettings.setUserPrincipal(userPrincipal);
-            PropFind *userMailtoHrefRequest = new PropFind(mNAManager, &mSettings, this);
-            connect(userMailtoHrefRequest, &Request::finished, [this, userMailtoHrefRequest] {
-                userMailtoHrefRequest->deleteLater();
-                mSettings.setUserMailtoHref(userMailtoHrefRequest->userMailtoHref());
-                listCalendars();
+            PropFind *userHrefsRequest = new PropFind(mNAManager, &mSettings, this);
+            connect(userHrefsRequest, &Request::finished, [this, userHrefsRequest] {
+                userHrefsRequest->deleteLater();
+                mSettings.setUserMailtoHref(userHrefsRequest->userMailtoHref());
+                listCalendars(userHrefsRequest->userHomeHref());
             });
-            userMailtoHrefRequest->listUserAddressSet(userPrincipal);
+            userHrefsRequest->listUserAddressSet(userPrincipal);
         } else {
             // just continue normal calendar sync.
             listCalendars();
@@ -608,13 +608,29 @@ void CalDavClient::start()
     userAddressSetRequest->listCurrentUserPrincipal();
 }
 
-void CalDavClient::listCalendars()
+void CalDavClient::listCalendars(const QString &home)
 {
-    QList<PropFind::CalendarInfo> allCalendarInfo = loadAccountCalendars();
-    if (allCalendarInfo.isEmpty()) {
-        syncFinished(Buteo::SyncResults::NO_ERROR,
-                     QLatin1String("No calendars for this account"));
-        return;
+    QString remoteHome(home);
+    if (remoteHome.isEmpty()) {
+        LOG_WARNING("Cannot find the calendar root for this user, guess it from account.");
+        Accounts::Service srv;
+        Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+        if (!account) {
+            syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         QLatin1String("unable to find account for calendar detection"));
+            return;
+        }
+        struct CalendarSettings calendarSettings(account);
+        QList<PropFind::CalendarInfo> allCalendarInfo = calendarSettings.toCalendars();
+        if (allCalendarInfo.isEmpty()) {
+            syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         QLatin1String("no calendar listed for detection"));
+            return;
+        }
+        // Hacky here, try to guess the root for calendars from known
+        // calendar paths, by removing one level.
+        int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
+        remoteHome = allCalendarInfo[0].remotePath.left(lastIndex + 1);
     }
     PropFind *calendarRequest = new PropFind(mNAManager, &mSettings, this);
     connect(calendarRequest, &Request::finished, this, [this, calendarRequest] {
@@ -626,10 +642,7 @@ void CalDavClient::listCalendars()
             syncCalendars(loadAccountCalendars());
         }
     });
-    // Hacky here, try to guess the root for calendars from known
-    // calendar paths, by removing one level.
-    int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
-    calendarRequest->listCalendars(allCalendarInfo[0].remotePath.left(lastIndex + 1));
+    calendarRequest->listCalendars(remoteHome);
 }
 
 void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalendarInfo)

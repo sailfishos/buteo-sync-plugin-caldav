@@ -154,7 +154,7 @@ private:
     QList<PropFind::CalendarInfo> loadAccountCalendars() const;
     QList<PropFind::CalendarInfo> mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const;
     void removeAccountCalendars(const QStringList &paths);
-    void listCalendars();
+    void listCalendars(const QString &home = QString());
     void syncCalendars(const QList<PropFind::CalendarInfo> &allCalendarInfo);
 
     Buteo::SyncProfile::SyncDirection syncDirection();

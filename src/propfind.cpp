@@ -186,7 +186,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
     return false;
 }
 
-static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailtoHref)
+static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailtoHref, QString *homeHref)
 {
     /* expect a response like:
         <?xml version='1.0' encoding='utf-8'?>
@@ -195,6 +195,9 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
                 <href xmlns="DAV:">/principals/users/username%40server.tld/</href>
                 <D:propstat>
                     <D:prop>
+                        <C:calendar-home-set xmlns:C="urn:ietf:params:xml:ns:caldav">
+                            <D:href>/caldav/</D:href>
+                        </C:calendar-home-set>
                         <C:calendar-user-address-set xmlns:C="urn:ietf:params:xml:ns:caldav">
                             <D:href>mailto:username@server.tld</D:href>
                             <D:href>/principals/users/username%40server.tld/</D:href>
@@ -206,25 +209,27 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
         </D:multistatus>
     */
 
-    QString href;
-    bool containsHrefs = false;
     bool canReadMailtoHref = false;
+    bool canReadHomeHref = false;
+    bool valid = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar-user-address-set") {
-            if (reader->isStartElement()) {
-                canReadMailtoHref = true;
-            } else if (reader->isEndElement()) {
-                canReadMailtoHref = false;
-                return containsHrefs;
-            }
-        } else if (reader->name() == "href"
-                && reader->isStartElement()
-                && canReadMailtoHref) {
-            containsHrefs = true;
-            href = reader->readElementText();
+            canReadMailtoHref = reader->isStartElement();
+        } else if (reader->name() == "calendar-home-set") {
+            canReadHomeHref = reader->isStartElement();
+        } else if (canReadMailtoHref
+                   && reader->name() == "href" && reader->isStartElement()) {
+            valid = true;
+            QString href = reader->readElementText();
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
                 *mailtoHref = href.mid(7); // chop off "mailto:"
             }
+        } else if (canReadHomeHref
+                   && reader->name() == "href" && reader->isStartElement()) {
+            valid = true;
+            *homeHref = reader->readElementText();
+        } else if (reader->name() == "propstat" && reader->isEndElement()) {
+            return valid;
         }
     }
 
@@ -315,7 +320,7 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
         if (reader.name() == "response" && reader.isStartElement()
-                && !readUserAddressSetResponse(&reader, &mUserMailtoHref)) {
+                && !readUserAddressSetResponse(&reader, &mUserMailtoHref, &mUserHomeHref)) {
             return false;
         }
     }
@@ -348,6 +353,7 @@ void PropFind::listUserAddressSet(const QString &userPrincipal)
             "<d:propfind xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
             "  <d:prop>"
             "    <c:calendar-user-address-set />"
+            "    <c:calendar-home-set />"
             "  </d:prop>"
             "</d:propfind>"
     ));
@@ -456,4 +462,9 @@ QString PropFind::userPrincipal() const
 QString PropFind::userMailtoHref() const
 {
     return mUserMailtoHref;
+}
+
+QString PropFind::userHomeHref() const
+{
+    return mUserHomeHref;
 }

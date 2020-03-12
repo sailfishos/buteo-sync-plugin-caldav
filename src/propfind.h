@@ -61,6 +61,7 @@ public:
 
     void listUserAddressSet(const QString &userPrincipal);
     QString userMailtoHref() const;
+    QString userHomeHref() const;
 
     void listCalendars(const QString &calendarsPath);
     const QList<CalendarInfo>& calendars() const;
@@ -82,6 +83,7 @@ private:
     QList<CalendarInfo> mCalendars;
     QString mUserPrincipal;
     QString mUserMailtoHref;
+    QString mUserHomeHref;
     PropFindRequestType mPropFindRequestType = UserPrincipal;
 
     friend class tst_Propfind;
