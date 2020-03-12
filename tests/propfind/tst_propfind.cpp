@@ -196,13 +196,22 @@ void tst_Propfind::parseCalendarResponse_data()
         << QList<PropFind::CalendarInfo>();
 
     QTest::newRow("one valid calendar")
-        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege><D:privilege><D:write /></D:privilege></D:current-user-privilege-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
         << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
+
+    QTest::newRow("one read-only calendar")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege></D:current-user-privilege-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
+        << true
+        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+                QString::fromLatin1("/calendars/0/"),
+                    QString::fromLatin1("Calendar 0"),
+                    QString::fromLatin1("#FF0000"),
+                    QString::fromLatin1("/principals/users/username%40server.tld/"), true});
 
     QTest::newRow("missing current-user-principal")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-principal /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
@@ -219,6 +228,15 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar"),
+                    QString::fromLatin1("#FF0000"),
+                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+
+    QTest::newRow("missing privileges")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-privilege-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
+        << true
+        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+                QString::fromLatin1("/calendars/0/"),
+                    QString::fromLatin1("Calendar 0"),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 

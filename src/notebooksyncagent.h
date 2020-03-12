@@ -51,6 +51,7 @@ public:
                                QNetworkAccessManager *networkAccessManager,
                                Settings *settings,
                                const QString &encodedRemotePath,
+                               bool readOnlyFlag = false,
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
@@ -129,6 +130,7 @@ private:
     bool mFinished;
     Buteo::TargetResults mResults;
     bool mEnableUpsync, mEnableDownsync;
+    bool mReadOnlyFlag;
 
     // these are used only in quick-sync mode.
     // delta detection and change data

@@ -325,8 +325,8 @@ public:
     {
         QList<PropFind::CalendarInfo> allCalendarInfo;
         for (int i = 0; i < paths.count(); i++) {
-            allCalendarInfo << PropFind::CalendarInfo{paths[i],
-                    displayNames[i], colors[i], QString()};
+            allCalendarInfo << PropFind::CalendarInfo(paths[i],
+                    displayNames[i], colors[i]);
         }
         return allCalendarInfo;
     };
@@ -673,7 +673,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
             (mCalendar, mStorage, mNAManager, &mSettings,
-             calendarInfo.remotePath, this);
+             calendarInfo.remotePath, calendarInfo.readOnly, this);
         const QString &email = (calendarInfo.userPrincipal == mSettings.userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mSettings.userMailtoHref() : QString();
@@ -759,16 +759,9 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
                 mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             mNotebookSyncAgents[i]->finalize();
         }
-        if (mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
-            removeAccountCalendars(deletedNotebooks);
-            LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
-            syncFinished(Buteo::SyncResults::NO_ERROR);
-        } else {
-            LOG_WARNING("Unable to save calendar storage after writing notebook changes!");
-            mResults = Buteo::SyncResults();
-            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                         QLatin1String("unable to save calendar storage"));
-        }
+        removeAccountCalendars(deletedNotebooks);
+        LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
+        syncFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 

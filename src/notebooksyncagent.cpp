@@ -166,6 +166,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
                                      QNetworkAccessManager *networkAccessManager,
                                      Settings *settings,
                                      const QString &encodedRemotePath,
+                                     bool readOnlyFlag,
                                      QObject *parent)
     : QObject(parent)
     , mNetworkManager(networkAccessManager)
@@ -181,6 +182,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mResults(QString(), Buteo::ItemCounts(), Buteo::ItemCounts())
     , mEnableUpsync(true)
     , mEnableDownsync(true)
+    , mReadOnlyFlag(readOnlyFlag)
 {
     // the calendar path may be percent-encoded.  Return UTF-8 QString.
     mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
@@ -487,6 +489,10 @@ void NotebookSyncAgent::sendLocalChanges()
         LOG_DEBUG("Not upsyncing local changes, upsync disable in profile.");
         emitFinished(Buteo::SyncResults::NO_ERROR, QString());
         return;
+    } else if (mReadOnlyFlag) {
+        LOG_DEBUG("Not upsyncing local changes, upstream read only calendar.");
+        emitFinished(Buteo::SyncResults::NO_ERROR, QString());
+        return;
     } else {
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
@@ -690,6 +696,8 @@ bool NotebookSyncAgent::applyRemoteChanges()
         notebook = mNotebook;
     }
 
+    // Make notebook writable for the time of the modifications.
+    notebook->setIsReadOnly(false);
     if ((mEnableDownsync || mSyncMode == SlowSync)
         && !updateIncidences(mReceivedCalendarResources)) {
         return false;
@@ -697,11 +705,16 @@ bool NotebookSyncAgent::applyRemoteChanges()
     if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
         return false;
     }
+    // Update storage, before possibly changing readOnly flag for this notebook.
+    if (!mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
+        return false;
+    }
     if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
         // Silently ignore failed purge action in database.
         LOG_WARNING("Cannot purge from database the marked as deleted incidences.");
     }
 
+    notebook->setIsReadOnly(mReadOnlyFlag);
     notebook->setSyncDate(mNotebookSyncedDateTime);
     notebook->setName(mNotebook->name());
     notebook->setColor(mNotebook->color());

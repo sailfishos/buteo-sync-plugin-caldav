@@ -39,12 +39,13 @@ public:
         QString displayName;
         QString color;
         QString userPrincipal;
+        bool readOnly;
 
-        CalendarInfo() {};
+        CalendarInfo() : readOnly(false) {};
         CalendarInfo(const QString &path, const QString &name, const QString &color,
-                     const QString &principal = QString())
+                     const QString &principal = QString(), bool readOnly = false)
             : remotePath(path), displayName(name), color(color)
-            , userPrincipal(principal) {};
+            , userPrincipal(principal), readOnly(readOnly) {};
         bool operator==(const CalendarInfo &other) const
         {
             return (remotePath == other.remotePath

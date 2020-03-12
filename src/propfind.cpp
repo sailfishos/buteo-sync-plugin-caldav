@@ -46,7 +46,34 @@ static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
     return false;
 }
 
-static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal)
+static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
+{
+    /* e.g.:
+                    <D:current-user-privilege-set>
+                        <D:privilege><D:read /></D:privilege>
+                        <D:privilege><D:write /></D:privilege>
+                        <D:privilege><D:write-content /></D:privilege>
+                        <D:privilege><D:bind /></D:privilege>
+                        <D:privilege><D:unbind /></D:privilege>
+                    </D:current-user-privilege-set>
+    */
+    bool readPriv = false;
+    bool writePriv = false;
+    for (; !reader->atEnd(); reader->readNext()) {
+        if (reader->name() == "read") {
+            readPriv = true;
+        } else if (reader->name() == "write") {
+            writePriv = true;
+        } else if (reader->name() == "current-user-privilege-set"
+                   && reader->isEndElement()) {
+            *readOnly = readPriv && !writePriv;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal, bool *readOnly)
 {
     /* e.g.:
         <D:prop>
@@ -58,18 +85,17 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
     QString displayName;
     QString displayColor;
     QString currentUserPrincipal;
+    bool readOnlyStatus = false;
     *isCalendar = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
             displayName = reader->readElementText();
-        }
-        if (reader->name() == "calendar-color" && reader->isStartElement()) {
+        } else if (reader->name() == "calendar-color" && reader->isStartElement()) {
             displayColor = reader->readElementText();
             if (displayColor.startsWith("#") && displayColor.length() == 9) {
                 displayColor = displayColor.left(7);
             }
-        }
-        if (reader->name() == "current-user-principal" && reader->isStartElement()) {
+        } else if (reader->name() == "current-user-principal" && reader->isStartElement()) {
             for (;!reader->atEnd(); reader->readNext()) {
                 if (reader->name() == "href" && reader->isStartElement()) {
                     currentUserPrincipal = reader->readElementText();
@@ -78,17 +104,20 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
                     break;
                 }
             }
-        }
-        if (reader->name() == "resourcetype" && reader->isStartElement()) {
+        } else if (reader->name() == "resourcetype" && reader->isStartElement()) {
             if (!readResourceType(reader, isCalendar)) {
                 return false;
             }
-        }
-        if (reader->name() == "prop" && reader->isEndElement()) {
+        } else if (reader->name() == "current-user-privilege-set" && reader->isStartElement()) {
+            if (!readPrivilegeSet(reader, &readOnlyStatus)) {
+                return false;
+            }
+        } else if (reader->name() == "prop" && reader->isEndElement()) {
             if (*isCalendar) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
                 *color = displayColor;
                 *userPrincipal = currentUserPrincipal;
+                *readOnly = readOnlyStatus;
             }
             return true;
         }
@@ -96,7 +125,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
     return false;
 }
 
-static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal)
+static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal, bool *readOnly)
 {
     /* e.g.:
         <D:propstat>
@@ -110,7 +139,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QSt
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal)) {
+            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly)) {
                 return false;
             }
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
@@ -130,6 +159,13 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
                     <D:displayname>My events</D:displayname>
                     <calendar-color xmlns=\"http://apple.com/ns/ical/\">#4887e1ff</calendar-color>
                     <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
+                    <D:current-user-privilege-set>
+                        <D:privilege><D:read /></D:privilege>
+                        <D:privilege><D:write /></D:privilege>
+                        <D:privilege><D:write-content /></D:privilege>
+                        <D:privilege><D:bind /></D:privilege>
+                        <D:privilege><D:unbind /></D:privilege>
+                    </D:current-user-privilege-set>
                 </D:prop>
                 <status xmlns=\"DAV:\">HTTP/1.1 200 OK</status>
             </D:propstat>
@@ -158,13 +194,15 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &tempCalendarInfo.displayName,
                                       &tempCalendarInfo.color,
-                                      &tempCalendarInfo.userPrincipal)) {
+                                      &tempCalendarInfo.userPrincipal,
+                                      &tempCalendarInfo.readOnly)) {
                 return false;
             } else if (propStatIsCalendar) {
                 responseIsCalendar = true;
                 calendarInfo.displayName = tempCalendarInfo.displayName;
                 calendarInfo.color = tempCalendarInfo.color;
                 calendarInfo.userPrincipal = tempCalendarInfo.userPrincipal.trimmed();
+                calendarInfo.readOnly = tempCalendarInfo.readOnly;
             }
             hasPropStat = true;
         }
@@ -339,6 +377,7 @@ void PropFind::listCalendars(const QString &calendarsPath)
                            " <d:prop>"                       \
                            "  <d:resourcetype />"            \
                            "  <d:current-user-principal />"  \
+                           "  <d:current-user-privilege-set />"  \
                            "  <d:displayname />"             \
                            "  <a:calendar-color />"         \
                            " </d:prop>"                      \
