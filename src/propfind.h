@@ -34,6 +34,26 @@ class PropFind : public Request
     Q_OBJECT
 
 public:
+    struct CalendarInfo {
+        QString remotePath;
+        QString displayName;
+        QString color;
+        QString userPrincipal;
+
+        CalendarInfo() {};
+        CalendarInfo(const QString &path, const QString &name, const QString &color,
+                     const QString &principal = QString())
+            : remotePath(path), displayName(name), color(color)
+            , userPrincipal(principal) {};
+        bool operator==(const CalendarInfo &other) const
+        {
+            return (remotePath == other.remotePath
+                    && displayName == other.displayName
+                    && color == other.color
+                    && userPrincipal == other.userPrincipal);
+        }
+    };
+
     explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void listCurrentUserPrincipal();
@@ -42,8 +62,8 @@ public:
     void listUserAddressSet(const QString &userPrincipal);
     QString userMailtoHref() const;
 
-    void listCalendars(const QString &calendarsPath, const QString &defaultUserPrincipal);
-    const QList<Settings::CalendarInfo>& calendars() const;
+    void listCalendars(const QString &calendarsPath);
+    const QList<CalendarInfo>& calendars() const;
 
 private Q_SLOTS:
     void processResponse();
@@ -59,8 +79,7 @@ private:
     bool parseUserAddressSetResponse(const QByteArray &data);
     bool parseCalendarResponse(const QByteArray &data);
 
-    QList<Settings::CalendarInfo> mCalendars;
-    QString mDefaultUserPrincipal;
+    QList<CalendarInfo> mCalendars;
     QString mUserPrincipal;
     QString mUserMailtoHref;
     PropFindRequestType mPropFindRequestType = UserPrincipal;

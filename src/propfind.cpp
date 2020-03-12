@@ -120,7 +120,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QSt
     return false;
 }
 
-static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::CalendarInfo> *calendars, const QString &defaultUserPrincipal)
+static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::CalendarInfo> *calendars)
 {
     /* e.g.:
         <D:response>
@@ -144,7 +144,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
 
     bool responseIsCalendar = false;
     bool hasPropStat = false;
-    Settings::CalendarInfo calendarInfo;
+    PropFind::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
             // The account stores this with the encoding, so we're converting from
@@ -154,7 +154,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
             bool propStatIsCalendar = false;
-            Settings::CalendarInfo tempCalendarInfo;
+            PropFind::CalendarInfo tempCalendarInfo;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &tempCalendarInfo.displayName,
                                       &tempCalendarInfo.color,
@@ -164,10 +164,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
                 responseIsCalendar = true;
                 calendarInfo.displayName = tempCalendarInfo.displayName;
                 calendarInfo.color = tempCalendarInfo.color;
-                calendarInfo.userPrincipal = tempCalendarInfo.userPrincipal;
-                if (calendarInfo.userPrincipal.trimmed().isEmpty()) {
-                    calendarInfo.userPrincipal = defaultUserPrincipal;
-                }
+                calendarInfo.userPrincipal = tempCalendarInfo.userPrincipal.trimmed();
             }
             hasPropStat = true;
         }
@@ -286,7 +283,7 @@ bool PropFind::parseCalendarResponse(const QByteArray &data)
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
         if (reader.name() == "response" && reader.isStartElement()
-                && !readCalendarsResponse(&reader, &mCalendars, mDefaultUserPrincipal)) {
+                && !readCalendarsResponse(&reader, &mCalendars)) {
             return false;
         }
     }
@@ -331,7 +328,7 @@ PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *
     FUNCTION_CALL_TRACE;
 }
 
-void PropFind::listCalendars(const QString &calendarsPath, const QString &defaultUserPrincipal)
+void PropFind::listCalendars(const QString &calendarsPath)
 {
     QByteArray requestData("<d:propfind xmlns:d=\"DAV:\" xmlns:a=\"http://apple.com/ns/ical/\">"   \
                            " <d:prop>"                       \
@@ -342,8 +339,6 @@ void PropFind::listCalendars(const QString &calendarsPath, const QString &defaul
                            " </d:prop>"                      \
                            "</d:propfind>");
     mCalendars.clear();
-    // if the calendar isn't owned by someone else (i.e. shared) use the default user principal.
-    mDefaultUserPrincipal = defaultUserPrincipal;
     sendRequest(calendarsPath, requestData, ListCalendars);
 }
 
@@ -448,7 +443,7 @@ void PropFind::processResponse()
     }
 }
 
-const QList<Settings::CalendarInfo>& PropFind::calendars() const
+const QList<PropFind::CalendarInfo>& PropFind::calendars() const
 {
     return mCalendars;
 }

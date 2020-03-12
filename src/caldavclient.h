@@ -27,6 +27,7 @@
 #include "buteo-caldav-plugin.h"
 #include "authhandler.h"
 #include "settings.h"
+#include "propfind.h"
 #include "notebooksyncagent.h"
 
 #include <QList>
@@ -139,8 +140,6 @@ public Q_SLOTS:
 private Q_SLOTS:
     void start();
     void authenticationError();
-    void listCalendars();
-    void syncCalendars();
     void notebookSyncFinished(int errorCode, const QString &errorString);
 
 private:
@@ -152,9 +151,11 @@ private:
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
     bool cleanSyncRequired(int accountId);
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
-    QList<Settings::CalendarInfo> loadCalendars(Accounts::Account *account, Accounts::Service srv) const;
-    void mergeCalendars(const QList<Settings::CalendarInfo> &calendars);
-    void removeCalendars(const QStringList &paths);
+    QList<PropFind::CalendarInfo> loadAccountCalendars() const;
+    QList<PropFind::CalendarInfo> mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const;
+    void removeAccountCalendars(const QStringList &paths);
+    void listCalendars();
+    void syncCalendars(const QList<PropFind::CalendarInfo> &allCalendarInfo);
 
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();
@@ -174,6 +175,8 @@ private:
     Buteo::SyncProfile::ConflictResolutionPolicy mConflictResPolicy;
     Settings                    mSettings;
     int                         mAccountId;
+
+    friend class tst_CalDavClient;
 };
 
 /*! \brief Creates CalDav client plugin

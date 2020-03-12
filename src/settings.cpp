@@ -108,13 +108,3 @@ QString Settings::userMailtoHref() const
 {
     return mUserMailtoHref;
 }
-
-void Settings::setCalendars(const QList<CalendarInfo> &calendars)
-{
-    mCalendars = calendars;
-}
-
-QList<Settings::CalendarInfo> Settings::calendars() const
-{
-    return mCalendars;
-}
