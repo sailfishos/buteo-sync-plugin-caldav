@@ -1154,15 +1154,14 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 localBaseIncidence = resource.incidences[parentIndex];
             }
             if (addIncidence(localBaseIncidence)) {
-                localBaseIncidence =
-                    loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
+                localBaseIncidence = loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
             } else {
                 localBaseIncidence = KCalCore::Incidence::Ptr();
             }
         }
         if (!localBaseIncidence) {
             LOG_WARNING("Error saving base incidence of resource" << resource.href);
-            return false;
+            continue; // don't return false and block the entire sync cycle, just ignore this event.
         }
 
         // update persistent exceptions which are in the remote list.
@@ -1180,7 +1179,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
                 LOG_WARNING("Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString());
-                return false;
+                continue; // don't return false and block the entire sync cycle, just ignore this event.
             }
         }
 
