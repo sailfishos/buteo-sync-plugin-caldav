@@ -106,8 +106,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QSt
             if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal)) {
                 return false;
             }
-        }
-        if (reader->name() == "propstat" && reader->isEndElement()) {
+        } else if (reader->name() == "propstat" && reader->isEndElement()) {
             return true;
         }
     }
@@ -137,15 +136,16 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
     */
 
     bool responseIsCalendar = false;
+    bool hasPropStat = false;
     Settings::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
             calendarInfo.remotePath = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
         }
 
-        bool propStatIsCalendar = false;
-        Settings::CalendarInfo tempCalendarInfo;
         if (reader->name() == "propstat" && reader->isStartElement()) {
+            bool propStatIsCalendar = false;
+            Settings::CalendarInfo tempCalendarInfo;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &tempCalendarInfo.displayName,
                                       &tempCalendarInfo.color,
@@ -160,11 +160,12 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
                     calendarInfo.userPrincipal = defaultUserPrincipal;
                 }
             }
+            hasPropStat = true;
         }
 
         if (reader->name() == "response" && reader->isEndElement()) {
             if (!responseIsCalendar) {
-                return true;
+                return hasPropStat;
             }
 
             if (calendarInfo.remotePath.isEmpty()) {
@@ -200,6 +201,7 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
     */
 
     QString href;
+    bool containsHrefs = false;
     bool canReadMailtoHref = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar-user-address-set") {
@@ -207,11 +209,12 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
                 canReadMailtoHref = true;
             } else if (reader->isEndElement()) {
                 canReadMailtoHref = false;
-                return true;
+                return containsHrefs;
             }
         } else if (reader->name() == "href"
                 && reader->isStartElement()
                 && canReadMailtoHref) {
+            containsHrefs = true;
             href = reader->readElementText();
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
                 *mailtoHref = href.mid(7); // chop off "mailto:"
@@ -263,6 +266,54 @@ static bool readUserPrincipalResponse(QXmlStreamReader *reader, QString *userPri
     }
 
     return false;
+}
+
+bool PropFind::parseCalendarResponse(const QByteArray &data)
+{
+    if (data.isNull() || data.isEmpty()) {
+        return false;
+    }
+    QXmlStreamReader reader(data);
+    reader.setNamespaceProcessing(true);
+    for (; !reader.atEnd(); reader.readNext()) {
+        if (reader.name() == "response" && reader.isStartElement()
+                && !readCalendarsResponse(&reader, &mCalendars, mDefaultUserPrincipal)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool PropFind::parseUserPrincipalResponse(const QByteArray &data)
+{
+    if (data.isNull() || data.isEmpty()) {
+        return false;
+    }
+    QXmlStreamReader reader(data);
+    reader.setNamespaceProcessing(true);
+    for (; !reader.atEnd(); reader.readNext()) {
+        if (reader.name() == "response" && reader.isStartElement()
+                && !readUserPrincipalResponse(&reader, &mUserPrincipal)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
+{
+    if (data.isNull() || data.isEmpty()) {
+        return false;
+    }
+    QXmlStreamReader reader(data);
+    reader.setNamespaceProcessing(true);
+    for (; !reader.atEnd(); reader.readNext()) {
+        if (reader.name() == "response" && reader.isStartElement()
+                && !readUserAddressSetResponse(&reader, &mUserMailtoHref)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
@@ -368,31 +419,24 @@ void PropFind::processResponse()
 
     QByteArray data = reply->readAll();
     debugReply(*reply, data);
-
-    if (data.isNull() || data.isEmpty()) {
+    bool success = false;
+    switch (mPropFindRequestType) {
+    case (UserPrincipal):
+        success = parseUserPrincipalResponse(data);
+        break;
+    case (UserAddressSet):
+        success = parseUserAddressSetResponse(data);
+        break;
+    case (ListCalendars):
+        success = parseCalendarResponse(data);
+        break;
+    }
+    if (success) {
+        finishedWithSuccess();
+    } else {
         finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
-                          QString("Empty response body for PROPFIND"));
-        return;
+                          QString("Cannot parse response body for PROPFIND"));
     }
-
-    QXmlStreamReader reader(data);
-    reader.setNamespaceProcessing(true);
-    for (; !reader.atEnd(); reader.readNext()) {
-        if (reader.name() == "response" && reader.isStartElement()) {
-            const bool parsedResponse = (mPropFindRequestType == UserPrincipal)
-                                      ? readUserPrincipalResponse(&reader, &mUserPrincipal)
-                                      : ((mPropFindRequestType == UserAddressSet)
-                                        ? readUserAddressSetResponse(&reader, &mUserMailtoHref)
-                                        : readCalendarsResponse(&reader, &mCalendars, mDefaultUserPrincipal));
-            if (!parsedResponse) {
-                finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
-                                  QString("Cannot parse response body for PROPFIND"));
-                return;
-            }
-        }
-    }
-
-    finishedWithSuccess();
 }
 
 const QList<Settings::CalendarInfo>& PropFind::calendars() const

@@ -35,6 +35,14 @@ public:
         QString displayName;
         QString color;
         QString userPrincipal;
+
+        bool operator==(const CalendarInfo &other) const
+        {
+            return (remotePath == other.remotePath
+                    && displayName == other.displayName
+                    && color == other.color
+                    && userPrincipal == other.userPrincipal);
+        }
     };
 
     Settings();
