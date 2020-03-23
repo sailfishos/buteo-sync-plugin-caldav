@@ -1,2 +1,2 @@
 TEMPLATE = subdirs
-SUBDIRS += notebooksyncagent reader incidencehandler
+SUBDIRS += notebooksyncagent reader incidencehandler propfind

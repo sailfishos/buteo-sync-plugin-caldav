@@ -55,11 +55,17 @@ private:
         ListCalendars
     };
     void sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType);
+    bool parseUserPrincipalResponse(const QByteArray &data);
+    bool parseUserAddressSetResponse(const QByteArray &data);
+    bool parseCalendarResponse(const QByteArray &data);
+
     QList<Settings::CalendarInfo> mCalendars;
     QString mDefaultUserPrincipal;
     QString mUserPrincipal;
     QString mUserMailtoHref;
     PropFindRequestType mPropFindRequestType = UserPrincipal;
+
+    friend class tst_Propfind;
 };
 
 #endif
