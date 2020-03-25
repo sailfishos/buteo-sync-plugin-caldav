@@ -147,7 +147,9 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Settings::Cale
     Settings::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
-            calendarInfo.remotePath = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
+            // The account stores this with the encoding, so we're converting from
+            // percent encoding later.
+            calendarInfo.remotePath = reader->readElementText();
         }
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
