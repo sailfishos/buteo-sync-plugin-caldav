@@ -165,7 +165,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
                                      mKCal::ExtendedStorage::Ptr storage,
                                      QNetworkAccessManager *networkAccessManager,
                                      Settings *settings,
-                                     const QString &remoteCalendarPath,
+                                     const QString &encodedRemotePath,
                                      QObject *parent)
     : QObject(parent)
     , mNetworkManager(networkAccessManager)
@@ -173,7 +173,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mCalendar(calendar)
     , mStorage(storage)
     , mNotebook(0)
-    , mRemoteCalendarPath(remoteCalendarPath)
+    , mEncodedRemotePath(encodedRemotePath)
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
     , mNotebookNeedsDeletion(false)
@@ -182,6 +182,12 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mEnableUpsync(true)
     , mEnableDownsync(true)
 {
+    // the calendar path may be percent-encoded.  Return UTF-8 QString.
+    mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
+    // Yahoo! seems to double-percent-encode for some reason
+    if (mSettings->serverAddress().contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
+        mRemoteCalendarPath = QUrl::fromPercentEncoding(mRemoteCalendarPath.toUtf8());
+    }
 }
 
 NotebookSyncAgent::~NotebookSyncAgent()
@@ -745,7 +751,7 @@ bool NotebookSyncAgent::isDeleted() const
 
 const QString& NotebookSyncAgent::path() const
 {
-    return mRemoteCalendarPath;
+    return mEncodedRemotePath;
 }
 
 // ------------------------------ Utility / implementation functions.

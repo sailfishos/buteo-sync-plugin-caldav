@@ -320,23 +320,14 @@ public:
             enabled.clear();
         }
     };
-    QList<Settings::CalendarInfo> enabledCalendars(const QString &serverAddress)
+    QList<Settings::CalendarInfo> enabledCalendars()
     {
-        if (!enabled.count()) {
-            return QList<Settings::CalendarInfo>();
-        }
         QList<Settings::CalendarInfo> allCalendarInfo;
         for (int i = 0; i < paths.count(); i++) {
             if (!enabled.contains(paths[i])) {
                 continue;
             }
-            // the calendar path may be percent-encoded.  Return UTF-8 QString.
-            QString remotePath = QUrl::fromPercentEncoding(paths[i].toUtf8());
-            // Yahoo! seems to double-percent-encode for some reason
-            if (serverAddress.contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
-                remotePath = QUrl::fromPercentEncoding(remotePath.toUtf8());
-            }
-            allCalendarInfo << Settings::CalendarInfo{remotePath,
+            allCalendarInfo << Settings::CalendarInfo{paths[i],
                     displayNames[i], colors[i], QString() };
         }
         return allCalendarInfo;
@@ -398,7 +389,7 @@ QList<Settings::CalendarInfo> CalDavClient::loadCalendars(Accounts::Account *acc
     struct CalendarSettings calendarSettings(account);
     account->selectService(Accounts::Service());
 
-    return calendarSettings.enabledCalendars(mSettings.serverAddress());
+    return calendarSettings.enabledCalendars();
 }
 
 void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars)

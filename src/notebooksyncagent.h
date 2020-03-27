@@ -50,7 +50,7 @@ public:
                                mKCal::ExtendedStorage::Ptr storage,
                                QNetworkAccessManager *networkAccessManager,
                                Settings *settings,
-                               const QString &remoteCalendarPath,
+                               const QString &encodedRemotePath,
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
@@ -121,7 +121,8 @@ private:
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
     KDateTime mNotebookSyncedDateTime;
-    QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host.
+    QString mEncodedRemotePath;
+    QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host, percent decoded.
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
