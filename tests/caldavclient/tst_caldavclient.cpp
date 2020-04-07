@@ -41,6 +41,7 @@ public slots:
 
 private slots:
     void initConfig();
+    void addInitCalendars();
     void loadAccountCalendars();
     void mergeAccountCalendars();
     void removeAccountCalendar();
@@ -74,10 +75,7 @@ void tst_CalDavClient::initTestCase()
     QVERIFY(mAccount->supportsService(QLatin1String("caldav")));
     Accounts::Service srv = mAccount->services(QLatin1String("caldav")).first();
     mAccount->selectService(srv);
-    mAccount->setValue("calendars", QStringList() << QLatin1String("/foo/") << QLatin1String("/bar%40plop/"));
-    mAccount->setValue("enabled_calendars", QStringList() << QLatin1String("/bar%40plop/"));
-    mAccount->setValue("calendar_display_names", QStringList() << QLatin1String("Foo") << QLatin1String("Bar"));
-    mAccount->setValue("calendar_colors", QStringList() << QLatin1String("#FF0000") << QLatin1String("#00FF00"));
+    mAccount->setValue("caldav-sync/profile_id", mProfile.name());
     mAccount->setValue("server_address", SERVER_ADDRESS);
     mAccount->setValue("ignore_ssl_errors", true);
     mAccount->setCredentialsId(1);
@@ -113,6 +111,15 @@ void tst_CalDavClient::initConfig()
     QCOMPARE(client.mSettings.accountId(), mAccount->id());
     QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
     QVERIFY(client.mSettings.ignoreSSLErrors());
+}
+
+void tst_CalDavClient::addInitCalendars()
+{
+    mAccount->setValue("calendars", QStringList() << QLatin1String("/foo/") << QLatin1String("/bar%40plop/"));
+    mAccount->setValue("enabled_calendars", QStringList() << QLatin1String("/bar%40plop/"));
+    mAccount->setValue("calendar_display_names", QStringList() << QLatin1String("Foo") << QLatin1String("Bar"));
+    mAccount->setValue("calendar_colors", QStringList() << QLatin1String("#FF0000") << QLatin1String("#00FF00"));
+    QVERIFY(mAccount->syncAndBlock());
 }
 
 void tst_CalDavClient::loadAccountCalendars()

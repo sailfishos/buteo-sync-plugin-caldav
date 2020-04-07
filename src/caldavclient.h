@@ -151,6 +151,7 @@ private:
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
     bool cleanSyncRequired(int accountId);
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
+    Accounts::Account* getAccountForCalendars(Accounts::Service *service) const;
     QList<PropFind::CalendarInfo> loadAccountCalendars() const;
     QList<PropFind::CalendarInfo> mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const;
     void removeAccountCalendars(const QStringList &paths);

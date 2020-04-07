@@ -262,36 +262,34 @@ void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool a
     }
 }
 
-static Accounts::Account* getAccountForCalendars(Accounts::Manager *manager,
-                                                 int accountId,
-                                                 Accounts::Service *service)
+Accounts::Account* CalDavClient::getAccountForCalendars(Accounts::Service *service) const
 {
-    Accounts::Account *account = manager->account(accountId);
+    Accounts::Account *account = mManager->account(mAccountId);
     if (!account) {
-        LOG_WARNING("cannot find account" << accountId);
+        LOG_WARNING("cannot find account" << mAccountId);
         return NULL;
     }
     if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "is disabled!");
+        LOG_WARNING("Account" << mAccountId << "is disabled!");
         return NULL;
     }
     Accounts::Service calendarService;
     const Accounts::ServiceList caldavServices = account->services("caldav");
     for (const Accounts::Service &currService : caldavServices) {
         account->selectService(currService);
-        if (!account->value("calendars").toStringList().isEmpty()) {
+        if (account->value("caldav-sync/profile_id").toString() == getProfileName()) {
             calendarService = currService;
             break;
         }
     }
     if (!calendarService.isValid()) {
-        LOG_WARNING("cannot find a service for account" << accountId << "with a valid calendar list");
+        LOG_WARNING("cannot find a service for account" << mAccountId << "with a valid calendar list");
         return NULL;
     }
 
     account->selectService(calendarService);
     if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "service:" << service->name() << "is disabled!");
+        LOG_WARNING("Account" << mAccountId << "service:" << service->name() << "is disabled!");
         return NULL;
     }
 
@@ -392,7 +390,7 @@ private:
 QList<PropFind::CalendarInfo> CalDavClient::loadAccountCalendars() const
 {
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return QList<PropFind::CalendarInfo>();
     }
@@ -405,7 +403,7 @@ QList<PropFind::CalendarInfo> CalDavClient::loadAccountCalendars() const
 QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const
 {
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return QList<PropFind::CalendarInfo>();
     }
@@ -434,7 +432,7 @@ QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<Pr
 void CalDavClient::removeAccountCalendars(const QStringList &paths)
 {
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return;
     }
@@ -473,7 +471,7 @@ bool CalDavClient::initConfig()
     mAccountId = accountId;
 
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, accountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return false;
     }
@@ -614,7 +612,7 @@ void CalDavClient::listCalendars(const QString &home)
     if (remoteHome.isEmpty()) {
         LOG_WARNING("Cannot find the calendar root for this user, guess it from account.");
         Accounts::Service srv;
-        Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+        Accounts::Account *account = getAccountForCalendars(&srv);
         if (!account) {
             syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
                          QLatin1String("unable to find account for calendar detection"));
