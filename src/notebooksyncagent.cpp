@@ -250,6 +250,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     mNotebook->setAccount(accountId);
     mNotebook->setPluginName(pluginName);
     mNotebook->setSyncProfile(syncProfile);
+    mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
     mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
     mNotebook->setColor(color);
     return true;
