@@ -262,36 +262,34 @@ void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool a
     }
 }
 
-static Accounts::Account* getAccountForCalendars(Accounts::Manager *manager,
-                                                 int accountId,
-                                                 Accounts::Service *service)
+Accounts::Account* CalDavClient::getAccountForCalendars(Accounts::Service *service) const
 {
-    Accounts::Account *account = manager->account(accountId);
+    Accounts::Account *account = mManager->account(mAccountId);
     if (!account) {
-        LOG_WARNING("cannot find account" << accountId);
+        LOG_WARNING("cannot find account" << mAccountId);
         return NULL;
     }
     if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "is disabled!");
+        LOG_WARNING("Account" << mAccountId << "is disabled!");
         return NULL;
     }
     Accounts::Service calendarService;
     const Accounts::ServiceList caldavServices = account->services("caldav");
     for (const Accounts::Service &currService : caldavServices) {
         account->selectService(currService);
-        if (!account->value("calendars").toStringList().isEmpty()) {
+        if (account->value("caldav-sync/profile_id").toString() == getProfileName()) {
             calendarService = currService;
             break;
         }
     }
     if (!calendarService.isValid()) {
-        LOG_WARNING("cannot find a service for account" << accountId << "with a valid calendar list");
+        LOG_WARNING("cannot find a service for account" << mAccountId << "with a valid calendar list");
         return NULL;
     }
 
     account->selectService(calendarService);
     if (!account->enabled()) {
-        LOG_WARNING("Account" << accountId << "service:" << service->name() << "is disabled!");
+        LOG_WARNING("Account" << mAccountId << "service:" << service->name() << "is disabled!");
         return NULL;
     }
 
@@ -320,26 +318,35 @@ public:
             enabled.clear();
         }
     };
-    QList<Settings::CalendarInfo> enabledCalendars()
+    // Constructs a list of CalendarInfo from value stored in settings.
+    QList<PropFind::CalendarInfo> toCalendars()
     {
-        QList<Settings::CalendarInfo> allCalendarInfo;
+        QList<PropFind::CalendarInfo> allCalendarInfo;
         for (int i = 0; i < paths.count(); i++) {
-            if (!enabled.contains(paths[i])) {
-                continue;
-            }
-            allCalendarInfo << Settings::CalendarInfo{paths[i],
-                    displayNames[i], colors[i], QString() };
+            allCalendarInfo << PropFind::CalendarInfo(paths[i],
+                    displayNames[i], colors[i]);
         }
         return allCalendarInfo;
     };
-    void add(const Settings::CalendarInfo &infos)
+    QList<PropFind::CalendarInfo> enabledCalendars(const QList<PropFind::CalendarInfo> &calendars)
+    {
+        QList<PropFind::CalendarInfo> filteredCalendarInfo;
+        for (const PropFind::CalendarInfo &info : calendars) {
+            if (!enabled.contains(info.remotePath)) {
+                continue;
+            }
+            filteredCalendarInfo << info;
+        }
+        return filteredCalendarInfo;
+    };
+    void add(const PropFind::CalendarInfo &infos)
     {
         paths.append(infos.remotePath);
         enabled.append(infos.remotePath);
         displayNames.append(infos.displayName);
         colors.append(infos.color);
     };
-    bool update(const Settings::CalendarInfo &infos, bool &modified)
+    bool update(const PropFind::CalendarInfo &infos, bool &modified)
     {
         int i = paths.indexOf(infos.remotePath);
         if (i < 0) {
@@ -380,30 +387,31 @@ private:
     QStringList enabled;
 };
 
-QList<Settings::CalendarInfo> CalDavClient::loadCalendars(Accounts::Account *account, Accounts::Service srv) const
+QList<PropFind::CalendarInfo> CalDavClient::loadAccountCalendars() const
 {
-    if (!account || !srv.isValid()) {
-        return QList<Settings::CalendarInfo>();
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(&srv);
+    if (!account) {
+        return QList<PropFind::CalendarInfo>();
     }
-    account->selectService(srv);
     struct CalendarSettings calendarSettings(account);
     account->selectService(Accounts::Service());
 
-    return calendarSettings.enabledCalendars();
+    return calendarSettings.enabledCalendars(calendarSettings.toCalendars());
 }
 
-void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars)
+QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const
 {
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
-        return;
+        return QList<PropFind::CalendarInfo>();
     }
     struct CalendarSettings calendarSettings(account);
     account->selectService(Accounts::Service());
 
     bool modified = false;
-    for (QList<Settings::CalendarInfo>::ConstIterator it = calendars.constBegin();
+    for (QList<PropFind::CalendarInfo>::ConstIterator it = calendars.constBegin();
          it != calendars.constEnd(); ++it) {
         if (!calendarSettings.update(*it, modified)) {
             LOG_DEBUG("Found a new upstream calendar:" << it->remotePath << it->displayName);
@@ -414,15 +422,17 @@ void CalDavClient::mergeCalendars(const QList<Settings::CalendarInfo> &calendars
         }
     }
     if (modified) {
+        LOG_DEBUG("Store modifications to calendar settings.");
         calendarSettings.store(account, srv);
-        mSettings.setCalendars(calendars);
     }
+
+    return calendarSettings.enabledCalendars(calendars);
 }
 
-void CalDavClient::removeCalendars(const QStringList &paths)
+void CalDavClient::removeAccountCalendars(const QStringList &paths)
 {
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, mAccountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return;
     }
@@ -461,7 +471,7 @@ bool CalDavClient::initConfig()
     mAccountId = accountId;
 
     Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(mManager, accountId, &srv);
+    Accounts::Account *account = getAccountForCalendars(&srv);
     if (!account) {
         return false;
     }
@@ -472,11 +482,6 @@ bool CalDavClient::initConfig()
         return false;
     }
     mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
-    mSettings.setCalendars(loadCalendars(account, srv));
-    if (mSettings.calendars().isEmpty()) {
-        LOG_WARNING("no calendars found");
-        return false;
-    }
     account->selectService(Accounts::Service());
 
     mAuth = new AuthHandler(mManager, accountId, srv.name());
@@ -586,13 +591,13 @@ void CalDavClient::start()
         if (!userPrincipal.isEmpty()) {
             // determine the mailto href for this user.
             mSettings.setUserPrincipal(userPrincipal);
-            PropFind *userMailtoHrefRequest = new PropFind(mNAManager, &mSettings, this);
-            connect(userMailtoHrefRequest, &Request::finished, [this, userMailtoHrefRequest] {
-                userMailtoHrefRequest->deleteLater();
-                mSettings.setUserMailtoHref(userMailtoHrefRequest->userMailtoHref());
-                listCalendars();
+            PropFind *userHrefsRequest = new PropFind(mNAManager, &mSettings, this);
+            connect(userHrefsRequest, &Request::finished, [this, userHrefsRequest] {
+                userHrefsRequest->deleteLater();
+                mSettings.setUserMailtoHref(userHrefsRequest->userMailtoHref());
+                listCalendars(userHrefsRequest->userHomeHref());
             });
-            userMailtoHrefRequest->listUserAddressSet(userPrincipal);
+            userHrefsRequest->listUserAddressSet(userPrincipal);
         } else {
             // just continue normal calendar sync.
             listCalendars();
@@ -601,34 +606,45 @@ void CalDavClient::start()
     userAddressSetRequest->listCurrentUserPrincipal();
 }
 
-void CalDavClient::listCalendars()
+void CalDavClient::listCalendars(const QString &home)
 {
-    QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
-    if (allCalendarInfo.isEmpty()) {
-        syncFinished(Buteo::SyncResults::NO_ERROR,
-                     QLatin1String("No calendars for this account"));
-        return;
+    QString remoteHome(home);
+    if (remoteHome.isEmpty()) {
+        LOG_WARNING("Cannot find the calendar root for this user, guess it from account.");
+        Accounts::Service srv;
+        Accounts::Account *account = getAccountForCalendars(&srv);
+        if (!account) {
+            syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         QLatin1String("unable to find account for calendar detection"));
+            return;
+        }
+        struct CalendarSettings calendarSettings(account);
+        QList<PropFind::CalendarInfo> allCalendarInfo = calendarSettings.toCalendars();
+        if (allCalendarInfo.isEmpty()) {
+            syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                         QLatin1String("no calendar listed for detection"));
+            return;
+        }
+        // Hacky here, try to guess the root for calendars from known
+        // calendar paths, by removing one level.
+        int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
+        remoteHome = allCalendarInfo[0].remotePath.left(lastIndex + 1);
     }
     PropFind *calendarRequest = new PropFind(mNAManager, &mSettings, this);
-    connect(calendarRequest, &Request::finished, this, &CalDavClient::syncCalendars);
-    // Hacky here, try to guess the root for calendars from known
-    // calendar paths, by removing one level.
-    int lastIndex = allCalendarInfo[0].remotePath.lastIndexOf('/', -2);
-    calendarRequest->listCalendars(allCalendarInfo[0].remotePath.left(lastIndex + 1), mSettings.userPrincipal());
+    connect(calendarRequest, &Request::finished, this, [this, calendarRequest] {
+        calendarRequest->deleteLater();
+        if (calendarRequest->errorCode() == Buteo::SyncResults::NO_ERROR) {
+            syncCalendars(mergeAccountCalendars(calendarRequest->calendars()));
+        } else {
+            LOG_WARNING("Cannot list calendars, fallback to stored ones in account.");
+            syncCalendars(loadAccountCalendars());
+        }
+    });
+    calendarRequest->listCalendars(remoteHome);
 }
 
-void CalDavClient::syncCalendars()
+void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalendarInfo)
 {
-    PropFind *request = qobject_cast<PropFind*>(sender());
-    request->deleteLater();
-
-    if (request->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        mergeCalendars(request->calendars());
-    } else {
-        LOG_WARNING("Unable to list calendars from server.");
-    }
-
-    const QList<Settings::CalendarInfo> allCalendarInfo = mSettings.calendars();
     if (allCalendarInfo.isEmpty()) {
         syncFinished(Buteo::SyncResults::NO_ERROR,
                      QLatin1String("No calendars for this account"));
@@ -651,16 +667,17 @@ void CalDavClient::syncCalendars()
     // for each calendar path we need to sync:
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
-    for (const Settings::CalendarInfo &calendarInfo : allCalendarInfo) {
+    for (const PropFind::CalendarInfo &calendarInfo : allCalendarInfo) {
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
             (mCalendar, mStorage, mNAManager, &mSettings,
-             calendarInfo.remotePath, this);
+             calendarInfo.remotePath, calendarInfo.readOnly, this);
+        const QString &email = (calendarInfo.userPrincipal == mSettings.userPrincipal()
+                                || calendarInfo.userPrincipal.isEmpty())
+            ? mSettings.userMailtoHref() : QString();
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
-                                        calendarInfo.userPrincipal == mSettings.userPrincipal()
-                                                ? mSettings.userMailtoHref()
-                                                : QString(),
+                                        email,
                                         QString::number(mAccountId),
                                         getPluginName(),
                                         getProfileName())) {
@@ -740,16 +757,9 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
                 mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             mNotebookSyncAgents[i]->finalize();
         }
-        if (mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
-            removeCalendars(deletedNotebooks);
-            LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
-            syncFinished(Buteo::SyncResults::NO_ERROR);
-        } else {
-            LOG_WARNING("Unable to save calendar storage after writing notebook changes!");
-            mResults = Buteo::SyncResults();
-            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                         QLatin1String("unable to save calendar storage"));
-        }
+        removeAccountCalendars(deletedNotebooks);
+        LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
+        syncFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 

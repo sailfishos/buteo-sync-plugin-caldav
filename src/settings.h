@@ -30,21 +30,6 @@
 class Settings
 {
 public:
-    struct CalendarInfo {
-        QString remotePath;
-        QString displayName;
-        QString color;
-        QString userPrincipal;
-
-        bool operator==(const CalendarInfo &other) const
-        {
-            return (remotePath == other.remotePath
-                    && displayName == other.displayName
-                    && color == other.color
-                    && userPrincipal == other.userPrincipal);
-        }
-    };
-
     Settings();
 
     QString authToken() const;
@@ -71,11 +56,7 @@ public:
     void setUserMailtoHref(const QString &href);
     QString userMailtoHref() const;
 
-    void setCalendars(const QList<CalendarInfo> &calendars);
-    QList<CalendarInfo> calendars() const;
-
 private:
-    QList<CalendarInfo> mCalendars;
     QString mUserPrincipal;
     QString mUserMailtoHref;
     QString mServerAddress;

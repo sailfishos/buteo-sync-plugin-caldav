@@ -1,2 +1,2 @@
 TEMPLATE = subdirs
-SUBDIRS += notebooksyncagent reader incidencehandler propfind
+SUBDIRS += notebooksyncagent reader incidencehandler propfind caldavclient
