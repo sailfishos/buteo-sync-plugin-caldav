@@ -83,6 +83,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 make %{?_smp_mflags}
 
 %pre
+# remove legacy files
 rm -f /home/nemo/.cache/msyncd/sync/client/caldav.xml || :
 rm -f /home/nemo/.cache/msyncd/sync/caldav-sync.xml || :
 
