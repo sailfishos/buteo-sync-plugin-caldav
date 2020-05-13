@@ -235,8 +235,6 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
                 || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
             LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
-            if (!mStorage->loadNotebookIncidences(notebook->uid()))
-                return false;
             mNotebook = notebook;
             mNotebook->setColor(color);
             mNotebook->setName(notebookName);
@@ -498,6 +496,15 @@ void NotebookSyncAgent::sendLocalChanges()
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
 
+    // This is largely overkill to load every incidences just to be able
+    // to find parents of series or instances of series.
+    // Todo: add a method in mkcal to load all incidences of a series from uid.
+    if (!mStorage->loadNotebookIncidences(mNotebook->uid())) {
+        emitFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                     QString::fromLatin1("Unable to load incidences from database."));
+        return;
+    }
+
     bool localChangeRequestStarted = false;
     // For deletions, if a persistent exception is deleted we may need to do a PUT
     // containing all of the still-existing events in the series.
@@ -516,7 +523,7 @@ void NotebookSyncAgent::sendLocalChanges()
         QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
         if (!recurrenceIds.contains(KDateTime())) {
             KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
-            if (!recurringSeries.isNull()) {
+            if (recurringSeries) {
                 mLocalModifications.append(recurringSeries);
                 continue; // finished with this deletion.
             } else {
@@ -557,8 +564,12 @@ void NotebookSyncAgent::sendLocalChanges()
                                               mCalendar->instances(toUpload[i]));
         } else if (toUpload[i]->hasRecurrenceId()) {
             KCalCore::Incidence::Ptr recurringIncidence(mCalendar->incidence(toUpload[i]->uid()));
-            icsData = IncidenceHandler::toIcs(recurringIncidence,
-                                              mCalendar->instances(recurringIncidence));
+            if (recurringIncidence) {
+                icsData = IncidenceHandler::toIcs(recurringIncidence,
+                                                  mCalendar->instances(recurringIncidence));
+            } else {
+                LOG_WARNING("Cannot find parent of " << toUpload[i]->uid() << "for upload of series.");
+            }
         } else {
             icsData = IncidenceHandler::toIcs(toUpload[i]);
         }
@@ -1099,6 +1110,12 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
+    // Ensure that incidences are in memory for series search of parents.
+    if (!mStorage->loadNotebookIncidences(mNotebook->uid())) {
+        LOG_WARNING("Unable to load incidences from database.");
+        return false;
+    }
+
     // We need to coalesce any resources which have the same UID.
     // This can be the case if there is addition of both a recurring event,
     // and a modified occurrence of that event, in the same sync cycle.
@@ -1236,6 +1253,14 @@ bool NotebookSyncAgent::deleteIncidences(const KCalCore::Incidence::List deleted
 
 void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
+    // This is largely overkill to load every incidences just to be able
+    // to find incidence by uid and possible instances of series.
+    // Todo: add a method in mkcal to load all incidences of a series from uid.
+    if (!mStorage->loadNotebookIncidences(mNotebook->uid())) {
+        LOG_WARNING("Unable to load incidences from database.");
+        returns;
+    }
+
     KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
     if (localBaseIncidence) {
         KDateTime modificationDt = localBaseIncidence->lastModified();
