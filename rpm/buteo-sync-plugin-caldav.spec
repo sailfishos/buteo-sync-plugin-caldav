@@ -14,7 +14,7 @@ BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(mlite5)
 BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
-BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.9
+BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.18
 BuildRequires:  pkgconfig(libkcalcoren-qt5)
 BuildRequires:  pkgconfig(buteosyncfw5)
 BuildRequires:  pkgconfig(accounts-qt5)

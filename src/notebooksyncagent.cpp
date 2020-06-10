@@ -235,8 +235,6 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
                 || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
             LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
-            if (!mStorage->loadNotebookIncidences(notebook->uid()))
-                return false;
             mNotebook = notebook;
             mNotebook->setColor(color);
             mNotebook->setName(notebookName);
@@ -515,8 +513,9 @@ void NotebookSyncAgent::sendLocalChanges()
     for (const QString &uid : keys) {
         QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
         if (!recurrenceIds.contains(KDateTime())) {
+            mStorage->load(uid);
             KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
-            if (!recurringSeries.isNull()) {
+            if (recurringSeries) {
                 mLocalModifications.append(recurringSeries);
                 continue; // finished with this deletion.
             } else {
@@ -552,13 +551,18 @@ void NotebookSyncAgent::sendLocalChanges()
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
         QString icsData;
-        if (toUpload[i]->recurs()) {
-            icsData = IncidenceHandler::toIcs(toUpload[i],
-                                              mCalendar->instances(toUpload[i]));
-        } else if (toUpload[i]->hasRecurrenceId()) {
-            KCalCore::Incidence::Ptr recurringIncidence(mCalendar->incidence(toUpload[i]->uid()));
-            icsData = IncidenceHandler::toIcs(recurringIncidence,
-                                              mCalendar->instances(recurringIncidence));
+        if (toUpload[i]->recurs() || toUpload[i]->hasRecurrenceId()) {
+            if (mStorage->loadSeries(toUpload[i]->uid())) {
+                KCalCore::Incidence::Ptr recurringIncidence(toUpload[i]->recurs() ? toUpload[i] : mCalendar->incidence(toUpload[i]->uid()));
+                if (recurringIncidence) {
+                    icsData = IncidenceHandler::toIcs(recurringIncidence,
+                                                      mCalendar->instances(recurringIncidence));
+                } else {
+                    LOG_WARNING("Cannot find parent of " << toUpload[i]->uid() << "for upload of series.");
+                }
+            } else {
+                LOG_WARNING("Cannot load series " << toUpload[i]->uid());
+            }
         } else {
             icsData = IncidenceHandler::toIcs(toUpload[i]);
         }
@@ -979,8 +983,9 @@ static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storag
     const QString &nbuid = nbUid(notebookId, uid);
 
     // Load from storage any matching incidence by uid or modified uid.
-    storage->load(uid, recurrenceId);
-    storage->load(nbuid, recurrenceId);
+    // Use series loading to ensure that mCalendar->instances() are successful.
+    storage->loadSeries(uid);
+    storage->loadSeries(nbuid);
 
     KCalCore::Incidence::Ptr incidence = calendar->incidence(uid, recurrenceId);
     if (!incidence) {
@@ -1236,6 +1241,11 @@ bool NotebookSyncAgent::deleteIncidences(const KCalCore::Incidence::List deleted
 
 void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
+    if (!mStorage->loadSeries(uid)) {
+        LOG_WARNING("Unable to load incidence from database:" << uid);
+        return;
+    }
+
     KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
     if (localBaseIncidence) {
         KDateTime modificationDt = localBaseIncidence->lastModified();
