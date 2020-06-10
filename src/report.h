@@ -47,7 +47,6 @@ public:
                      const QDateTime &fromDateTime = QDateTime(),
                      const QDateTime &toDateTime = QDateTime());
     void multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList);
-    void multiGetEtags(const QString &remoteCalendarPath, const QStringList &eventHrefList);
 
     const QList<Reader::CalendarResource>& receivedCalendarResources() const;
 
@@ -60,9 +59,6 @@ private:
                            const QDateTime &fromDateTime,
                            const QDateTime &toDateTime,
                            bool getCalendarData);
-    void sendMultiQuery(const QString &remoteCalendarPath,
-                        const QStringList &uris,
-                        bool getCalendarData);
     QString mRemoteCalendarPath;
     QList<Reader::CalendarResource> mReceivedResources;
 };

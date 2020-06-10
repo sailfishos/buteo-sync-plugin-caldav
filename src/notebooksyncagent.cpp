@@ -632,8 +632,7 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);
         connect(report, SIGNAL(finished()), this, SLOT(additionalReportRequestFinished()));
-        report->multiGetEtags(mRemoteCalendarPath, mSentUids.keys());
-        return;
+        report->multiGetEvents(mRemoteCalendarPath, mSentUids.keys());
     } else {
         emitFinished(Buteo::SyncResults::NO_ERROR);
     }
@@ -646,7 +645,8 @@ void NotebookSyncAgent::additionalReportRequestFinished()
     // The server did not originally respond with the update ETAG values after
     // our initial PUT/UPDATE so we had to do an addition report request.
     // This response will contain the new ETAG values for any resource we
-    // upsynced (ie, a local modification/addition).
+    // upsynced (ie, a local modification/addition) and also the incidence
+    // as it may have been modified by the server.
 
     Report *report = qobject_cast<Report*>(sender());
     mRequests.remove(report);
@@ -654,22 +654,13 @@ void NotebookSyncAgent::additionalReportRequestFinished()
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         LOG_DEBUG("Additional report request finished: received:"
-                  << report->receivedCalendarResources().length() << "iCal blobs containing a total of"
                   << report->receivedCalendarResources().count() << "incidences");
-        for (QList<Reader::CalendarResource>::ConstIterator
-                 it = report->receivedCalendarResources().constBegin();
-             it != report->receivedCalendarResources().constEnd(); ++it) {
-            if (mSentUids.contains(it->href)) {
-                updateHrefETag(mSentUids.take(it->href), it->href, it->etag);
-            }
-        }
-        LOG_DEBUG("Remains" << mSentUids.count() << "uris not updated.");
+        mReceivedCalendarResources += report->receivedCalendarResources();
         emitFinished(Buteo::SyncResults::NO_ERROR);
-        return;
+    } else {
+        LOG_WARNING("Additional report request finished with error, aborting sync of notebook:" << mRemoteCalendarPath);
+        emitFinished(report->errorCode(), report->errorString());
     }
-
-    LOG_WARNING("Additional report request finished with error, aborting sync of notebook:" << mRemoteCalendarPath);
-    emitFinished(report->errorCode(), report->errorString());
 }
 
 bool NotebookSyncAgent::applyRemoteChanges()
@@ -1020,7 +1011,14 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         }
 
         storedIncidence->endUpdates();
-        storedIncidence->setLastModified(incidence->lastModified());
+        // Avoid spurious detections of modified incidences
+        // by ensuring that the received last modification date time
+        // is previous to the sync date time.
+        if (incidence->lastModified() < mNotebookSyncedDateTime) {
+            storedIncidence->setLastModified(incidence->lastModified());
+        } else {
+            storedIncidence->setLastModified(mNotebookSyncedDateTime.addSecs(-2));
+        }
     }
     incidence->setUid(storedIncidence->uid());
 }
