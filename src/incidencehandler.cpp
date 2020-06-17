@@ -406,20 +406,6 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
                 // all-day event, so remove the DTEND before upsyncing.
                 LOG_DEBUG("Removing DTEND from" << incidence->uid());
                 event->setDtEnd(KDateTime());
-            } else {
-                KDateTime dt;
-                if (event->hasEndDate()) {
-                    // Event::dtEnd() is inclusive, but DTEND in iCalendar format is exclusive.
-                    dt = KDateTime(event->dtEnd().addDays(1).date(), KDateTime::Spec::ClockTime());
-                    LOG_DEBUG("Adding +1 day to DTEND to make exclusive DTEND for" << incidence->uid() << ":" << dt.toString());
-                } else {
-                    // No DTEND exists in event, but it's all day.  Set to DTSTART+1 to make exclusive DTEND.
-                    dt = KDateTime(event->dtStart().addDays(1).date(), KDateTime::Spec::ClockTime());
-                    LOG_DEBUG("Setting DTEND to DTSTART+1 for" << incidence->uid() << ":" << dt.toString());
-                }
-                dt.setDateOnly(true);
-                LOG_DEBUG("Stripping time from date-only DTEND:" << dt.toString());
-                event->setDtEnd(dt);
             }
         }
 
