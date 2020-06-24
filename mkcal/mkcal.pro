@@ -13,6 +13,6 @@ QT -= gui
 HEADERS +=  caldavinvitationplugin.h
 SOURCES +=  caldavinvitationplugin.cpp
 
-target.path +=  /${DESTDIR}/usr/lib/mkcalplugins/
+target.path +=  /${DESTDIR}$$[QT_INSTALL_LIBS]/mkcalplugins/
 INSTALLS += target
 
