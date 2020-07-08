@@ -183,6 +183,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mEnableUpsync(true)
     , mEnableDownsync(true)
     , mReadOnlyFlag(readOnlyFlag)
+    , mHasUpdatedEtags(false)
 {
     // the calendar path may be percent-encoded.  Return UTF-8 QString.
     mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
@@ -611,23 +612,32 @@ void NotebookSyncAgent::nonReportRequestFinished()
                  it != putRequest->updatedETags().constEnd(); ++it) {
                 if (mSentUids.contains(it.key())) {
                     updateHrefETag(mSentUids.take(it.key()), it.key(), it.value());
+                    mHasUpdatedEtags = true;
                 }
             }
         }
-        if (mRequests.isEmpty()) {
-            finalizeSendingLocalChanges();
-        }
     }
-    request->deleteLater();
+    if (mRequests.isEmpty()) {
+        finalizeSendingLocalChanges();
+    }
 }
 
 void NotebookSyncAgent::finalizeSendingLocalChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    // All PUT requests have been finished, and mSentUids have been cleared from
-    // uids that have already been updated with new etag value. Just remains
-    // the ones that requires additional retrieval to get etag values.
+    // All PUT requests have been finished, some etags may have
+    // been updated already. Try to save them in storage.
+    if (mHasUpdatedEtags && !mStorage->save()) {
+        LOG_WARNING("Unable to save calendar storage after etag changes!");
+        emitFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                     QLatin1String("unable to save upstream etags"));
+        return;
+    }
+
+    // mSentUids have been cleared from uids that have already
+    // been updated with new etag value. Just remains the ones
+    // that requires additional retrieval to get etag values.
     if (!mSentUids.isEmpty()) {
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);

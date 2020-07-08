@@ -144,6 +144,7 @@ private:
     KCalCore::Incidence::List mPurgeList;
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
+    bool mHasUpdatedEtags;
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;
