@@ -319,7 +319,7 @@ void NotebookSyncAgent::sendReportRequest(const QStringList &remoteUris)
     // must be m_syncMode = SlowSync.
     Report *report = new Report(mNetworkManager, mSettings);
     mRequests.insert(report);
-    connect(report, SIGNAL(finished()), this, SLOT(reportRequestFinished()));
+    connect(report, &Report::finished, this, &NotebookSyncAgent::reportRequestFinished);
     if (remoteUris.isEmpty()) {
         report->getAllEvents(mRemoteCalendarPath, mFromDateTime, mToDateTime);
     } else {
@@ -334,12 +334,13 @@ void NotebookSyncAgent::fetchRemoteChanges()
     // must be m_syncMode = QuickSync.
     Report *report = new Report(mNetworkManager, mSettings);
     mRequests.insert(report);
-    connect(report, SIGNAL(finished()), this, SLOT(processETags()));
+    connect(report, &Report::finished, this, &NotebookSyncAgent::processETags);
     report->getAllETags(mRemoteCalendarPath, mFromDateTime, mToDateTime);
 }
 
-void NotebookSyncAgent::reportRequestFinished()
+void NotebookSyncAgent::reportRequestFinished(const QString &uri)
 {
+    Q_UNUSED(uri);
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     Report *report = qobject_cast<Report*>(sender());
@@ -393,8 +394,9 @@ void NotebookSyncAgent::reportRequestFinished()
     emitFinished(report->errorCode(), report->errorString());
 }
 
-void NotebookSyncAgent::processETags()
+void NotebookSyncAgent::processETags(const QString &uri)
 {
+    Q_UNUSED(uri);
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     Report *report = qobject_cast<Report*>(sender());
@@ -586,7 +588,7 @@ void NotebookSyncAgent::sendLocalChanges()
     }
 }
 
-void NotebookSyncAgent::nonReportRequestFinished()
+void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -641,15 +643,16 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
     if (!mSentUids.isEmpty()) {
         Report *report = new Report(mNetworkManager, mSettings);
         mRequests.insert(report);
-        connect(report, SIGNAL(finished()), this, SLOT(additionalReportRequestFinished()));
+        connect(report, &Report::finished, this, &NotebookSyncAgent::additionalReportRequestFinished);
         report->multiGetEvents(mRemoteCalendarPath, mSentUids.keys());
     } else {
         emitFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 
-void NotebookSyncAgent::additionalReportRequestFinished()
+void NotebookSyncAgent::additionalReportRequestFinished(const QString &uri)
 {
+    Q_UNUSED(uri);
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     // The server did not originally respond with the update ETAG values after

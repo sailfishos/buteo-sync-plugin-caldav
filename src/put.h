@@ -46,7 +46,7 @@ public:
     void sendIcalData(const QString &uri, const QString &icalData,
                       const QString &eTag = QString());
 
-    const QHash<QString,QString>& updatedETags() const;
+    QString updatedETag(const QString &uri) const;
 
 private Q_SLOTS:
     void requestFinished();

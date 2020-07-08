@@ -80,10 +80,10 @@ signals:
     void finished(int minorErrorCode, const QString &message);
 
 private slots:
-    void reportRequestFinished();
-    void additionalReportRequestFinished();
-    void nonReportRequestFinished();
-    void processETags();
+    void reportRequestFinished(const QString &uri);
+    void additionalReportRequestFinished(const QString &uri);
+    void nonReportRequestFinished(const QString &uri);
+    void processETags(const QString &uri);
 private:
     void sendReportRequest(const QStringList &remoteUris = QStringList());
     void clearRequests();
