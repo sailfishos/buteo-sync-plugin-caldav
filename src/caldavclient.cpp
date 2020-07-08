@@ -750,14 +750,13 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         }
     }
     if (finished) {
+        bool hasDatabaseErrors = false;
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
-                mResults = Buteo::SyncResults();
-                syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                             QLatin1String("unable to write notebook changes"));
-                return;
+                hasDatabaseErrors = true;
+                continue;
             }
             if (mNotebookSyncAgents[i]->isDeleted()) {
                 deletedNotebooks += mNotebookSyncAgents[i]->path();
@@ -767,8 +766,14 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
-        LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
-        syncFinished(Buteo::SyncResults::NO_ERROR);
+        if (hasDatabaseErrors) {
+            mResults = Buteo::SyncResults();
+            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                         QLatin1String("unable to write notebook changes"));
+        } else {
+            LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
+            syncFinished(Buteo::SyncResults::NO_ERROR);
+        }
     }
 }
 

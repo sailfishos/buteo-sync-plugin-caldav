@@ -692,18 +692,19 @@ bool NotebookSyncAgent::applyRemoteChanges()
         notebook = mNotebook;
     }
 
+    bool success = true;
     // Make notebook writable for the time of the modifications.
     notebook->setIsReadOnly(false);
     if ((mEnableDownsync || mSyncMode == SlowSync)
         && !updateIncidences(mReceivedCalendarResources)) {
-        return false;
+        success = false;
     }
     if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
-        return false;
+        success = false;
     }
     // Update storage, before possibly changing readOnly flag for this notebook.
     if (!mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
-        return false;
+        success = false;
     }
     if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
         // Silently ignore failed purge action in database.
@@ -718,10 +719,10 @@ bool NotebookSyncAgent::applyRemoteChanges()
     notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
     if (!mStorage->updateNotebook(notebook)) {
         LOG_WARNING("Cannot update notebook" << notebook->name() << "in storage.");
-        return false;
+        success = false;
     }
 
-    return true;
+    return success;
 }
 
 Buteo::TargetResults NotebookSyncAgent::result() const
@@ -788,7 +789,6 @@ bool NotebookSyncAgent::calculateDelta(
     KCalCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
         LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid());
-        emitFinished(Buteo::SyncResults::DATABASE_FAILURE, QString::fromLatin1("Unable to load storage incidences for notebook: %1").arg(mNotebook->uid()));
         return false;
     }
 
@@ -1093,6 +1093,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
     }
 
+    bool success = true;
     for (int i = 0; i < orderedResources.count(); ++i) {
         const Reader::CalendarResource &resource = orderedResources.at(i);
         if (!resource.incidences.size()) {
@@ -1153,6 +1154,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
         if (!localBaseIncidence) {
             LOG_WARNING("Error saving base incidence of resource" << resource.href);
+            success = false;
             continue; // don't return false and block the entire sync cycle, just ignore this event.
         }
 
@@ -1172,6 +1174,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
                 LOG_WARNING("Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString());
+                success = false;
                 continue; // don't return false and block the entire sync cycle, just ignore this event.
             }
         }
@@ -1183,28 +1186,30 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 LOG_DEBUG("Now removing remotely-removed persistent occurrence:" << localInstance->recurrenceId().toString());
                 if (!mCalendar->deleteIncidence(localInstance)) {
                     LOG_WARNING("Error removing remotely deleted persistent occurrence of resource" << resource.href << ":" << localInstance->recurrenceId().toString());
-                    return false;
+                    // don't return here and block the entire sync cycle.
+                    success = false;
                 }
             }
         }
     }
 
-    return true;
+    return success;
 }
 
 bool NotebookSyncAgent::deleteIncidences(const KCalCore::Incidence::List deletedIncidences)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
+    bool success = true;
     for (KCalCore::Incidence::Ptr doomed : deletedIncidences) {
         mStorage->load(doomed->uid(), doomed->recurrenceId());
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
             LOG_WARNING("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
-            return false;
+            success = false;
         } else {
             LOG_DEBUG("Deleted incidence: " << doomed->uid() << doomed->recurrenceId().toString());
         }
     }
-    return true;
+    return success;
 }
 
 void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
