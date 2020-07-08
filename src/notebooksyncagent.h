@@ -73,6 +73,7 @@ public:
 
     bool isFinished() const;
     bool isDeleted() const;
+    bool hasUploadErrors() const;
 
     const QString& path() const;
 
@@ -132,6 +133,7 @@ private:
     Buteo::TargetResults mResults;
     bool mEnableUpsync, mEnableDownsync;
     bool mReadOnlyFlag;
+    bool mHasUploadErrors, mHasDownloadErrors;
 
     // these are used only in quick-sync mode.
     // delta detection and change data

@@ -740,8 +740,10 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
     }
     if (finished) {
         bool hasDatabaseErrors = false;
+        bool hasUploadErrors = false;
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
+            hasUploadErrors = hasUploadErrors || mNotebookSyncAgents[i]->hasUploadErrors();
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
                 hasDatabaseErrors = true;
@@ -755,10 +757,14 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
-        if (hasDatabaseErrors) {
+        if (hasUploadErrors) {
+            mResults = Buteo::SyncResults();
+            syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+                         QLatin1String("unable to upsync all local changes"));
+        } else if (hasDatabaseErrors) {
             mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                         QLatin1String("unable to write notebook changes"));
+                         QLatin1String("unable to apply all remote changes"));
         } else {
             LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
             syncFinished(Buteo::SyncResults::NO_ERROR);
