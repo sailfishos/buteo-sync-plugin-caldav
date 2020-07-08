@@ -42,7 +42,7 @@
 #include <QDebug>
 
 
-#define NOTEBOOK_FUNCTION_CALL_TRACE FUNCTION_CALL_TRACE(QString("%1 %2").arg(Q_FUNC_INFO).arg(mNotebook ? mNotebook->account() : ""))
+#define NOTEBOOK_FUNCTION_CALL_TRACE FUNCTION_CALL_TRACE(QLatin1String(Q_FUNC_INFO) + " " + (mNotebook ? mNotebook->account() : ""))
 
 namespace {
     // mKCal deletes custom properties of deleted incidences.
