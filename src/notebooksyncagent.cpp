@@ -178,7 +178,6 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
     , mNotebookNeedsDeletion(false)
-    , mFinished(false)
     , mResults(QString(), Buteo::ItemCounts(), Buteo::ItemCounts())
     , mEnableUpsync(true)
     , mEnableDownsync(true)
@@ -342,21 +341,25 @@ void NotebookSyncAgent::fetchRemoteChanges()
 
 void NotebookSyncAgent::reportRequestFinished(const QString &uri)
 {
-    Q_UNUSED(uri);
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     Report *report = qobject_cast<Report*>(sender());
-    mRequests.remove(report);
-    report->deleteLater();
+    if (!report) {
+        mHasDownloadErrors = true;
+        clearRequests();
+        emit finished();
+        return;
+    }
+    LOG_DEBUG("report request finished with result:" << report->errorCode() << report->errorString());
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         // NOTE: we don't store the remote artifacts yet
         // Instead, we just emit finished (for this notebook)
         // Once ALL notebooks are finished, then we apply the remote changes.
         // This prevents the worst partial-sync issues.
-        mReceivedCalendarResources = report->receivedCalendarResources();
+        mReceivedCalendarResources += report->receivedCalendarResources();
         unsigned int count = 0;
-        for (QList<Reader::CalendarResource>::ConstIterator it = mReceivedCalendarResources.constBegin(); it != mReceivedCalendarResources.constEnd(); ++it) {
+        for (QList<Reader::CalendarResource>::ConstIterator it = report->receivedCalendarResources().constBegin(); it != report->receivedCalendarResources().constEnd(); ++it) {
             count += it->incidences.count();
         }
         LOG_DEBUG("Report request finished: received:"
@@ -375,7 +378,6 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         LOG_WARNING("Retrying REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
         mRetriedReport = true;
         sendReportRequest();
-        return;
     } else if (mSyncMode == SlowSync
                && report->networkError() == QNetworkReply::ContentNotFoundError) {
         // The remote calendar resource was removed after we created the account but before first sync.
@@ -383,41 +385,38 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         // so we can have local calendar metadata for remotely removed calendars.
         // In this case, we just skip sync of this calendar, as it was deleted.
         mNotebookNeedsDeletion = true;
-        LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, skipping sync locally.");
-        emitFinished(Buteo::SyncResults::NO_ERROR);
-        return;
+        LOG_DEBUG("calendar" << uri << "was deleted remotely, skipping sync locally.");
+    } else {
+        mHasDownloadErrors = true;
     }
 
-    LOG_DEBUG("report request finished with result:" << report->errorCode() << report->errorString());
-    mHasDownloadErrors = (report->errorCode() != Buteo::SyncResults::NO_ERROR);
-    if (mSyncMode == QuickSync) {
-        sendLocalChanges();
-        return;
-    }
-
-    // Let caller decide what to do if mHasDownloadErrors is true.
-    emitFinished(Buteo::SyncResults::NO_ERROR);
+    requestFinished(report);
 }
 
 void NotebookSyncAgent::processETags(const QString &uri)
 {
-    Q_UNUSED(uri);
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     Report *report = qobject_cast<Report*>(sender());
-    mRequests.remove(report);
-    report->deleteLater();
+    if (!report) {
+        mHasDownloadErrors = true;
+        clearRequests();
+        emit finished();
+        return;
+    }
+    LOG_DEBUG("fetch etags finished with result:" << report->errorCode() << report->errorString());
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        LOG_DEBUG("Process tags for server path" << mRemoteCalendarPath);
+        LOG_DEBUG("Process tags for server path" << uri);
         // we have a hash from resource href-uri to resource info (including etags).
         QHash<QString, QString> remoteHrefUriToEtags;
         for (const Reader::CalendarResource &resource :
                    report->receivedCalendarResources()) {
             if (!resource.href.contains(mRemoteCalendarPath)) {
                 LOG_WARNING("href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath);
-                emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                             QLatin1String("unable to calculate remote resource uids"));
+                mHasDownloadErrors = true;
+                clearRequests();
+                emit finished();
                 return;
             }
             remoteHrefUriToEtags.insert(resource.href, resource.etag);
@@ -432,8 +431,9 @@ void NotebookSyncAgent::processETags(const QString &uri)
                             &mRemoteModifications,
                             &mRemoteDeletions)) {
             LOG_WARNING("unable to calculate the sync delta for:" << mRemoteCalendarPath);
-            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         QLatin1String("unable to calculate sync delta"));
+            mHasDownloadErrors = true;
+            clearRequests();
+            emit finished();
             return;
         }
         mResults = Buteo::TargetResults
@@ -455,31 +455,25 @@ void NotebookSyncAgent::processETags(const QString &uri)
         if (mEnableDownsync && !fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
             sendReportRequest(fetchRemoteHrefUris);
-        } else {
-            // no remote modifications/additions we need to fetch; just upsync local changes.
-            sendLocalChanges();
         }
-        return;
+        sendLocalChanges();
     } else if (report->networkError() == QNetworkReply::AuthenticationRequiredError && !mRetriedReport) {
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
         LOG_WARNING("Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
         mRetriedReport = true;
         fetchRemoteChanges();
-        return;
     } else if (report->networkError() == QNetworkReply::ContentNotFoundError) {
         // The remote calendar resource was removed.
         // We don't perform resource discovery in CalDAV during each sync cycle,
         // so we can have local calendars which mirror remotely-removed calendars.
         // In this situation, we need to delete the local calendar.
         mNotebookNeedsDeletion = true;
-        LOG_DEBUG("calendar" << mRemoteCalendarPath << "was deleted remotely, marking for deletion locally:" << mNotebook->name());
-        emitFinished(Buteo::SyncResults::NO_ERROR);
-        return;
+        LOG_DEBUG("calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name());
+    } else {
+        mHasDownloadErrors = true;
     }
 
-    // no remote changes to downsync, and no local changes to upsync - we're finished.
-    LOG_DEBUG("no remote changes to downsync and no local changes to upsync - finished!");
-    emitFinished(report->errorCode(), report->errorString());
+    requestFinished(report);
 }
 
 void NotebookSyncAgent::sendLocalChanges()
@@ -490,21 +484,17 @@ void NotebookSyncAgent::sendLocalChanges()
         // no local changes to upsync.
         // we're finished syncing.
         LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     } else if (!mEnableUpsync) {
         LOG_DEBUG("Not upsyncing local changes, upsync disable in profile.");
-        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     } else if (mReadOnlyFlag) {
         LOG_DEBUG("Not upsyncing local changes, upstream read only calendar.");
-        emitFinished(Buteo::SyncResults::NO_ERROR);
         return;
     } else {
         LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
     }
 
-    bool localChangeRequestStarted = false;
     // For deletions, if a persistent exception is deleted we may need to do a PUT
     // containing all of the still-existing events in the series.
     // (Alternative is to push a STATUS:CANCELLED event?)
@@ -533,7 +523,6 @@ void NotebookSyncAgent::sendLocalChanges()
         }
 
         // the whole series is being deleted; can DELETE.
-        localChangeRequestStarted = true;
         QString remoteUri = uidToUri.value(uid);
         LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
         Delete *del = new Delete(mNetworkManager, mSettings);
@@ -550,9 +539,9 @@ void NotebookSyncAgent::sendLocalChanges()
         bool create = false;
         QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
         if (href.isEmpty()) {
-            emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         QString::fromLatin1("Unable to determine remote uri for incidence: %1").arg(toUpload[i]->uid()));
-            return;
+            LOG_WARNING("Unable to determine remote uri for incidence:" << toUpload[i]->uid());
+            mHasUploadErrors = true;
+            continue;
         }
         if (mSentUids.contains(href)) {
             LOG_DEBUG("Already handled upload" << i << "via series update");
@@ -576,20 +565,15 @@ void NotebookSyncAgent::sendLocalChanges()
         }
         if (icsData.isEmpty()) {
             LOG_DEBUG("Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid());
+            mHasUploadErrors = true;
         } else {
             LOG_DEBUG("Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid());
-            localChangeRequestStarted = true;
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
             connect(put, &Put::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
             put->sendIcalData(href, icsData, incidenceETag(toUpload[i]));
             mSentUids.insert(href, toUpload[i]->uid());
         }
-    }
-
-    if (!localChangeRequestStarted) {
-        LOG_WARNING("local change upsync skipped due to bad data - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 
@@ -599,13 +583,11 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
 
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
-        LOG_WARNING("Report request finished but request is invalid, aborting sync for calendar:" << mRemoteCalendarPath);
-        emitFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                     QLatin1String("Invalid request object"));
+        mHasUploadErrors = true;
+        clearRequests();
+        emit finished();
         return;
     }
-    request->deleteLater();
-    mRequests.remove(request);
     mHasUploadErrors = mHasUploadErrors
         || (request->errorCode() != Buteo::SyncResults::NO_ERROR);
 
@@ -639,9 +621,17 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
         }
     }
 
-    if (mRequests.isEmpty()) {
+    bool last = true;
+    for (QSet<Request*>::ConstIterator it = mRequests.constBegin();
+         it != mRequests.constEnd(); ++it) {
+        last = last && (*it == request ||
+                        (!qobject_cast<Put*>(*it) && !qobject_cast<Delete*>(*it)));
+    }
+    if (last) {
         finalizeSendingLocalChanges();
     }
+
+    requestFinished(request);
 }
 
 void NotebookSyncAgent::finalizeSendingLocalChanges()
@@ -652,9 +642,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
     // been updated already. Try to save them in storage.
     if (mHasUpdatedEtags && !mStorage->save()) {
         LOG_WARNING("Unable to save calendar storage after etag changes!");
-        emitFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                     QLatin1String("unable to save upstream etags"));
-        return;
     }
 
     // mSentUids have been cleared from uids that have already
@@ -665,9 +652,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
         mRequests.insert(report);
         connect(report, &Report::finished, this, &NotebookSyncAgent::additionalReportRequestFinished);
         report->multiGetEvents(mRemoteCalendarPath, mSentUids.keys());
-    } else {
-        // Let the caller decide what to do if mHasUploadErrors is true
-        emitFinished(Buteo::SyncResults::NO_ERROR);
     }
 }
 
@@ -683,8 +667,6 @@ void NotebookSyncAgent::additionalReportRequestFinished(const QString &uri)
     // as it may have been modified by the server.
 
     Report *report = qobject_cast<Report*>(sender());
-    mRequests.remove(report);
-    report->deleteLater();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         LOG_DEBUG("Additional report request finished: received:"
@@ -694,8 +676,8 @@ void NotebookSyncAgent::additionalReportRequestFinished(const QString &uri)
         LOG_WARNING("Additional report request finished with error.");
         mHasDownloadErrors = true;
     }
-    // Let the caller decide what to do if mHasDownloadErrors is true
-    emitFinished(Buteo::SyncResults::NO_ERROR);
+
+    requestFinished(report);
 }
 
 bool NotebookSyncAgent::applyRemoteChanges()
@@ -718,8 +700,9 @@ bool NotebookSyncAgent::applyRemoteChanges()
         // delete the notebook from local database
         if (notebook && !mStorage->deleteNotebook(notebook)) {
             LOG_WARNING("Cannot delete notebook" << notebook->name() << "from storage.");
+            mNotebookNeedsDeletion = false;
         }
-        return false;
+        return mNotebookNeedsDeletion;
     }
 
     // If current notebook is not already in storage, we add it.
@@ -769,18 +752,16 @@ Buteo::TargetResults NotebookSyncAgent::result() const
     return mResults;
 }
 
-void NotebookSyncAgent::emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
-                                     const QString &message)
+void NotebookSyncAgent::requestFinished(Request *request)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    if (mFinished) {
-        return;
-    }
-    mFinished = true;
-    clearRequests();
+    mRequests.remove(request);
+    request->deleteLater();
 
-    emit finished(minorErrorCode, message);
+    if (mRequests.isEmpty()) {
+        emit finished();
+    }
 }
 
 void NotebookSyncAgent::finalize()
@@ -790,12 +771,17 @@ void NotebookSyncAgent::finalize()
 
 bool NotebookSyncAgent::isFinished() const
 {
-    return mFinished;
+    return mRequests.isEmpty();
 }
 
 bool NotebookSyncAgent::isDeleted() const
 {
     return (mEnableDownsync && mNotebookNeedsDeletion);
+}
+
+bool NotebookSyncAgent::hasDownloadErrors() const
+{
+    return mHasDownloadErrors;
 }
 
 bool NotebookSyncAgent::hasUploadErrors() const

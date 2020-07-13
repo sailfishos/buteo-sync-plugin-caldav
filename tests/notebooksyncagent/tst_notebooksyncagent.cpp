@@ -22,6 +22,8 @@
 #include <QObject>
 
 #include "incidencehandler.h"
+#include "report.h"
+#include "put.h"
 
 #include <memorycalendar.h>
 #include <icalformat.h>
@@ -67,6 +69,8 @@ private slots:
 
     void updateIncidence_data();
     void updateIncidence();
+
+    void requestFinished();
 
 private:
     Settings m_settings;
@@ -853,6 +857,37 @@ void tst_NotebookSyncAgent::updateIncidence()
         incidence.staticCast<KCalCore::Event>()->setDtEnd(fetched.staticCast<KCalCore::Event>()->dtEnd());
     }
     QCOMPARE(*incidence, *fetched);
+}
+
+void tst_NotebookSyncAgent::requestFinished()
+{
+    QSignalSpy finished(m_agent, &NotebookSyncAgent::finished);
+
+    Report *report = new Report(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(report);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+
+    m_agent->requestFinished(report);
+    QCOMPARE(m_agent->mRequests.count(), 0);
+    QCOMPARE(finished.count(), 1);
+    finished.clear();
+
+    Put *put1 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(put1);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+
+    Put *put2 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(put2);
+    QCOMPARE(m_agent->mRequests.count(), 2);
+
+    m_agent->requestFinished(put2);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+    QCOMPARE(finished.count(), 0);
+    QVERIFY(m_agent->mRequests.contains(put1));
+
+    m_agent->requestFinished(put1);
+    QCOMPARE(m_agent->mRequests.count(), 0);
+    QCOMPARE(finished.count(), 1);
 }
 
 #include "tst_notebooksyncagent.moc"

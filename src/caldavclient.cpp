@@ -718,19 +718,19 @@ void CalDavClient::clearAgents()
     mNotebookSyncAgents.clear();
 }
 
-void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorString)
+void CalDavClient::notebookSyncFinished()
 {
     FUNCTION_CALL_TRACE;
     LOG_INFO("Notebook sync finished. Total agents:" << mNotebookSyncAgents.count());
 
     NotebookSyncAgent *agent = qobject_cast<NotebookSyncAgent*>(sender());
-    agent->disconnect(this);
-
-    if (errorCode != Buteo::SyncResults::NO_ERROR) {
-        LOG_WARNING("Aborting! Notebook synchronisation failed:" << errorCode << ":" << errorString);
-        syncFinished(static_cast<Buteo::SyncResults::MinorCode>(errorCode), errorString);
+    if (!agent) {
+        syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                     QLatin1String("cannot get NotebookSyncAgent object"));
         return;
     }
+    agent->disconnect(this);
+
     bool finished = true;
     for (int i=0; i<mNotebookSyncAgents.count(); i++) {
         if (!mNotebookSyncAgents[i]->isFinished()) {
@@ -740,24 +740,29 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
     }
     if (finished) {
         bool hasDatabaseErrors = false;
+        bool hasDownloadErrors = false;
         bool hasUploadErrors = false;
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
+            hasDownloadErrors = hasDownloadErrors || mNotebookSyncAgents[i]->hasDownloadErrors();
             hasUploadErrors = hasUploadErrors || mNotebookSyncAgents[i]->hasUploadErrors();
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
                 hasDatabaseErrors = true;
-                continue;
+            } else if (!mNotebookSyncAgents[i]->result().targetName().isEmpty()) {
+                mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             }
             if (mNotebookSyncAgents[i]->isDeleted()) {
                 deletedNotebooks += mNotebookSyncAgents[i]->path();
             }
-            if (!mNotebookSyncAgents[i]->result().targetName().isEmpty())
-                mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
-        if (hasUploadErrors) {
+        if (hasDownloadErrors) {
+            mResults = Buteo::SyncResults();
+            syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+                         QLatin1String("unable to fetch all upstream changes"));
+        } else if (hasUploadErrors) {
             mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
                          QLatin1String("unable to upsync all local changes"));
