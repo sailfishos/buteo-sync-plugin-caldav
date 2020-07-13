@@ -70,5 +70,11 @@ void Delete::requestFinished()
     reply->deleteLater();
     debugReplyAndReadAll(reply);
 
-    finishedWithReplyResult(reply->property(PROP_INCIDENCE_URI).toString(), reply->error());
+    const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
+    if (reply->error() == QNetworkReply::ContentNotFoundError) {
+        // Consider a success if the content does not exist on server.
+        finishedWithSuccess(uri);
+    } else {
+        finishedWithReplyResult(uri, reply->error());
+    }
 }

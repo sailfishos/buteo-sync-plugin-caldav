@@ -445,12 +445,6 @@ void NotebookSyncAgent::processETags(const QString &uri)
                                mLocalDeletions.size(),
                                mLocalModifications.size()));
 
-        // Note that due to the fact that we update the ETAG and URI data in locally
-        // upsynced events during sync, those incidences will be reported as modified
-        // during the next sync cycle (even though the only changes may have been
-        // that ETAG+URI change).  Hence, we need to fetch all of those again, and
-        // then manually check equivalence (ignoring etag+uri value) with remote copy.
-        // Also fetch updated and new items full data if required.
         QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications;
         if (mEnableDownsync && !fetchRemoteHrefUris.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
