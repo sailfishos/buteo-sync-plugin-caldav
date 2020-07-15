@@ -127,6 +127,8 @@ void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList
     requestData.append("</c:calendar-multiget>");
 
     sendRequest(remoteCalendarPath, requestData);
+
+    mFetchedUris = eventHrefList;
 }
 
 void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &requestData)
@@ -203,4 +205,9 @@ void Report::processResponse()
 const QList<Reader::CalendarResource>& Report::receivedCalendarResources() const
 {
     return mReceivedResources;
+}
+
+const QStringList& Report::fetchedUris() const
+{
+    return mFetchedUris;
 }

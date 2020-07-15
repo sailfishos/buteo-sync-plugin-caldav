@@ -83,7 +83,6 @@ signals:
 
 private slots:
     void reportRequestFinished(const QString &uri);
-    void additionalReportRequestFinished(const QString &uri);
     void nonReportRequestFinished(const QString &uri);
     void processETags(const QString &uri);
 private:
@@ -129,10 +128,8 @@ private:
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
-    Buteo::TargetResults mResults;
     bool mEnableUpsync, mEnableDownsync;
     bool mReadOnlyFlag;
-    bool mHasUploadErrors, mHasDownloadErrors;
 
     // these are used only in quick-sync mode.
     // delta detection and change data
@@ -146,6 +143,8 @@ private:
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
     bool mHasUpdatedEtags;
+    QSet<QString> mFailingUploads; // List of hrefs with upload errors.
+    QSet<QString> mFailingUpdates; // List of hrefs from which incidences failed to update.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;

@@ -749,25 +749,22 @@ void CalDavClient::notebookSyncFinished()
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
                 hasDatabaseErrors = true;
-            } else if (!mNotebookSyncAgents[i]->result().targetName().isEmpty()) {
-                mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             }
             if (mNotebookSyncAgents[i]->isDeleted()) {
                 deletedNotebooks += mNotebookSyncAgents[i]->path();
+            } else {
+                mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             }
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
         if (hasDownloadErrors) {
-            mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
                          QLatin1String("unable to fetch all upstream changes"));
         } else if (hasUploadErrors) {
-            mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
                          QLatin1String("unable to upsync all local changes"));
         } else if (hasDatabaseErrors) {
-            mResults = Buteo::SyncResults();
             syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
                          QLatin1String("unable to apply all remote changes"));
         } else {

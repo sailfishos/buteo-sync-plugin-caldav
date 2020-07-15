@@ -49,6 +49,7 @@ public:
     void multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList);
 
     const QList<Reader::CalendarResource>& receivedCalendarResources() const;
+    const QStringList& fetchedUris() const;
 
 private Q_SLOTS:
     void processResponse();
@@ -60,6 +61,7 @@ private:
                            const QDateTime &toDateTime,
                            bool getCalendarData);
     QString mRemoteCalendarPath;
+    QStringList mFetchedUris;
     QList<Reader::CalendarResource> mReceivedResources;
 };
 
