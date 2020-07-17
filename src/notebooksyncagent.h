@@ -140,6 +140,7 @@ private:
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
     KCalCore::Incidence::List mPurgeList;
+    KCalCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
     bool mHasUpdatedEtags;

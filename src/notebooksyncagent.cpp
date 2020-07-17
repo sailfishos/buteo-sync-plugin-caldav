@@ -188,6 +188,34 @@ namespace {
         }
         return success;
     }
+
+    static const QByteArray app = QByteArrayLiteral("VOLATILE");
+    static const QByteArray name = QByteArrayLiteral("SYNC-FAILURE");
+    void flagUploadFailure(const QSet<QString> &failingHrefs,
+                           const KCalCore::Incidence::List &incidences,
+                           const QString &remotePath = QString())
+    {
+        for (int i = 0; i < incidences.size(); i++) {
+            bool doit = true;
+            if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit))) {
+                incidences[i]->setCustomProperty(app, name, QStringLiteral("upload"));
+            } else {
+                incidences[i]->removeCustomProperty(app, name);
+            }
+        }
+    }
+    void flagUpdateSuccess(const KCalCore::Incidence::Ptr &incidence)
+    {
+        incidence->removeCustomProperty(app, name);
+    }
+    void flagUpdateFailure(const KCalCore::Incidence::Ptr &incidence)
+    {
+        incidence->setCustomProperty(app, name, QStringLiteral("update"));
+    }
+    void flagDeleteFailure(const KCalCore::Incidence::Ptr &incidence)
+    {
+        incidence->setCustomProperty(app, name, QStringLiteral("delete"));
+    }
 }
 
 
@@ -635,9 +663,27 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
     requestFinished(request);
 }
 
+static KCalCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const KCalCore::Incidence::List &incidences)
+{
+    KCalCore::Incidence::List out;
+    for (int i = 0; i < incidences.size(); i++){
+        if (storage->load(incidences[i]->uid(), incidences[i]->recurrenceId())) {
+            const KCalCore::Incidence::Ptr incidence = calendar->incidence(incidences[i]->uid(), incidences[i]->recurrenceId());
+            if (incidence) {
+                out.append(incidence);
+            }
+        }
+    }
+    return out;
+}
+
 void NotebookSyncAgent::finalizeSendingLocalChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
+
+    // Flag (or remove flag) for all failing (or not) local changes.
+    flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalAdditions), mRemoteCalendarPath);
+    flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalModifications));
 
     // All PUT requests have been finished, some etags may have
     // been updated already. Try to save them in storage.
@@ -848,7 +894,10 @@ bool NotebookSyncAgent::calculateDelta(
                     localAdditions->append(incidence);
                 } else {
                     LOG_DEBUG("ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                    mUpdatingList.append(incidence);
                 }
+            } else if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
+                mUpdatingList.append(incidence);
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
@@ -1024,6 +1073,8 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
                 storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
             }
         }
+
+        flagUpdateSuccess(storedIncidence);
 
         storedIncidence->endUpdates();
         // Avoid spurious detections of modified incidences
@@ -1213,6 +1264,20 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
     }
 
+    if (!mFailingUpdates.isEmpty()) {
+        for (int i = 0; i < mUpdatingList.size(); i++){
+            const QString uid = mUpdatingList[i]->uid();
+            const KDateTime recid = mUpdatingList[i]->recurrenceId();
+            KCalCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
+            if (!incidence && mStorage->load(uid, recid)) {
+                incidence = mCalendar->incidence(uid, recid);
+            }
+            if (incidence && mFailingUpdates.contains(incidenceHrefUri(incidence))) {
+                flagUpdateFailure(incidence);
+            }
+        }
+    }
+
     return success;
 }
 
@@ -1225,6 +1290,7 @@ bool NotebookSyncAgent::deleteIncidences(const KCalCore::Incidence::List deleted
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
             LOG_WARNING("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
             mFailingUpdates.insert(incidenceHrefUri(doomed));
+            flagDeleteFailure(doomed);
             success = false;
         } else {
             LOG_DEBUG("Deleted incidence: " << doomed->uid() << doomed->recurrenceId().toString());
