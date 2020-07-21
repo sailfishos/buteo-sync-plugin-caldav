@@ -969,7 +969,7 @@ static QString nbUid(const QString &notebookId, const QString &uid)
     return QStringLiteral("NBUID:%1:%2").arg(notebookId).arg(uid);
 }
 
-static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid, const KDateTime &recurrenceId = KDateTime())
+static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid)
 {
     const QString &nbuid = nbUid(notebookId, uid);
 
@@ -978,9 +978,9 @@ static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storag
     storage->loadSeries(uid);
     storage->loadSeries(nbuid);
 
-    KCalCore::Incidence::Ptr incidence = calendar->incidence(uid, recurrenceId);
+    KCalCore::Incidence::Ptr incidence = calendar->incidence(uid);
     if (!incidence) {
-        incidence = calendar->incidence(nbuid, recurrenceId);
+        incidence = calendar->incidence(nbuid);
     }
     return incidence;
 }
@@ -1168,14 +1168,15 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         // update persistent exceptions which are in the remote list.
         QList<KDateTime> remoteRecurrenceIds;
         for (int i = 0; i < resource.incidences.size(); ++i) {
-            if (i == parentIndex) {
+            KCalCore::Incidence::Ptr remoteInstance = resource.incidences[i];
+            if (!remoteInstance->hasRecurrenceId()) {
                 continue; // already handled this one.
             }
-
-            LOG_DEBUG("Now saving a persistent exception:" << resource.incidences[i]->recurrenceId().toString());
-            KCalCore::Incidence::Ptr remoteInstance = resource.incidences[i];
             remoteRecurrenceIds.append(remoteInstance->recurrenceId());
-            KCalCore::Incidence::Ptr localInstance = loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid, remoteInstance->recurrenceId());
+
+            LOG_DEBUG("Now saving a persistent exception:" << remoteInstance->recurrenceId().toString());
+            remoteInstance->setUid(localBaseIncidence->uid());
+            KCalCore::Incidence::Ptr localInstance = mCalendar->incidence(remoteInstance->uid(), remoteInstance->recurrenceId());
             if (localInstance) {
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
