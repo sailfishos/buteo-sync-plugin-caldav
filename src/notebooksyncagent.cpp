@@ -986,7 +986,8 @@ static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storag
 }
 
 void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
-                                        KCalCore::Incidence::Ptr storedIncidence)
+                                        KCalCore::Incidence::Ptr storedIncidence,
+                                        const KCalCore::Incidence::List instances)
 {
     if (incidence->status() == KCalCore::Incidence::StatusCanceled
         || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
@@ -1001,12 +1002,9 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         // and add them back as EXDATEs.  This is because mkcal expects that dissociated
         // single instances will correspond to an EXDATE, but most sync servers do not (and
         // so will not include the RECURRENCE-ID values as EXDATEs of the parent).
-        if (storedIncidence->recurs()) {
-            const KCalCore::Incidence::List instances = mCalendar->instances(storedIncidence);
-            for (KCalCore::Incidence::Ptr instance : instances) {
-                if (instance->hasRecurrenceId()) {
-                    storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
-                }
+        for (KCalCore::Incidence::Ptr instance : instances) {
+            if (instance->hasRecurrenceId()) {
+                storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
             }
         }
 
@@ -1144,7 +1142,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                     // Later we will update or remove them as required.
                     localInstances = mCalendar->instances(localBaseIncidence);
                 }
-                updateIncidence(resource.incidences[parentIndex], localBaseIncidence);
+            updateIncidence(resource.incidences[parentIndex], localBaseIncidence, localInstances);
             }
         } else {
             if (parentIndex == -1) {
