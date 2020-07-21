@@ -28,27 +28,16 @@
 #include <todo.h>
 #include <journal.h>
 #include <attendee.h>
-#include "reader.h"
-
-namespace KCalCore {
-    class Person;
-}
 
 class IncidenceHandler
 {
 public:
     static QString toIcs(const KCalCore::Incidence::Ptr incidence,
                          const KCalCore::Incidence::List instances = KCalCore::Incidence::List());
-    static void copyIncidenceProperties(KCalCore::Incidence::Ptr dest, const KCalCore::Incidence::Ptr &src);
 
 private:
     IncidenceHandler();
     ~IncidenceHandler();
-
-    template <typename T>
-    static bool pointerDataEqual(const QVector<QSharedPointer<T> > &vectorA, const QVector<QSharedPointer<T> > &vectorB);
-
-    static void normalizePersonEmail(KCalCore::Person *p);
 
     static KCalCore::Incidence::Ptr incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances = KCalCore::Incidence::List());
 
