@@ -6,18 +6,14 @@ License:    LGPLv2
 URL:        https://git.sailfishos.org/mer-core/buteo-sync-plugin-caldav
 Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Core)
-BuildRequires:  pkgconfig(Qt5Gui)
 BuildRequires:  pkgconfig(Qt5DBus)
-BuildRequires:  pkgconfig(Qt5Sql)
 BuildRequires:  pkgconfig(Qt5Network)
-BuildRequires:  pkgconfig(mlite5)
 BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
 BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.20
 BuildRequires:  kcalcore-qt5-devel >= 4.10.2+9git27
 BuildRequires:  pkgconfig(buteosyncfw5)
 BuildRequires:  pkgconfig(accounts-qt5)
-BuildRequires:  pkgconfig(signon-oauth2plugin)
 BuildRequires:  pkgconfig(QmfClient)
 Requires: buteo-syncfw-qt5-msyncd
 

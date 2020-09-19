@@ -2,6 +2,7 @@ TEMPLATE = app
 TARGET = tst_reader
 
 QT += testlib
+QT -= gui
 
 CONFIG += debug
 
