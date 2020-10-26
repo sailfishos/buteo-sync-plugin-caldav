@@ -397,6 +397,7 @@ void PropFind::listUserAddressSet(const QString &userPrincipal)
             "</d:propfind>"
     ));
     mUserMailtoHref.clear();
+    mUserHomeHref.clear();
     sendRequest(userPrincipal, requestData, UserAddressSet);
 }
 

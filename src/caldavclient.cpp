@@ -642,7 +642,9 @@ void CalDavClient::listCalendars(const QString &home)
     PropFind *calendarRequest = new PropFind(mNAManager, &mSettings, this);
     connect(calendarRequest, &Request::finished, this, [this, calendarRequest] {
         calendarRequest->deleteLater();
-        if (calendarRequest->errorCode() == Buteo::SyncResults::NO_ERROR) {
+        if (calendarRequest->errorCode() == Buteo::SyncResults::NO_ERROR
+            // Request silently ignores this QNetworkReply::NetworkError
+            && calendarRequest->networkError() != QNetworkReply::ContentOperationNotPermittedError) {
             syncCalendars(mergeAccountCalendars(calendarRequest->calendars()));
         } else {
             LOG_WARNING("Cannot list calendars, fallback to stored ones in account.");
