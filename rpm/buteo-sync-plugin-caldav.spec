@@ -14,6 +14,7 @@ BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.20
 BuildRequires:  kcalcore-qt5-devel >= 4.10.2+9git27
 BuildRequires:  pkgconfig(buteosyncfw5)
 BuildRequires:  pkgconfig(accounts-qt5)
+BuildRequires:  pkgconfig(signon-oauth2plugin)
 BuildRequires:  pkgconfig(QmfClient)
 Requires: buteo-syncfw-qt5-msyncd
 
