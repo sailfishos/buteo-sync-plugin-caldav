@@ -30,6 +30,8 @@
 
 #include <LogMacros.h>
 
+#define PROP_URI "uri"
+
 static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
 {
     /* e.g.:
@@ -430,6 +432,7 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
     buffer->setData(requestData);
     // TODO: when Qt5.8 is available, remove the use of buffer, and pass requestData directly.
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
+    reply->setProperty(PROP_URI, remotePath);
     debugRequest(request, buffer->buffer());
     connect(reply, SIGNAL(finished()), this, SLOT(processResponse()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
@@ -449,19 +452,20 @@ void PropFind::processResponse()
 
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
-        finishedWithInternalError();
+        finishedWithInternalError(QString());
         return;
     }
     reply->deleteLater();
+    const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
-        finishedWithReplyResult(reply->error());
+        finishedWithReplyResult(uri, reply->error());
         return;
     }
     QVariant statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
     if (statusCode.isValid()) {
         int status = statusCode.toInt();
         if (status > 299) {
-            finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
+            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
                               QString("Got error status response for PROPFIND: %1").arg(status));
             return;
         }
@@ -482,9 +486,9 @@ void PropFind::processResponse()
         break;
     }
     if (success) {
-        finishedWithSuccess();
+        finishedWithSuccess(uri);
     } else {
-        finishedWithError(Buteo::SyncResults::INTERNAL_ERROR,
+        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
                           QString("Cannot parse response body for PROPFIND"));
     }
 }

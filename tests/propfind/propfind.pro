@@ -2,6 +2,7 @@ TEMPLATE = app
 TARGET = tst_propfind
 
 QT += testlib
+QT -= gui
 
 CONFIG += debug
 

@@ -61,16 +61,16 @@ QString Request::command() const
     return REQUEST_TYPE;
 }
 
-void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
+void Request::finishedWithReplyResult(const QString &uri, QNetworkReply::NetworkError error)
 {
     mNetworkError = error;
     if (error == QNetworkReply::NoError) {
-        finishedWithSuccess();
+        finishedWithSuccess(uri);
     } else if (error == QNetworkReply::ContentOperationNotPermittedError) {
         // Gracefully continue when the operation fails for permission
         // reasons (like pushing to a read-only resource).
         LOG_DEBUG("The" << command() << "operation requested on the remote content is not permitted");
-        finishedWithSuccess();
+        finishedWithSuccess(uri);
     } else {
         Buteo::SyncResults::MinorCode errorCode = Buteo::SyncResults::INTERNAL_ERROR;
         if (error == QNetworkReply::SslHandshakeFailedError || error == QNetworkReply::ContentAccessDenied ||
@@ -80,7 +80,7 @@ void Request::finishedWithReplyResult(QNetworkReply::NetworkError error)
             errorCode = Buteo::SyncResults::CONNECTION_ERROR;
         }
         LOG_WARNING("The" << command() << "operation failed with error:" << error << ":" << errorCode);
-        finishedWithError(errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(error));
+        finishedWithError(uri, errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(error));
     }
 }
 
@@ -100,25 +100,25 @@ void Request::slotSslErrors(QList<QSslError> errors)
     }
 }
 
-void Request::finishedWithError(Buteo::SyncResults::MinorCode minorCode, const QString &errorString)
+void Request::finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode, const QString &errorString)
 {
     if (minorCode != Buteo::SyncResults::NO_ERROR) {
         LOG_WARNING(REQUEST_TYPE << "request failed." << minorCode << errorString);
     }
     mMinorCode = minorCode;
     mErrorString = errorString;
-    emit finished();
+    emit finished(uri);
 }
 
-void Request::finishedWithInternalError(const QString &errorString)
+void Request::finishedWithInternalError(const QString &uri, const QString &errorString)
 {
-    finishedWithError(Buteo::SyncResults::INTERNAL_ERROR, errorString.isEmpty() ? QStringLiteral("Internal error") : errorString);
+    finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR, errorString.isEmpty() ? QStringLiteral("Internal error") : errorString);
 }
 
-void Request::finishedWithSuccess()
+void Request::finishedWithSuccess(const QString &uri)
 {
     mMinorCode = Buteo::SyncResults::NO_ERROR;
-    emit finished();
+    emit finished(uri);
 }
 
 void Request::prepareRequest(QNetworkRequest *request, const QString &requestPath)

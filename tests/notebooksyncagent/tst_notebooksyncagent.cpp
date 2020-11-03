@@ -22,6 +22,8 @@
 #include <QObject>
 
 #include "incidencehandler.h"
+#include "report.h"
+#include "put.h"
 
 #include <memorycalendar.h>
 #include <icalformat.h>
@@ -67,6 +69,10 @@ private slots:
 
     void updateIncidence_data();
     void updateIncidence();
+
+    void requestFinished();
+
+    void result();
 
 private:
     Settings m_settings;
@@ -853,6 +859,120 @@ void tst_NotebookSyncAgent::updateIncidence()
         incidence.staticCast<KCalCore::Event>()->setDtEnd(fetched.staticCast<KCalCore::Event>()->dtEnd());
     }
     QCOMPARE(*incidence, *fetched);
+}
+
+void tst_NotebookSyncAgent::requestFinished()
+{
+    QSignalSpy finished(m_agent, &NotebookSyncAgent::finished);
+
+    Report *report = new Report(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(report);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+
+    m_agent->requestFinished(report);
+    QCOMPARE(m_agent->mRequests.count(), 0);
+    QCOMPARE(finished.count(), 1);
+    finished.clear();
+
+    Put *put1 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(put1);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+
+    Put *put2 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
+    m_agent->mRequests.insert(put2);
+    QCOMPARE(m_agent->mRequests.count(), 2);
+
+    m_agent->requestFinished(put2);
+    QCOMPARE(m_agent->mRequests.count(), 1);
+    QCOMPARE(finished.count(), 0);
+    QVERIFY(m_agent->mRequests.contains(put1));
+
+    m_agent->requestFinished(put1);
+    QCOMPARE(m_agent->mRequests.count(), 0);
+    QCOMPARE(finished.count(), 1);
+}
+
+void tst_NotebookSyncAgent::result()
+{
+    m_agent->mSyncMode = NotebookSyncAgent::QuickSync;
+
+    m_agent->mRemoteAdditions = QList<QString>()
+        << "/path/event1" << "/path/event2" << "/path/event3";
+    KCalCore::Incidence::Ptr rDel1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rDel1->addComment(QStringLiteral("buteo:caldav:uri:/path/event01"));
+    KCalCore::Incidence::Ptr rDel2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rDel2->addComment(QStringLiteral("buteo:caldav:uri:/path/event02"));
+    KCalCore::Incidence::Ptr rDel3 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rDel3->addComment(QStringLiteral("buteo:caldav:uri:/path/event03"));
+    KCalCore::Incidence::Ptr rDel4 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rDel4->addComment(QStringLiteral("buteo:caldav:uri:/path/event04"));
+    m_agent->mRemoteDeletions = KCalCore::Incidence::List()
+        << rDel1 << rDel2 << rDel3 << rDel4;
+    m_agent->mRemoteModifications = QList<QString>()
+        << "/path/event11" << "/path/event12" << "/path/event13" << "/path/event14" << "/path/event15";
+
+    KCalCore::Incidence::Ptr lAdd1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lAdd1->setUid("event001");
+    KCalCore::Incidence::Ptr lAdd2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lAdd2->setUid("event002");
+    m_agent->mLocalAdditions = KCalCore::Incidence::List() << lAdd1 << lAdd2;
+    KCalCore::Incidence::Ptr lDel1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lDel1->addComment(QStringLiteral("buteo:caldav:uri:/path/event101"));
+    KCalCore::Incidence::Ptr lDel2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lDel2->addComment(QStringLiteral("buteo:caldav:uri:/path/event102"));
+    KCalCore::Incidence::Ptr lDel3 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lDel3->addComment(QStringLiteral("buteo:caldav:uri:/path/event103"));
+    m_agent->mLocalDeletions = KCalCore::Incidence::List() << lDel1 << lDel2 << lDel3;
+    KCalCore::Incidence::Ptr lMod1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lMod1->addComment(QStringLiteral("buteo:caldav:uri:/path/event111"));
+    KCalCore::Incidence::Ptr lMod2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lMod2->addComment(QStringLiteral("buteo:caldav:uri:/path/event112"));
+    KCalCore::Incidence::Ptr lMod3 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lMod3->addComment(QStringLiteral("buteo:caldav:uri:/path/event113"));
+    KCalCore::Incidence::Ptr lMod4 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    lMod4->addComment(QStringLiteral("buteo:caldav:uri:/path/event114"));
+    m_agent->mLocalModifications = KCalCore::Incidence::List()
+        << lMod1 << lMod2 << lMod3 << lMod4;
+
+    m_agent->mFailingUpdates = QSet<QString>()
+        << "/path/event1" << "/path/event01" << "/path/event11";
+    m_agent->mFailingUploads = QSet<QString>()
+        << "/testCal/event001.ics" << "/path/event101" << "/path/event111";
+
+    Buteo::TargetResults results = m_agent->result();
+    QCOMPARE(results.targetName(), QLatin1String("test1"));
+
+    QCOMPARE(results.remoteItems().added, unsigned(1));
+    QCOMPARE(results.remoteItems().deleted, unsigned(2));
+    QCOMPARE(results.remoteItems().modified, unsigned(3));
+
+    QCOMPARE(results.localItems().added, unsigned(2));
+    QCOMPARE(results.localItems().deleted, unsigned(3));
+    QCOMPARE(results.localItems().modified, unsigned(4));
+
+    m_agent->mSyncMode = NotebookSyncAgent::SlowSync;
+
+    Reader::CalendarResource r1;
+    r1.href = "/path/event1";
+    KCalCore::Incidence::Ptr rAdd1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    r1.incidences << rAdd1;
+    Reader::CalendarResource r2;
+    r2.href = "/path/event2";
+    KCalCore::Incidence::Ptr rAdd2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    r2.incidences << rAdd2;
+    m_agent->mReceivedCalendarResources = QList<Reader::CalendarResource>() << r1 << r2;
+
+    results = m_agent->result();
+    QCOMPARE(results.targetName(), QLatin1String("test1"));
+
+    QCOMPARE(results.remoteItems().added, unsigned(0));
+    QCOMPARE(results.remoteItems().deleted, unsigned(0));
+    QCOMPARE(results.remoteItems().modified, unsigned(0));
+
+    QCOMPARE(results.localItems().added, unsigned(1));
+    QCOMPARE(results.localItems().deleted, unsigned(0));
+    QCOMPARE(results.localItems().modified, unsigned(0));
+
 }
 
 #include "tst_notebooksyncagent.moc"

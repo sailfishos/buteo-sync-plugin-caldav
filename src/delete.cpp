@@ -29,6 +29,8 @@
 
 #include <LogMacros.h>
 
+#define PROP_INCIDENCE_URI "uri"
+
 static const QString VCalExtension = QStringLiteral(".ics");
 
 Delete::Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
@@ -44,6 +46,7 @@ void Delete::deleteEvent(const QString &href)
     QNetworkRequest request;
     prepareRequest(&request, href);
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1());
+    reply->setProperty(PROP_INCIDENCE_URI, href);
     debugRequest(request, QStringLiteral(""));
     connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
@@ -61,11 +64,17 @@ void Delete::requestFinished()
 
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
-        finishedWithInternalError();
+        finishedWithInternalError(QString());
         return;
     }
+    reply->deleteLater();
     debugReplyAndReadAll(reply);
 
-    finishedWithReplyResult(reply->error());
-    reply->deleteLater();
+    const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
+    if (reply->error() == QNetworkReply::ContentNotFoundError) {
+        // Consider a success if the content does not exist on server.
+        finishedWithSuccess(uri);
+    } else {
+        finishedWithReplyResult(uri, reply->error());
+    }
 }

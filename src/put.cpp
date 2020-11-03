@@ -94,9 +94,10 @@ void Put::requestFinished()
 
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
-        finishedWithInternalError("Internal error: PUT request finished but null");
+        finishedWithInternalError(QString(), "Internal error: PUT request finished but null");
         return;
     }
+    reply->deleteLater();
 
     LOG_DEBUG("PUT request finished:" << reply->error());
     debugReplyAndReadAll(reply);
@@ -115,11 +116,10 @@ void Put::requestFinished()
     }
     mLocalUriList.remove(uri);
 
-    finishedWithReplyResult(reply->error());
-    reply->deleteLater();
+    finishedWithReplyResult(uri, reply->error());
 }
 
-const QHash<QString,QString>& Put::updatedETags() const
+QString Put::updatedETag(const QString &uri) const
 {
-    return mUpdatedETags;
+    return mUpdatedETags.value(uri, QString());
 }

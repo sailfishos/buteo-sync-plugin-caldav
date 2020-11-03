@@ -720,30 +720,19 @@ void CalDavClient::clearAgents()
     mNotebookSyncAgents.clear();
 }
 
-void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorString)
+void CalDavClient::notebookSyncFinished()
 {
     FUNCTION_CALL_TRACE;
     LOG_INFO("Notebook sync finished. Total agents:" << mNotebookSyncAgents.count());
 
     NotebookSyncAgent *agent = qobject_cast<NotebookSyncAgent*>(sender());
+    if (!agent) {
+        syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                     QLatin1String("cannot get NotebookSyncAgent object"));
+        return;
+    }
     agent->disconnect(this);
 
-    // At that point, the finishing agent has sent all possible local additions /
-    // modifications to upstream and upstream has returned according etags.
-    // Even in case of error, some PUT may have succeeded and etags should
-    // be saved accordingly.
-    if (!mStorage->save()) {
-        LOG_WARNING("Unable to save calendar storage after etag changes!");
-        syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                     QLatin1String("unable to save upstream etags"));
-        return;
-    }
-
-    if (errorCode != Buteo::SyncResults::NO_ERROR) {
-        LOG_WARNING("Aborting! Notebook synchronisation failed:" << errorCode << ":" << errorString);
-        syncFinished(static_cast<Buteo::SyncResults::MinorCode>(errorCode), errorString);
-        return;
-    }
     bool finished = true;
     for (int i=0; i<mNotebookSyncAgents.count(); i++) {
         if (!mNotebookSyncAgents[i]->isFinished()) {
@@ -752,25 +741,38 @@ void CalDavClient::notebookSyncFinished(int errorCode, const QString &errorStrin
         }
     }
     if (finished) {
+        bool hasDatabaseErrors = false;
+        bool hasDownloadErrors = false;
+        bool hasUploadErrors = false;
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
+            hasDownloadErrors = hasDownloadErrors || mNotebookSyncAgents[i]->hasDownloadErrors();
+            hasUploadErrors = hasUploadErrors || mNotebookSyncAgents[i]->hasUploadErrors();
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
                 LOG_WARNING("Unable to write notebook changes for notebook at index:" << i);
-                mResults = Buteo::SyncResults();
-                syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                             QLatin1String("unable to write notebook changes"));
-                return;
+                hasDatabaseErrors = true;
             }
             if (mNotebookSyncAgents[i]->isDeleted()) {
                 deletedNotebooks += mNotebookSyncAgents[i]->path();
-            }
-            if (!mNotebookSyncAgents[i]->result().targetName().isEmpty())
+            } else {
                 mResults.addTargetResults(mNotebookSyncAgents[i]->result());
+            }
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
-        LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
-        syncFinished(Buteo::SyncResults::NO_ERROR);
+        if (hasDownloadErrors) {
+            syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+                         QLatin1String("unable to fetch all upstream changes"));
+        } else if (hasUploadErrors) {
+            syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+                         QLatin1String("unable to upsync all local changes"));
+        } else if (hasDatabaseErrors) {
+            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+                         QLatin1String("unable to apply all remote changes"));
+        } else {
+            LOG_DEBUG("Calendar storage saved successfully after writing notebook changes!");
+            syncFinished(Buteo::SyncResults::NO_ERROR);
+        }
     }
 }
 

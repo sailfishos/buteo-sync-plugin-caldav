@@ -2,6 +2,7 @@ TEMPLATE = app
 TARGET = tst_caldavclient
 
 QT += testlib
+QT -= gui
 
 CONFIG += debug
 

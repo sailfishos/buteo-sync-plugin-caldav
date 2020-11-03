@@ -73,22 +73,22 @@ public:
 
     bool isFinished() const;
     bool isDeleted() const;
+    bool hasDownloadErrors() const;
+    bool hasUploadErrors() const;
 
     const QString& path() const;
 
 signals:
-    void finished(int minorErrorCode, const QString &message);
+    void finished();
 
 private slots:
-    void reportRequestFinished();
-    void additionalReportRequestFinished();
-    void nonReportRequestFinished();
-    void processETags();
+    void reportRequestFinished(const QString &uri);
+    void nonReportRequestFinished(const QString &uri);
+    void processETags(const QString &uri);
 private:
     void sendReportRequest(const QStringList &remoteUris = QStringList());
     void clearRequests();
-    void emitFinished(Buteo::SyncResults::MinorCode minorErrorCode,
-                      const QString &message = QString());
+    void requestFinished(Request *request);
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
@@ -128,8 +128,6 @@ private:
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
-    bool mFinished;
-    Buteo::TargetResults mResults;
     bool mEnableUpsync, mEnableDownsync;
     bool mReadOnlyFlag;
 
@@ -142,8 +140,12 @@ private:
     QList<QString> mRemoteModifications;
     KCalCore::Incidence::List mRemoteDeletions;
     KCalCore::Incidence::List mPurgeList;
+    KCalCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
+    bool mHasUpdatedEtags;
+    QSet<QString> mFailingUploads; // List of hrefs with upload errors.
+    QSet<QString> mFailingUpdates; // List of hrefs from which incidences failed to update.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;
