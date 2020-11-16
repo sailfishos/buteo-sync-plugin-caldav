@@ -163,30 +163,33 @@ namespace {
                 || incidence->dateTime(KCalCore::Incidence::RoleDisplayEnd).dateTime() >= from);
     }
 
-    unsigned int countSuccess(const QSet<QString> &failingHrefs,
-                              const KCalCore::Incidence::List &incidences,
-                              const QString &remotePath = QString())
+    typedef enum {
+          REMOTE,
+          LOCAL
+    } Target;
+    void summarizeResults(Buteo::TargetResults *results, Target target,
+                          Buteo::TargetResults::ItemOperation operation,
+                          const QSet<QString> &failingHrefs,
+                          const KCalCore::Incidence::List &incidences,
+                          const QString &remotePath = QString())
     {
-        unsigned int success = incidences.size();
         for (int i = 0; i < incidences.size(); i++) {
             bool doit = true;
             const QString href = incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit);
-            if (failingHrefs.contains(href)) {
-                success -= 1;
+            QString uid(incidences[i]->uid());
+            if (incidences[i]->hasRecurrenceId()) {
+                uid.append(QString::fromLatin1(":RECID:"));
+                uid.append(incidences[i]->recurrenceId().toString()); // Put Qt::ISODate
+            }
+            const Buteo::TargetResults::ItemOperationStatus status = failingHrefs.contains(href)
+                ? Buteo::TargetResults::ITEM_OPERATION_FAILED
+                : Buteo::TargetResults::ITEM_OPERATION_SUCCEEDED;
+            if (target == LOCAL) {
+                results->addLocalDetails(uid, operation, status);
+            } else {
+                results->addRemoteDetails(uid, operation, status);
             }
         }
-        return success;
-    }
-    unsigned int countSuccess(const QSet<QString> &failingHrefs,
-                              const QList<QString> &incidences)
-    {
-        unsigned int success = incidences.size();
-        for (int i = 0; i < incidences.size(); i++) {
-            if (failingHrefs.contains(incidences[i])) {
-                success -= 1;
-            }
-        }
-        return success;
     }
 
     static const QByteArray app = QByteArrayLiteral("VOLATILE");
@@ -472,8 +475,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                             &mLocalAdditions,
                             &mLocalModifications,
                             &mLocalDeletions,
-                            &mRemoteAdditions,
-                            &mRemoteModifications,
+                            &mRemoteChanges,
                             &mRemoteDeletions)) {
             LOG_WARNING("unable to calculate the sync delta for:" << mRemoteCalendarPath);
             mFailingUpdates.insert(uri);
@@ -482,10 +484,9 @@ void NotebookSyncAgent::processETags(const QString &uri)
             return;
         }
 
-        const QStringList fetchRemoteHrefUris = mRemoteAdditions + mRemoteModifications;
-        if (mEnableDownsync && !fetchRemoteHrefUris.isEmpty()) {
+        if (mEnableDownsync && !mRemoteChanges.isEmpty()) {
             // some incidences have changed on the server, so fetch the new details
-            sendReportRequest(fetchRemoteHrefUris);
+            sendReportRequest(mRemoteChanges.toList());
         }
         sendLocalChanges();
     } else if (report->networkError() == QNetworkReply::AuthenticationRequiredError && !mRetriedReport) {
@@ -774,14 +775,22 @@ Buteo::TargetResults NotebookSyncAgent::result() const
                                     Buteo::ItemCounts(count, 0, 0),
                                     Buteo::ItemCounts());
     } else {
-        return Buteo::TargetResults
-            (mNotebook->name().toHtmlEscaped(),
-             Buteo::ItemCounts(countSuccess(mFailingUpdates, mRemoteAdditions),
-                               countSuccess(mFailingUpdates, mRemoteDeletions),
-                               countSuccess(mFailingUpdates, mRemoteModifications)),
-             Buteo::ItemCounts(countSuccess(mFailingUploads, mLocalAdditions, mRemoteCalendarPath),
-                               countSuccess(mFailingUploads, mLocalDeletions),
-                               countSuccess(mFailingUploads, mLocalModifications)));
+        Buteo::TargetResults results(mNotebook->name().toHtmlEscaped());
+
+        summarizeResults(&results, LOCAL, Buteo::TargetResults::ITEM_ADDED,
+                         mFailingUpdates, mRemoteAdditions);
+        summarizeResults(&results, LOCAL, Buteo::TargetResults::ITEM_DELETED,
+                         mFailingUpdates, mRemoteDeletions);
+        summarizeResults(&results, LOCAL, Buteo::TargetResults::ITEM_MODIFIED,
+                         mFailingUpdates, mRemoteModifications);
+        summarizeResults(&results, REMOTE, Buteo::TargetResults::ITEM_ADDED,
+                         mFailingUploads, mLocalAdditions, mRemoteCalendarPath);
+        summarizeResults(&results, REMOTE, Buteo::TargetResults::ITEM_DELETED,
+                         mFailingUploads, mLocalDeletions);
+        summarizeResults(&results, REMOTE, Buteo::TargetResults::ITEM_MODIFIED,
+                         mFailingUploads, mLocalModifications);
+
+        return results;
     }
 }
 
@@ -838,8 +847,7 @@ bool NotebookSyncAgent::calculateDelta(
         KCalCore::Incidence::List *localAdditions,
         KCalCore::Incidence::List *localModifications,
         KCalCore::Incidence::List *localDeletions,
-        QList<QString> *remoteAdditions,
-        QList<QString> *remoteModifications,
+        QSet<QString> *remoteChanges,
         KCalCore::Incidence::List *remoteDeletions)
 {
     // Note that the mKCal API doesn't provide a way to get all deleted/modified incidences
@@ -997,6 +1005,7 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // now determine remote additions and modifications.
+    QSet<QString> remoteAdditions, remoteModifications;
     const QStringList keys = remoteUriEtags.keys();
     for (const QString &remoteUri : keys) {
         if (!localUriEtags.contains(remoteUri)) {
@@ -1012,20 +1021,21 @@ bool NotebookSyncAgent::calculateDelta(
             // That should suffice, and we've already injected those deletions into the deletions
             // list, so if we hit this branch, then it must be a new remote addition.
             LOG_DEBUG("have new remote addition:" << remoteUri);
-            remoteAdditions->append(remoteUri);
+            remoteAdditions.insert(remoteUri);
         } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
             // etag changed; this is a server-side modification.
             LOG_DEBUG("have remote modification to previously synced incidence at:" << remoteUri);
             LOG_DEBUG("previously seen ETag was:" << localUriEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri));
-            remoteModifications->append(remoteUri);
+            remoteModifications.insert(remoteUri);
         } else {
             // this incidence is unchanged since last sync.
             LOG_DEBUG("unchanged server-side since last sync:" << remoteUri);
         }
     }
+    *remoteChanges = remoteAdditions + remoteModifications;
 
     LOG_DEBUG("Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size());
-    LOG_DEBUG("Calculated remote A/M/R:" << remoteAdditions->size() << "/" << remoteModifications->size() << "/" << remoteDeletions->size());
+    LOG_DEBUG("Calculated remote A/M/R:" << remoteAdditions.size() << "/" << remoteModifications.size() << "/" << remoteDeletions->size());
 
     return true;
 }
@@ -1085,12 +1095,21 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
         } else {
             storedIncidence->setLastModified(mNotebookSyncedDateTime.addSecs(-2));
         }
+
+        if (mRemoteChanges.contains(incidenceHrefUri(storedIncidence))) {
+            // Only stores as modifications the incidences that were noted
+            // as remote changes, since we may also update incidences after
+            // push when the etag is not part of the push answer.
+            mRemoteModifications.append(storedIncidence);
+        }
     }
 }
 
 bool NotebookSyncAgent::addIncidence(KCalCore::Incidence::Ptr incidence)
 {
     LOG_DEBUG("Adding new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+    mRemoteAdditions.append(incidence);
+
     // To avoid spurious appearings of added events when later
     // calling addedIncidences() and modifiedIncidences(), we
     // set the creation date and modification date by hand, since
@@ -1137,6 +1156,9 @@ bool NotebookSyncAgent::addException(KCalCore::Incidence::Ptr incidence,
 bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &resources)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
+
+    mRemoteAdditions.clear();
+    mRemoteModifications.clear();
 
     // We need to coalesce any resources which have the same UID.
     // This can be the case if there is addition of both a recurring event,
@@ -1253,13 +1275,9 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         for (int i = 0; i < localInstances.size(); ++i) {
             KCalCore::Incidence::Ptr localInstance = localInstances[i];
             if (!remoteRecurrenceIds.contains(localInstance->recurrenceId())) {
-                LOG_DEBUG("Now removing remotely-removed persistent occurrence:" << localInstance->recurrenceId().toString());
-                if (!mCalendar->deleteIncidence(localInstance)) {
-                    LOG_WARNING("Error removing remotely deleted persistent occurrence of resource" << resource.href << ":" << localInstance->recurrenceId().toString());
-                    mFailingUpdates.insert(resource.href);
-                    // don't return here and block the entire sync cycle.
-                    success = false;
-                }
+                LOG_DEBUG("Schedule for removal persistent occurrence:" << localInstance->recurrenceId().toString());
+                // Will be deleted in the call to deleteIncidences
+                mRemoteDeletions.append(localInstance);
             }
         }
     }

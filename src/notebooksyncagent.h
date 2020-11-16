@@ -110,8 +110,7 @@ private:
                         KCalCore::Incidence::List *localAdditions,
                         KCalCore::Incidence::List *localModifications,
                         KCalCore::Incidence::List *localDeletions,
-                        QList<QString> *remoteAdditions,
-                        QList<QString> *remoteModifications,
+                        QSet<QString> *remoteChanges,
                         KCalCore::Incidence::List *remoteDeletions);
 
     QNetworkAccessManager* mNetworkManager;
@@ -136,9 +135,10 @@ private:
     KCalCore::Incidence::List mLocalAdditions;
     KCalCore::Incidence::List mLocalModifications;
     KCalCore::Incidence::List mLocalDeletions;
-    QList<QString> mRemoteAdditions;
-    QList<QString> mRemoteModifications;
+    QSet<QString> mRemoteChanges; // Set of URLs to be downloaded
     KCalCore::Incidence::List mRemoteDeletions;
+    KCalCore::Incidence::List mRemoteAdditions;
+    KCalCore::Incidence::List mRemoteModifications;
     KCalCore::Incidence::List mPurgeList;
     KCalCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
