@@ -510,8 +510,7 @@ void tst_NotebookSyncAgent::calculateDelta()
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
-                                    &m_agent->mRemoteAdditions,
-                                    &m_agent->mRemoteModifications,
+                                    &m_agent->mRemoteChanges,
                                     &m_agent->mRemoteDeletions));
     QCOMPARE(m_agent->mLocalAdditions.count(), 2);
     QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev111));
@@ -524,14 +523,14 @@ void tst_NotebookSyncAgent::calculateDelta()
     // because of precedence of remote modifications by default.
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
     QCOMPARE(m_agent->mLocalDeletions.first()->uid(), ev333->uid());
-    QCOMPARE(m_agent->mRemoteAdditions.count(), 1);
-    QCOMPARE(m_agent->mRemoteAdditions.first(), QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath));
-    QCOMPARE(m_agent->mRemoteModifications.count(), 3);
-    QVERIFY(m_agent->mRemoteModifications.contains
+    QCOMPARE(m_agent->mRemoteChanges.count(), 4);
+    QVERIFY(m_agent->mRemoteChanges.contains
+            (QStringLiteral("%1000.ics").arg(m_agent->mRemoteCalendarPath)));
+    QVERIFY(m_agent->mRemoteChanges.contains
             (QStringLiteral("%1%2.ics").arg(m_agent->mRemoteCalendarPath).arg(ev112->uid())));
-    QVERIFY(m_agent->mRemoteModifications.contains
+    QVERIFY(m_agent->mRemoteChanges.contains
             (QStringLiteral("%1444.ics").arg(m_agent->mRemoteCalendarPath)));
-    QVERIFY(m_agent->mRemoteModifications.contains
+    QVERIFY(m_agent->mRemoteChanges.contains
             (QStringLiteral("%1666.ics").arg(m_agent->mRemoteCalendarPath)));
     uint nFound = 0, nNotFound = 0;
     Q_FOREACH(const KCalCore::Incidence::Ptr &incidence, m_agent->mRemoteDeletions) {
@@ -660,14 +659,12 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
-                                    &m_agent->mRemoteAdditions,
-                                    &m_agent->mRemoteModifications,
+                                    &m_agent->mRemoteChanges,
                                     &m_agent->mRemoteDeletions));
     QCOMPARE(m_agent->mLocalAdditions.count(), 0);
     QCOMPARE(m_agent->mLocalModifications.count(), 0);
     QCOMPARE(m_agent->mLocalDeletions.count(), 0);
-    QCOMPARE(m_agent->mRemoteAdditions.count(), 0);
-    QCOMPARE(m_agent->mRemoteModifications.count(), 0);
+    QCOMPARE(m_agent->mRemoteChanges.count(), 0);
     QCOMPARE(m_agent->mRemoteDeletions.count(), 0);
 }
 
@@ -726,14 +723,12 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
-                                    &m_agent->mRemoteAdditions,
-                                    &m_agent->mRemoteModifications,
+                                    &m_agent->mRemoteChanges,
                                     &m_agent->mRemoteDeletions));
     QCOMPARE(m_agent->mLocalAdditions.count(), events.count());
     QCOMPARE(m_agent->mLocalModifications.count(), 0);
     QCOMPARE(m_agent->mLocalDeletions.count(), 0);
-    QCOMPARE(m_agent->mRemoteAdditions.count(), 0);
-    QCOMPARE(m_agent->mRemoteModifications.count(), 0);
+    QCOMPARE(m_agent->mRemoteChanges.count(), 0);
     QCOMPARE(m_agent->mRemoteDeletions.count(), 0);
 
     // Simulate reception of etags for each event.
@@ -746,22 +741,19 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     m_agent->mLocalAdditions.clear();
     m_agent->mLocalModifications.clear();
     m_agent->mLocalDeletions.clear();
-    m_agent->mRemoteAdditions.clear();
-    m_agent->mRemoteModifications.clear();
+    m_agent->mRemoteChanges.clear();
     m_agent->mRemoteDeletions.clear();
     // Compute delta again and check that nothing has changed indeed.
     QVERIFY(m_agent->calculateDelta(remoteUriEtags,
                                     &m_agent->mLocalAdditions,
                                     &m_agent->mLocalModifications,
                                     &m_agent->mLocalDeletions,
-                                    &m_agent->mRemoteAdditions,
-                                    &m_agent->mRemoteModifications,
+                                    &m_agent->mRemoteChanges,
                                     &m_agent->mRemoteDeletions));
     QCOMPARE(m_agent->mLocalAdditions.count(), 0);
     QCOMPARE(m_agent->mLocalModifications.count(), 0);
     QCOMPARE(m_agent->mLocalDeletions.count(), 0);
-    QCOMPARE(m_agent->mRemoteAdditions.count(), 0);
-    QCOMPARE(m_agent->mRemoteModifications.count(), 0);
+    QCOMPARE(m_agent->mRemoteChanges.count(), 0);
     QCOMPARE(m_agent->mRemoteDeletions.count(), 0);
 
 }
@@ -896,8 +888,14 @@ void tst_NotebookSyncAgent::result()
 {
     m_agent->mSyncMode = NotebookSyncAgent::QuickSync;
 
-    m_agent->mRemoteAdditions = QList<QString>()
-        << "/path/event1" << "/path/event2" << "/path/event3";
+    KCalCore::Incidence::Ptr rAdd1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rAdd1->addComment(QStringLiteral("buteo:caldav:uri:/path/event1"));
+    KCalCore::Incidence::Ptr rAdd2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rAdd2->addComment(QStringLiteral("buteo:caldav:uri:/path/event2"));
+    KCalCore::Incidence::Ptr rAdd3 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rAdd3->addComment(QStringLiteral("buteo:caldav:uri:/path/event3"));
+    m_agent->mRemoteAdditions = KCalCore::Incidence::List()
+        << rAdd1 << rAdd2 << rAdd3;
     KCalCore::Incidence::Ptr rDel1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
     rDel1->addComment(QStringLiteral("buteo:caldav:uri:/path/event01"));
     KCalCore::Incidence::Ptr rDel2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
@@ -908,8 +906,18 @@ void tst_NotebookSyncAgent::result()
     rDel4->addComment(QStringLiteral("buteo:caldav:uri:/path/event04"));
     m_agent->mRemoteDeletions = KCalCore::Incidence::List()
         << rDel1 << rDel2 << rDel3 << rDel4;
-    m_agent->mRemoteModifications = QList<QString>()
-        << "/path/event11" << "/path/event12" << "/path/event13" << "/path/event14" << "/path/event15";
+    KCalCore::Incidence::Ptr rMod1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rMod1->addComment(QStringLiteral("buteo:caldav:uri:/path/event11"));
+    KCalCore::Incidence::Ptr rMod2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rMod2->addComment(QStringLiteral("buteo:caldav:uri:/path/event12"));
+    KCalCore::Incidence::Ptr rMod3 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rMod3->addComment(QStringLiteral("buteo:caldav:uri:/path/event13"));
+    KCalCore::Incidence::Ptr rMod4 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rMod4->addComment(QStringLiteral("buteo:caldav:uri:/path/event14"));
+    KCalCore::Incidence::Ptr rMod5 = KCalCore::Incidence::Ptr(new KCalCore::Event);
+    rMod5->addComment(QStringLiteral("buteo:caldav:uri:/path/event15"));
+    m_agent->mRemoteModifications = KCalCore::Incidence::List()
+        << rMod1 << rMod2 << rMod3 << rMod4 << rMod5;
 
     KCalCore::Incidence::Ptr lAdd1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
     lAdd1->setUid("event001");
@@ -954,12 +962,10 @@ void tst_NotebookSyncAgent::result()
 
     Reader::CalendarResource r1;
     r1.href = "/path/event1";
-    KCalCore::Incidence::Ptr rAdd1 = KCalCore::Incidence::Ptr(new KCalCore::Event);
-    r1.incidences << rAdd1;
+    r1.incidences << KCalCore::Incidence::Ptr(new KCalCore::Event);
     Reader::CalendarResource r2;
     r2.href = "/path/event2";
-    KCalCore::Incidence::Ptr rAdd2 = KCalCore::Incidence::Ptr(new KCalCore::Event);
-    r2.incidences << rAdd2;
+    r2.incidences << KCalCore::Incidence::Ptr(new KCalCore::Event);
     m_agent->mReceivedCalendarResources = QList<Reader::CalendarResource>() << r1 << r2;
 
     results = m_agent->result();
