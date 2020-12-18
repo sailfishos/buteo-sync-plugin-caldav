@@ -1,7 +1,7 @@
 /*
  * This file is part of buteo-sync-plugin-caldav package
  *
- * Copyright (C) 2019 Open Mobile Platform LLC
+ * Copyright (C) 2019 - 2020 Open Mobile Platform LLC
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -20,13 +20,13 @@
 
 #include "caldavinvitationplugin.h"
 
-#include <icalformat.h>
+#include <KCalendarCore/ICalFormat>
 
 #include <extendedcalendar.h>
 
 #include <QDebug>
 
-using namespace KCalCore;
+using namespace KCalendarCore;
 
 class CalDAVInvitationPluginPrivate
 {

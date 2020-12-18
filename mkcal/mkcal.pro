@@ -5,7 +5,7 @@ CONFIG += plugin
 CONFIG += link_pkgconfig
 PKGCONFIG += \
     QmfClient \
-    libkcalcoren-qt5 \
+    KF5CalendarCore \
     libmkcal-qt5
 
 QT -= gui
