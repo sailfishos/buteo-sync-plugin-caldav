@@ -1,7 +1,7 @@
 /*
  * This file is part of buteo-sync-plugin-caldav package
  *
- * Copyright (C) 2019 Open Mobile Platform LLC
+ * Copyright (C) 2019 - 2020 Open Mobile Platform LLC
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,7 +21,7 @@
 #ifndef CALDAVINVITATIONPLUGIN_H
 #define CALDAVINVITATIONPLUGIN_H
 
-// KCalCore
+// KCalendarCore
 #include <invitationhandlerif.h>
 
 // mKCal
@@ -29,7 +29,7 @@
 
 #include <QtCore/QObject>
 
-using namespace KCalCore;
+using namespace KCalendarCore;
 
 class CalDAVInvitationPluginPrivate;
 class CalDAVInvitationPlugin : public QObject, public InvitationHandlerInterface, public ServiceInterface
