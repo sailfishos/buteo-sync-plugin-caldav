@@ -23,7 +23,7 @@
 #include <QFile>
 
 #include <reader.h>
-#include <event.h>
+#include <KCalendarCore/Event>
 
 class tst_Reader : public QObject
 {
@@ -279,7 +279,7 @@ void tst_Reader::readICal()
 
     if (!expectedNIncidences)
         return;
-    KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(rd.results().first().incidences[0]);
+    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(rd.results().first().incidences[0]);
     
     QCOMPARE(ev->uid(), expectedUID);
     QCOMPARE(ev->summary(), expectedSummary);
@@ -341,7 +341,7 @@ void tst_Reader::readDate()
 
     if (!expectedNIncidences)
         return;
-    KCalCore::Event::Ptr ev = rd.results().first().incidences[0].staticCast<KCalCore::Event>();
+    KCalendarCore::Event::Ptr ev = rd.results().first().incidences[0].staticCast<KCalendarCore::Event>();
 
     QCOMPARE(ev->dtStart().date(), expectedStartDate);
     QCOMPARE(ev->dtEnd().date(), expectedEndDate);
@@ -357,8 +357,8 @@ void tst_Reader::readAlarm_data()
     QTest::newRow("relative alarm time")
         << QStringLiteral("data/reader_relativealarm.xml")
         << 1
-        << int(KCalCore::Alarm::Display)
-        << QStringLiteral("20170323T120000");
+        << int(KCalendarCore::Alarm::Display)
+        << QStringLiteral("2017-03-23T12:00:00");
 }
 
 void tst_Reader::readAlarm()
@@ -381,12 +381,12 @@ void tst_Reader::readAlarm()
     QCOMPARE(rd.results().size(), 1);
     QCOMPARE(rd.results().first().incidences.length(), 1);
 
-    KCalCore::Incidence::Ptr ev = KCalCore::Incidence::Ptr(rd.results().first().incidences[0]);
+    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(rd.results().first().incidences[0]);
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
-    KCalCore::Alarm::Ptr alarm(ev->alarms().at(0));
-    QCOMPARE(alarm->type(), KCalCore::Alarm::Type(expectedAction));
-    QCOMPARE(alarm->time(), KDateTime::fromString(expectedTime));
+    KCalendarCore::Alarm::Ptr alarm(ev->alarms().at(0));
+    QCOMPARE(alarm->type(), KCalendarCore::Alarm::Type(expectedAction));
+    QCOMPARE(alarm->time(), QDateTime::fromString(expectedTime, Qt::ISODate));
 }
 
 #include "tst_reader.moc"

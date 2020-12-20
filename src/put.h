@@ -31,8 +31,6 @@
 #include <QSslError>
 #include <QStringList>
 
-#include <incidence.h>
-
 class QNetworkAccessManager;
 class Settings;
 

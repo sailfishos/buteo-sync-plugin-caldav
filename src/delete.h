@@ -26,8 +26,6 @@
 
 #include "request.h"
 
-#include <incidence.h>
-
 #include <QObject>
 #include <QNetworkReply>
 #include <QSslError>

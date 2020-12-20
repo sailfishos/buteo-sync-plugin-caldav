@@ -30,10 +30,10 @@
 #include <QByteArray>
 #include <QXmlStreamReader>
 
-#include <icalformat.h>
-#include <vcalformat.h>
-#include <exceptions.h>
-#include <memorycalendar.h>
+#include <KCalendarCore/ICalFormat>
+#include <KCalendarCore/VCalFormat>
+#include <KCalendarCore/Exceptions>
+#include <KCalendarCore/MemoryCalendar>
 
 #include <LogMacros.h>
 
@@ -214,21 +214,21 @@ void Reader::readResponse()
     if (!resource.iCalData.trimmed().isEmpty()) {
         bool parsed = true;
         QString icsData = preprocessIcsData(resource.iCalData);
-        KCalCore::ICalFormat iCalFormat;
-        KCalCore::MemoryCalendar::Ptr cal(new KCalCore::MemoryCalendar(KDateTime::UTC));
+        KCalendarCore::ICalFormat iCalFormat;
+        KCalendarCore::MemoryCalendar::Ptr cal(new KCalendarCore::MemoryCalendar(QTimeZone::utc()));
         if (!iCalFormat.fromString(cal, icsData)) {
             if (iCalFormat.exception() && iCalFormat.exception()->code()
-                == KCalCore::Exception::CalVersion1) {
-                KCalCore::VCalFormat vCalFormat;
+                == KCalendarCore::Exception::CalVersion1) {
+                KCalendarCore::VCalFormat vCalFormat;
                 if (!vCalFormat.fromString(cal, icsData)) {
                     LOG_WARNING("unable to parse vCal data");
                     parsed = false;
                 }
             } else if (iCalFormat.exception()
                        && (iCalFormat.exception()->code()
-                           == KCalCore::Exception::CalVersionUnknown
+                           == KCalendarCore::Exception::CalVersionUnknown
                            || iCalFormat.exception()->code()
-                           == KCalCore::Exception::VersionPropertyMissing)) {
+                           == KCalendarCore::Exception::VersionPropertyMissing)) {
                 iCalFormat.setException(0);
                 LOG_WARNING("unknown or missing version, trying iCal 2.0");
                 icsData = ensureICalVersion(icsData);
@@ -242,13 +242,13 @@ void Reader::readResponse()
             }
         }
         if (parsed) {
-            const KCalCore::Incidence::List incidences = cal->incidences();
+            const KCalendarCore::Incidence::List incidences = cal->incidences();
             LOG_DEBUG("iCal data contains" << incidences.count() << " incidences");
             if (incidences.count()) {
                 QString uid = incidences.first()->uid();
                 // In case of more than one incidence, it contains some
                 // recurring event information, with exception / RECURRENCE-ID defined.
-                for (const KCalCore::Incidence::Ptr &incidence : incidences) {
+                for (const KCalendarCore::Incidence::Ptr &incidence : incidences) {
                     if (incidence->uid() != uid) {
                         LOG_WARNING("iCal data contains invalid incidences with conflicting uids");
                         uid.clear();
@@ -256,9 +256,9 @@ void Reader::readResponse()
                     }
                 }
                 if (!uid.isEmpty()) {
-                    for (const KCalCore::Incidence::Ptr &incidence : incidences) {
-                        if (incidence->type() == KCalCore::IncidenceBase::TypeEvent
-                            || incidence->type() == KCalCore::IncidenceBase::TypeTodo)
+                    for (const KCalendarCore::Incidence::Ptr &incidence : incidences) {
+                        if (incidence->type() == KCalendarCore::IncidenceBase::TypeEvent
+                            || incidence->type() == KCalendarCore::IncidenceBase::TypeTodo)
                             resource.incidences.append(incidence);
                     }
                 }

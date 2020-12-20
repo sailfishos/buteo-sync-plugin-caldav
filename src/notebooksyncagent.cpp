@@ -33,11 +33,11 @@
 #include <LogMacros.h>
 #include <SyncResults.h>
 
-#include <incidence.h>
-#include <event.h>
-#include <todo.h>
-#include <journal.h>
-#include <attendee.h>
+#include <KCalendarCore/Incidence>
+#include <KCalendarCore/Event>
+#include <KCalendarCore/Todo>
+#include <KCalendarCore/Journal>
+#include <KCalendarCore/Attendee>
 
 #include <QDebug>
 
@@ -49,7 +49,7 @@ namespace {
     // This is problematic for sync, as we need some fields
     // (resource URI and ETAG) in order to sync properly.
     // Hence, we abuse the COMMENTS field of the incidence.
-    QString incidenceHrefUri(KCalCore::Incidence::Ptr incidence, const QString &remoteCalendarPath = QString(), bool *uriNeedsFilling = 0)
+    QString incidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &remoteCalendarPath = QString(), bool *uriNeedsFilling = 0)
     {
         const QStringList &comments(incidence->comments());
         for (const QString &comment : comments) {
@@ -78,12 +78,12 @@ namespace {
         LOG_WARNING("Returning empty uri for:" << incidence->uid() << incidence->recurrenceId().toString());
         return QString();
     }
-    void setIncidenceHrefUri(KCalCore::Incidence::Ptr incidence, const QString &hrefUri)
+    void setIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &hrefUri)
     {
         const QStringList &comments(incidence->comments());
         for (const QString &comment : comments) {
-            if (comment.startsWith("buteo:caldav:uri:")) {
-                incidence->removeComment(comment);
+            if (comment.startsWith("buteo:caldav:uri:")
+                && incidence->removeComment(comment)) {
                 break;
             }
         }
@@ -95,7 +95,7 @@ namespace {
             incidence->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(hrefUri));
         }
     }
-    QString incidenceETag(KCalCore::Incidence::Ptr incidence)
+    QString incidenceETag(KCalendarCore::Incidence::Ptr incidence)
     {
         const QStringList &comments(incidence->comments());
         for (const QString &comment : comments) {
@@ -105,19 +105,19 @@ namespace {
         }
         return QString();
     }
-    void setIncidenceETag(KCalCore::Incidence::Ptr incidence, const QString &etag)
+    void setIncidenceETag(KCalendarCore::Incidence::Ptr incidence, const QString &etag)
     {
         const QStringList &comments(incidence->comments());
         for (const QString &comment : comments) {
-            if (comment.startsWith("buteo:caldav:etag:")) {
-                incidence->removeComment(comment);
+            if (comment.startsWith("buteo:caldav:etag:")
+                && incidence->removeComment(comment)) {
                 break;
             }
         }
         incidence->addComment(QStringLiteral("buteo:caldav:etag:%1").arg(etag));
     }
 
-    void updateIncidenceHrefEtag(KCalCore::Incidence::Ptr incidence,
+    void updateIncidenceHrefEtag(KCalendarCore::Incidence::Ptr incidence,
                                  const QString &href, const QString &etag)
     {
         // Set the URI and the ETAG property to the required values.
@@ -138,7 +138,7 @@ namespace {
         }
     }
 
-    bool isCopiedDetachedIncidence(KCalCore::Incidence::Ptr incidence)
+    bool isCopiedDetachedIncidence(KCalendarCore::Incidence::Ptr incidence)
     {
         if (incidence->recurrenceId().isNull())
             return false;
@@ -152,15 +152,15 @@ namespace {
         return true;
     }
 
-    bool incidenceWithin(KCalCore::Incidence::Ptr incidence,
+    bool incidenceWithin(KCalendarCore::Incidence::Ptr incidence,
                          const QDateTime &from, const QDateTime &to)
     {
-        return incidence->dtStart().dateTime() <= to
+        return incidence->dtStart() <= to
             && (!incidence->recurs()
                 || !incidence->recurrence()->endDateTime().isValid()
-                || incidence->recurrence()->endDateTime().dateTime() >= from)
+                || incidence->recurrence()->endDateTime() >= from)
             && (incidence->recurs()
-                || incidence->dateTime(KCalCore::Incidence::RoleDisplayEnd).dateTime() >= from);
+                || incidence->dateTime(KCalendarCore::Incidence::RoleDisplayEnd) >= from);
     }
 
     typedef enum {
@@ -170,7 +170,7 @@ namespace {
     void summarizeResults(Buteo::TargetResults *results, Target target,
                           Buteo::TargetResults::ItemOperation operation,
                           const QSet<QString> &failingHrefs,
-                          const KCalCore::Incidence::List &incidences,
+                          const KCalendarCore::Incidence::List &incidences,
                           const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
@@ -195,7 +195,7 @@ namespace {
     static const QByteArray app = QByteArrayLiteral("VOLATILE");
     static const QByteArray name = QByteArrayLiteral("SYNC-FAILURE");
     void flagUploadFailure(const QSet<QString> &failingHrefs,
-                           const KCalCore::Incidence::List &incidences,
+                           const KCalendarCore::Incidence::List &incidences,
                            const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
@@ -207,15 +207,15 @@ namespace {
             }
         }
     }
-    void flagUpdateSuccess(const KCalCore::Incidence::Ptr &incidence)
+    void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
         incidence->removeCustomProperty(app, name);
     }
-    void flagUpdateFailure(const KCalCore::Incidence::Ptr &incidence)
+    void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
         incidence->setCustomProperty(app, name, QStringLiteral("update"));
     }
-    void flagDeleteFailure(const KCalCore::Incidence::Ptr &incidence)
+    void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
         incidence->setCustomProperty(app, name, QStringLiteral("delete"));
     }
@@ -330,7 +330,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     // Store sync time before sync is completed to avoid loosing events
     // that may be inserted server side between now and the termination
     // of the process.
-    mNotebookSyncedDateTime = KDateTime::currentUtcDateTime();
+    mNotebookSyncedDateTime = QDateTime::currentDateTimeUtc();
     mFromDateTime = fromDateTime;
     mToDateTime = toDateTime;
     mEnableUpsync = withUpsync;
@@ -366,7 +366,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
  */
         LOG_DEBUG("Start quick sync for notebook:" << mNotebook->uid()
                   << "between" << fromDateTime << "to" << toDateTime
-                  << ", sync changes since" << mNotebook->syncDate().dateTime());
+                  << ", sync changes since" << mNotebook->syncDate());
         mSyncMode = QuickSync;
 
         fetchRemoteChanges();
@@ -533,9 +533,9 @@ void NotebookSyncAgent::sendLocalChanges()
     // containing all of the still-existing events in the series.
     // (Alternative is to push a STATUS:CANCELLED event?)
     // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
-    QMultiHash<QString, KDateTime> uidToRecurrenceIdDeletions;
+    QMultiHash<QString, QDateTime> uidToRecurrenceIdDeletions;
     QHash<QString, QString> uidToUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
-    for (KCalCore::Incidence::Ptr localDeletion : const_cast<const KCalCore::Incidence::List&>(mLocalDeletions)) {
+    for (KCalendarCore::Incidence::Ptr localDeletion : const_cast<const KCalendarCore::Incidence::List&>(mLocalDeletions)) {
         uidToRecurrenceIdDeletions.insert(localDeletion->uid(), localDeletion->recurrenceId());
         uidToUri.insert(localDeletion->uid(), incidenceHrefUri(localDeletion));
     }
@@ -543,10 +543,10 @@ void NotebookSyncAgent::sendLocalChanges()
     // now send DELETEs as required, and PUTs as required.
     const QStringList keys = uidToRecurrenceIdDeletions.uniqueKeys();
     for (const QString &uid : keys) {
-        QList<KDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
-        if (!recurrenceIds.contains(KDateTime())) {
+        QList<QDateTime> recurrenceIds = uidToRecurrenceIdDeletions.values(uid);
+        if (!recurrenceIds.contains(QDateTime())) {
             mStorage->load(uid);
-            KCalCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
+            KCalendarCore::Incidence::Ptr recurringSeries = mCalendar->incidence(uid);
             if (recurringSeries) {
                 mLocalModifications.append(recurringSeries);
                 continue; // finished with this deletion.
@@ -568,7 +568,7 @@ void NotebookSyncAgent::sendLocalChanges()
     mPurgeList += mLocalDeletions;
 
     mSentUids.clear();
-    KCalCore::Incidence::List toUpload(mLocalAdditions + mLocalModifications);
+    KCalendarCore::Incidence::List toUpload(mLocalAdditions + mLocalModifications);
     for (int i = 0; i < toUpload.count(); i++) {
         bool create = false;
         QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
@@ -579,7 +579,7 @@ void NotebookSyncAgent::sendLocalChanges()
         QString icsData;
         if (toUpload[i]->recurs() || toUpload[i]->hasRecurrenceId()) {
             if (mStorage->loadSeries(toUpload[i]->uid())) {
-                KCalCore::Incidence::Ptr recurringIncidence(toUpload[i]->recurs() ? toUpload[i] : mCalendar->incidence(toUpload[i]->uid()));
+                KCalendarCore::Incidence::Ptr recurringIncidence(toUpload[i]->recurs() ? toUpload[i] : mCalendar->incidence(toUpload[i]->uid()));
                 if (recurringIncidence) {
                     icsData = IncidenceHandler::toIcs(recurringIncidence,
                                                       mCalendar->instances(recurringIncidence));
@@ -640,7 +640,7 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
     if (deleteRequest) {
         if (request->errorCode() != Buteo::SyncResults::NO_ERROR) {
             // Don't purge yet the locally deleted incidence.
-            KCalCore::Incidence::List::Iterator it = mPurgeList.begin();
+            KCalendarCore::Incidence::List::Iterator it = mPurgeList.begin();
             while (it != mPurgeList.end()) {
                 if (incidenceHrefUri(*it) == uri) {
                     it = mPurgeList.erase(it);
@@ -664,12 +664,12 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
     requestFinished(request);
 }
 
-static KCalCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const KCalCore::Incidence::List &incidences)
+static KCalendarCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const KCalendarCore::Incidence::List &incidences)
 {
-    KCalCore::Incidence::List out;
+    KCalendarCore::Incidence::List out;
     for (int i = 0; i < incidences.size(); i++){
         if (storage->load(incidences[i]->uid(), incidences[i]->recurrenceId())) {
-            const KCalCore::Incidence::Ptr incidence = calendar->incidence(incidences[i]->uid(), incidences[i]->recurrenceId());
+            const KCalendarCore::Incidence::Ptr incidence = calendar->incidence(incidences[i]->uid(), incidences[i]->recurrenceId());
             if (incidence) {
                 out.append(incidence);
             }
@@ -844,20 +844,20 @@ bool NotebookSyncAgent::calculateDelta(
         // in parameters:
         const QHash<QString, QString> &remoteUriEtags, //  remoteEtags: map of uri to etag which exist on the remote server.
         // out parameters:
-        KCalCore::Incidence::List *localAdditions,
-        KCalCore::Incidence::List *localModifications,
-        KCalCore::Incidence::List *localDeletions,
+        KCalendarCore::Incidence::List *localAdditions,
+        KCalendarCore::Incidence::List *localModifications,
+        KCalendarCore::Incidence::List *localDeletions,
         QSet<QString> *remoteChanges,
-        KCalCore::Incidence::List *remoteDeletions)
+        KCalendarCore::Incidence::List *remoteDeletions)
 {
     // Note that the mKCal API doesn't provide a way to get all deleted/modified incidences
     // for a notebook, as it implements the SQL query using an inequality on both modifiedAfter
     // and createdBefore; so instead we have to build a datetime which "should" satisfy
     // the inequality for all possible local modifications detectable since the last sync.
-    KDateTime syncDateTime = mNotebook->syncDate().addSecs(1); // deleted after, created before...
+    QDateTime syncDateTime = mNotebook->syncDate().addSecs(1); // deleted after, created before...
 
     // load all local incidences
-    KCalCore::Incidence::List localIncidences;
+    KCalendarCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
         LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid());
         return false;
@@ -867,7 +867,7 @@ bool NotebookSyncAgent::calculateDelta(
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions and remote deletions.
     QHash<QString, QString> localUriEtags; // remote uri to the etag we saw last time.
-    for (KCalCore::Incidence::Ptr incidence : const_cast<const KCalCore::Incidence::List&>(localIncidences)) {
+    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
         if (uriWasEmpty) {
@@ -912,12 +912,12 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // Now determine local deletions reported by mkcal since the last sync date.
-    KCalCore::Incidence::List deleted;
+    KCalendarCore::Incidence::List deleted;
     if (!mStorage->deletedIncidences(&deleted, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
-    for (KCalCore::Incidence::Ptr incidence : const_cast<const KCalCore::Incidence::List&>(deleted)) {
+    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(deleted)) {
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
         if (remoteUriEtags.contains(remoteUri)) {
@@ -952,12 +952,12 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // Now determine local modifications.
-    KCalCore::Incidence::List modified;
+    KCalendarCore::Incidence::List modified;
     if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
         return false;
     }
-    for (KCalCore::Incidence::Ptr incidence : const_cast<const KCalCore::Incidence::List&>(modified)) {
+    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(modified)) {
         // if it also appears in localDeletions, ignore it - it was deleted locally.
         // if it also appears in localAdditions, ignore it - we are already uploading it.
         // if it doesn't appear in remoteEtags, ignore it - it was deleted remotely.
@@ -1045,7 +1045,7 @@ static QString nbUid(const QString &notebookId, const QString &uid)
     return QStringLiteral("NBUID:%1:%2").arg(notebookId).arg(uid);
 }
 
-static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid)
+static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid)
 {
     const QString &nbuid = nbUid(notebookId, uid);
 
@@ -1054,31 +1054,31 @@ static KCalCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storag
     storage->loadSeries(uid);
     storage->loadSeries(nbuid);
 
-    KCalCore::Incidence::Ptr incidence = calendar->incidence(uid);
+    KCalendarCore::Incidence::Ptr incidence = calendar->incidence(uid);
     if (!incidence) {
         incidence = calendar->incidence(nbuid);
     }
     return incidence;
 }
 
-void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
-                                        KCalCore::Incidence::Ptr storedIncidence,
-                                        const KCalCore::Incidence::List instances)
+void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
+                                        KCalendarCore::Incidence::Ptr storedIncidence,
+                                        const KCalendarCore::Incidence::List instances)
 {
-    if (incidence->status() == KCalCore::Incidence::StatusCanceled
+    if (incidence->status() == KCalendarCore::Incidence::StatusCanceled
         || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
         LOG_DEBUG("Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString());
         mLocalDeletions.append(incidence);
     } else {
         LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString());
         storedIncidence->startUpdates();
-        *storedIncidence.staticCast<KCalCore::IncidenceBase>() = *incidence.staticCast<KCalCore::IncidenceBase>();
+        *storedIncidence.staticCast<KCalendarCore::IncidenceBase>() = *incidence.staticCast<KCalendarCore::IncidenceBase>();
 
         // if this incidence is a recurring incidence, we should get all persistent occurrences
         // and add them back as EXDATEs.  This is because mkcal expects that dissociated
         // single instances will correspond to an EXDATE, but most sync servers do not (and
         // so will not include the RECURRENCE-ID values as EXDATEs of the parent).
-        for (KCalCore::Incidence::Ptr instance : instances) {
+        for (KCalendarCore::Incidence::Ptr instance : instances) {
             if (instance->hasRecurrenceId()) {
                 storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
             }
@@ -1105,7 +1105,7 @@ void NotebookSyncAgent::updateIncidence(KCalCore::Incidence::Ptr incidence,
     }
 }
 
-bool NotebookSyncAgent::addIncidence(KCalCore::Incidence::Ptr incidence)
+bool NotebookSyncAgent::addIncidence(KCalendarCore::Incidence::Ptr incidence)
 {
     LOG_DEBUG("Adding new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
     mRemoteAdditions.append(incidence);
@@ -1123,18 +1123,20 @@ bool NotebookSyncAgent::addIncidence(KCalCore::Incidence::Ptr incidence)
 
     // Set-up the default notebook when adding new incidences.
     mCalendar->addNotebook(mNotebook->uid(), true);
-    mCalendar->setDefaultNotebook(mNotebook->uid());
+    if (!mCalendar->setDefaultNotebook(mNotebook->uid())) {
+        LOG_WARNING("Cannot set default notebook to " << mNotebook->uid());
+    }
     return mCalendar->addIncidence(incidence);
 }
 
-bool NotebookSyncAgent::addException(KCalCore::Incidence::Ptr incidence,
-                                     KCalCore::Incidence::Ptr recurringIncidence,
+bool NotebookSyncAgent::addException(KCalendarCore::Incidence::Ptr incidence,
+                                     KCalendarCore::Incidence::Ptr recurringIncidence,
                                      bool ensureRDate)
 {
-    KDateTime modified = recurringIncidence->lastModified();
+    QDateTime modified = recurringIncidence->lastModified();
     if (ensureRDate && recurringIncidence->allDay()
         && !recurringIncidence->recursOn(incidence->recurrenceId().date(),
-                                         incidence->recurrenceId().timeSpec())) {
+                                         incidence->recurrenceId().timeZone())) {
         recurringIncidence->recurrence()->addRDate(incidence->recurrenceId().date());
     } else if (ensureRDate && !recurringIncidence->allDay()
                && !recurringIncidence->recursAt(incidence->recurrenceId())) {
@@ -1214,8 +1216,8 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         LOG_DEBUG("Saving the added/updated base incidence before saving persistent exceptions:" << uid);
-        KCalCore::Incidence::List localInstances;
-        KCalCore::Incidence::Ptr localBaseIncidence =
+        KCalendarCore::Incidence::List localInstances;
+        KCalendarCore::Incidence::Ptr localBaseIncidence =
             loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
         if (localBaseIncidence) {
             if (parentIndex >= 0) {
@@ -1230,8 +1232,8 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         } else {
             if (parentIndex == -1) {
                 // construct a recurring parent series for these orphans.
-                localBaseIncidence = KCalCore::Incidence::Ptr(resource.incidences.first()->clone());
-                localBaseIncidence->setRecurrenceId(KDateTime());
+                localBaseIncidence = KCalendarCore::Incidence::Ptr(resource.incidences.first()->clone());
+                localBaseIncidence->setRecurrenceId(QDateTime());
             } else {
                 localBaseIncidence = resource.incidences[parentIndex];
             }
@@ -1239,7 +1241,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             if (addIncidence(localBaseIncidence)) {
                 localBaseIncidence = loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
             } else {
-                localBaseIncidence = KCalCore::Incidence::Ptr();
+                localBaseIncidence = KCalendarCore::Incidence::Ptr();
             }
         }
         if (!localBaseIncidence) {
@@ -1250,9 +1252,9 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         // update persistent exceptions which are in the remote list.
-        QList<KDateTime> remoteRecurrenceIds;
+        QList<QDateTime> remoteRecurrenceIds;
         for (int i = 0; i < resource.incidences.size(); ++i) {
-            KCalCore::Incidence::Ptr remoteInstance = resource.incidences[i];
+            KCalendarCore::Incidence::Ptr remoteInstance = resource.incidences[i];
             if (!remoteInstance->hasRecurrenceId()) {
                 continue; // already handled this one.
             }
@@ -1260,7 +1262,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 
             LOG_DEBUG("Now saving a persistent exception:" << remoteInstance->recurrenceId().toString());
             remoteInstance->setUid(localBaseIncidence->uid());
-            KCalCore::Incidence::Ptr localInstance = mCalendar->incidence(remoteInstance->uid(), remoteInstance->recurrenceId());
+            KCalendarCore::Incidence::Ptr localInstance = mCalendar->incidence(remoteInstance->uid(), remoteInstance->recurrenceId());
             if (localInstance) {
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
@@ -1273,7 +1275,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 
         // remove persistent exceptions which are not in the remote list.
         for (int i = 0; i < localInstances.size(); ++i) {
-            KCalCore::Incidence::Ptr localInstance = localInstances[i];
+            KCalendarCore::Incidence::Ptr localInstance = localInstances[i];
             if (!remoteRecurrenceIds.contains(localInstance->recurrenceId())) {
                 LOG_DEBUG("Schedule for removal persistent occurrence:" << localInstance->recurrenceId().toString());
                 // Will be deleted in the call to deleteIncidences
@@ -1285,8 +1287,8 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
     if (!mFailingUpdates.isEmpty()) {
         for (int i = 0; i < mUpdatingList.size(); i++){
             const QString uid = mUpdatingList[i]->uid();
-            const KDateTime recid = mUpdatingList[i]->recurrenceId();
-            KCalCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
+            const QDateTime recid = mUpdatingList[i]->recurrenceId();
+            KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
             if (!incidence && mStorage->load(uid, recid)) {
                 incidence = mCalendar->incidence(uid, recid);
             }
@@ -1299,11 +1301,11 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
     return success;
 }
 
-bool NotebookSyncAgent::deleteIncidences(const KCalCore::Incidence::List deletedIncidences)
+bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List deletedIncidences)
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
     bool success = true;
-    for (KCalCore::Incidence::Ptr doomed : deletedIncidences) {
+    for (KCalendarCore::Incidence::Ptr doomed : deletedIncidences) {
         mStorage->load(doomed->uid(), doomed->recurrenceId());
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
             LOG_WARNING("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
@@ -1324,16 +1326,16 @@ void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, 
         return;
     }
 
-    KCalCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
+    KCalendarCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
     if (localBaseIncidence) {
-        KDateTime modificationDt = localBaseIncidence->lastModified();
+        QDateTime modificationDt = localBaseIncidence->lastModified();
         updateIncidenceHrefEtag(localBaseIncidence, href, etag);
         localBaseIncidence->updated();
         localBaseIncidence->setLastModified(modificationDt);
         if (localBaseIncidence->recurs()) {
-            const KCalCore::Incidence::List instances = mCalendar->instances(localBaseIncidence);
-            for (const KCalCore::Incidence::Ptr &instance : instances) {
-                KDateTime instanceDt = instance->lastModified();
+            const KCalendarCore::Incidence::List instances = mCalendar->instances(localBaseIncidence);
+            for (const KCalendarCore::Incidence::Ptr &instance : instances) {
+                QDateTime instanceDt = instance->lastModified();
                 updateIncidenceHrefEtag(instance, href, etag);
                 instance->updated();
                 instance->setLastModified(instanceDt);

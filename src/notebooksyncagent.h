@@ -92,26 +92,26 @@ private:
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
-    bool deleteIncidences(const KCalCore::Incidence::List deletedIncidences);
-    void updateIncidence(KCalCore::Incidence::Ptr incidence,
-                         KCalCore::Incidence::Ptr storedIncidence,
-                         const KCalCore::Incidence::List instances = KCalCore::Incidence::List());
-    bool addIncidence(KCalCore::Incidence::Ptr incidence);
-    bool addException(KCalCore::Incidence::Ptr incidence,
-                      KCalCore::Incidence::Ptr recurringIncidence,
+    bool deleteIncidences(const KCalendarCore::Incidence::List deletedIncidences);
+    void updateIncidence(KCalendarCore::Incidence::Ptr incidence,
+                         KCalendarCore::Incidence::Ptr storedIncidence,
+                         const KCalendarCore::Incidence::List instances = KCalendarCore::Incidence::List());
+    bool addIncidence(KCalendarCore::Incidence::Ptr incidence);
+    bool addException(KCalendarCore::Incidence::Ptr incidence,
+                      KCalendarCore::Incidence::Ptr recurringIncidence,
                       bool ensureRDate = false);
     void updateHrefETag(const QString &uid, const QString &href, const QString &etag) const;
 
     void sendLocalChanges();
-    QString constructLocalChangeIcs(KCalCore::Incidence::Ptr updatedIncidence);
+    QString constructLocalChangeIcs(KCalendarCore::Incidence::Ptr updatedIncidence);
     void finalizeSendingLocalChanges();
 
     bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
-                        KCalCore::Incidence::List *localAdditions,
-                        KCalCore::Incidence::List *localModifications,
-                        KCalCore::Incidence::List *localDeletions,
+                        KCalendarCore::Incidence::List *localAdditions,
+                        KCalendarCore::Incidence::List *localModifications,
+                        KCalendarCore::Incidence::List *localDeletions,
                         QSet<QString> *remoteChanges,
-                        KCalCore::Incidence::List *remoteDeletions);
+                        KCalendarCore::Incidence::List *remoteDeletions);
 
     QNetworkAccessManager* mNetworkManager;
     Settings *mSettings;
@@ -121,7 +121,7 @@ private:
     mKCal::Notebook::Ptr mNotebook;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
-    KDateTime mNotebookSyncedDateTime;
+    QDateTime mNotebookSyncedDateTime;
     QString mEncodedRemotePath;
     QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host, percent decoded.
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
@@ -132,15 +132,15 @@ private:
 
     // these are used only in quick-sync mode.
     // delta detection and change data
-    KCalCore::Incidence::List mLocalAdditions;
-    KCalCore::Incidence::List mLocalModifications;
-    KCalCore::Incidence::List mLocalDeletions;
+    KCalendarCore::Incidence::List mLocalAdditions;
+    KCalendarCore::Incidence::List mLocalModifications;
+    KCalendarCore::Incidence::List mLocalDeletions;
     QSet<QString> mRemoteChanges; // Set of URLs to be downloaded
-    KCalCore::Incidence::List mRemoteDeletions;
-    KCalCore::Incidence::List mRemoteAdditions;
-    KCalCore::Incidence::List mRemoteModifications;
-    KCalCore::Incidence::List mPurgeList;
-    KCalCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
+    KCalendarCore::Incidence::List mRemoteDeletions;
+    KCalendarCore::Incidence::List mRemoteAdditions;
+    KCalendarCore::Incidence::List mRemoteModifications;
+    KCalendarCore::Incidence::List mPurgeList;
+    KCalendarCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
     bool mHasUpdatedEtags;

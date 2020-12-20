@@ -27,8 +27,8 @@
 
 #include <LogMacros.h>
 
-#include <memorycalendar.h>
-#include <icalformat.h>
+#include <KCalendarCore/MemoryCalendar>
+#include <KCalendarCore/ICalFormat>
 
 #define PROP_DTEND_ADDED_USING_DTSTART "dtend-added-as-dtstart"
 
@@ -45,16 +45,16 @@ IncidenceHandler::~IncidenceHandler()
 // Since the incidence may be an occurrence or recurring series incidence,
 // we cannot simply convert the incidence to iCal data, but instead we have to
 // upsync an .ics containing the whole recurring series.
-QString IncidenceHandler::toIcs(const KCalCore::Incidence::Ptr incidence,
-                                const KCalCore::Incidence::List instances)
+QString IncidenceHandler::toIcs(const KCalendarCore::Incidence::Ptr incidence,
+                                const KCalendarCore::Incidence::List instances)
 {
-    KCalCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
+    KCalendarCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
 
     // create an in-memory calendar
     // add to it the required incidences (ie, check if has recurrenceId -> load parent and all instances; etc)
     // for each of those, we need to do the IncidenceToExport() modifications first
     // then, export from that calendar to .ics file.
-    KCalCore::MemoryCalendar::Ptr memoryCalendar(new KCalCore::MemoryCalendar(KDateTime::UTC));
+    KCalendarCore::MemoryCalendar::Ptr memoryCalendar(new KCalendarCore::MemoryCalendar(QTimeZone::utc()));
     // store the base recurring event into the in-memory calendar
     if (!memoryCalendar->addIncidence(exportableIncidence)) {
         LOG_WARNING("Unable to add base series event to in-memory calendar for incidence:"
@@ -62,13 +62,13 @@ QString IncidenceHandler::toIcs(const KCalCore::Incidence::Ptr incidence,
         return QString();
     }
     // now create the persistent occurrences in the in-memory calendar
-    for (KCalCore::Incidence::Ptr instance : instances) {
+    for (KCalendarCore::Incidence::Ptr instance : instances) {
         // We cannot call dissociateSingleOccurrence() on the MemoryCalendar
         // as that's an mKCal specific function.
         // We cannot call dissociateOccurrence() because that function
         // takes only a QDate instead of a KDateTime recurrenceId.
         // Thus, we need to manually create an exception occurrence.
-        KCalCore::Incidence::Ptr exportableOccurrence(exportableIncidence->clone());
+        KCalendarCore::Incidence::Ptr exportableOccurrence(exportableIncidence->clone());
         exportableOccurrence->setCreated(instance->created());
         exportableOccurrence->setRevision(instance->revision());
         exportableOccurrence->clearRecurrence();
@@ -81,23 +81,23 @@ QString IncidenceHandler::toIcs(const KCalCore::Incidence::Ptr incidence,
                         << instance->uid() << instance->recurrenceId().toString());
             return QString();
         } else {
-            KCalCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
+            KCalendarCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
             if (!reloadedOccurrence) {
                 LOG_WARNING("Unable to find this incidence within in-memory calendar for export:"
                             << exportableIncidence->uid() << instance->recurrenceId().toString());
                 return QString();
             }
-            *reloadedOccurrence.staticCast<KCalCore::IncidenceBase>() = *IncidenceHandler::incidenceToExport(instance).staticCast<KCalCore::IncidenceBase>();
+            *reloadedOccurrence.staticCast<KCalendarCore::IncidenceBase>() = *IncidenceHandler::incidenceToExport(instance).staticCast<KCalendarCore::IncidenceBase>();
         }
     }
 
-    KCalCore::ICalFormat icalFormat;
+    KCalendarCore::ICalFormat icalFormat;
     return icalFormat.toString(memoryCalendar, QString(), false);
 }
 
-KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence::Ptr sourceIncidence, const KCalCore::Incidence::List &instances)
+KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence, const KCalendarCore::Incidence::List &instances)
 {
-    KCalCore::Incidence::Ptr incidence = QSharedPointer<KCalCore::Incidence>(sourceIncidence->clone());
+    KCalendarCore::Incidence::Ptr incidence = QSharedPointer<KCalendarCore::Incidence>(sourceIncidence->clone());
 
     // check to see if the UID is of the special form: NBUID:NotebookUid:EventUid.  If so, trim it.
     if (incidence->uid().startsWith(QStringLiteral("NBUID:"))) {
@@ -115,33 +115,36 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
     incidence->removeCustomProperty("buteo", "etag");
     const QStringList &comments(incidence->comments());
     for (const QString &comment : comments) {
-        if (comment.startsWith("buteo:caldav:uri:") ||
-            comment.startsWith("buteo:caldav:detached-and-synced") ||
-            comment.startsWith("buteo:caldav:etag:")) {
+        if ((comment.startsWith("buteo:caldav:uri:") ||
+             comment.startsWith("buteo:caldav:detached-and-synced") ||
+             comment.startsWith("buteo:caldav:etag:"))
+            && incidence->removeComment(comment)) {
             LOG_DEBUG("Discarding buteo-prefixed comment:" << comment);
-            incidence->removeComment(comment);
         }
     }
 
     // The default storage implementation applies the organizer as an attendee by default.
     // Undo this as it turns the incidence into a scheduled event requiring acceptance/rejection/etc.
-    const KCalCore::Person::Ptr organizer = incidence->organizer();
-    if (organizer) {
-        const KCalCore::Attendee::List attendees = incidence->attendees();
-        for (const KCalCore::Attendee::Ptr &attendee : attendees) {
-            if (attendee->email() == organizer->email() && attendee->fullName() == organizer->fullName()) {
-                LOG_DEBUG("Discarding organizer as attendee" << attendee->fullName());
-                incidence->deleteAttendee(attendee);
+    const KCalendarCore::Person &organizer = incidence->organizer();
+    if (!organizer.isEmpty()) {
+        KCalendarCore::Attendee::List attendees = incidence->attendees();
+        KCalendarCore::Attendee::List::Iterator it = attendees.begin();
+        while (it != attendees.end()) {
+            if (it->email() == organizer.email() && it->fullName() == organizer.fullName()) {
+                LOG_DEBUG("Discarding organizer as attendee" << it->fullName());
+                it = attendees.erase(it);
             } else {
-                LOG_DEBUG("Not discarding attendee:" << attendee->fullName() << attendee->email() << ": not organizer:" << organizer->fullName() << organizer->email());
+                LOG_DEBUG("Not discarding attendee:" << it->fullName() << it->email() << ": not organizer:" << organizer.fullName() << organizer.email());
+                it++;
             }
         }
+        incidence->setAttendees(attendees);
     }
 
     // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
     if (incidence->recurs()) {
-        for (KCalCore::Incidence::Ptr instance : instances) {
-            KCalCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
+        for (KCalendarCore::Incidence::Ptr instance : instances) {
+            KCalendarCore::DateTimeList exDateTimes = incidence->recurrence()->exDateTimes();
             exDateTimes.removeAll(instance->recurrenceId());
             incidence->recurrence()->setExDateTimes(exDateTimes);
             LOG_DEBUG("Discarding exdate:" << instance->recurrenceId().toString());
@@ -150,10 +153,10 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
 
     // Icalformat from kcalcore converts second-type duration into day-type duration
     // whenever possible. We do the same to have consistent comparisons.
-    const KCalCore::Alarm::List alarms = incidence->alarms();
-    for (KCalCore::Alarm::Ptr alarm : alarms) {
+    const KCalendarCore::Alarm::List alarms = incidence->alarms();
+    for (KCalendarCore::Alarm::Ptr alarm : alarms) {
         if (!alarm->hasTime()) {
-            KCalCore::Duration offset(0);
+            KCalendarCore::Duration offset(0);
             if (alarm->hasEndOffset())
                 offset = alarm->endOffset();
             else
@@ -161,16 +164,16 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
             if (!offset.isDaily() && !(offset.value() % (60 * 60 * 24))) {
                 LOG_DEBUG("Converting to day-type duration " << offset.asDays());
                 if (alarm->hasEndOffset())
-                    alarm->setEndOffset(KCalCore::Duration(offset.asDays(), KCalCore::Duration::Days));
+                    alarm->setEndOffset(KCalendarCore::Duration(offset.asDays(), KCalendarCore::Duration::Days));
                 else
-                    alarm->setStartOffset(KCalCore::Duration(offset.asDays(), KCalCore::Duration::Days));
+                    alarm->setStartOffset(KCalendarCore::Duration(offset.asDays(), KCalendarCore::Duration::Days));
             }
         }
     }
 
     switch (incidence->type()) {
-    case KCalCore::IncidenceBase::TypeEvent: {
-        KCalCore::Event::Ptr event = incidence.staticCast<KCalCore::Event>();
+    case KCalendarCore::IncidenceBase::TypeEvent: {
+        KCalendarCore::Event::Ptr event = incidence.staticCast<KCalendarCore::Event>();
         bool eventIsAllDay = event->allDay();
         if (eventIsAllDay) {
             bool sendWithoutDtEnd = !event->customProperty("buteo", PROP_DTEND_ADDED_USING_DTSTART).isEmpty()
@@ -181,15 +184,8 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
                 // A single-day all-day event was received without a DTEND, and it is still a single-day
                 // all-day event, so remove the DTEND before upsyncing.
                 LOG_DEBUG("Removing DTEND from" << incidence->uid());
-                event->setDtEnd(KDateTime());
+                event->setDtEnd(QDateTime());
             }
-        }
-
-        if (event->dtStart().isDateOnly()) {
-            KDateTime dt = KDateTime(event->dtStart().date(), KDateTime::Spec::ClockTime());
-            dt.setDateOnly(true);
-            event->setDtStart(dt);
-            LOG_DEBUG("Stripping time from date-only DTSTART:" << dt.toString());
         }
 
         // setting dtStart/End changes the allDay value, so ensure it is still set to true if needed.
@@ -198,7 +194,7 @@ KCalCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalCore::Incidence
         }
         break;
     }
-    case KCalCore::IncidenceBase::TypeTodo:
+    case KCalendarCore::IncidenceBase::TypeTodo:
         break;
     default:
         LOG_DEBUG("Incidence type not supported; cannot create proper exportable version");
