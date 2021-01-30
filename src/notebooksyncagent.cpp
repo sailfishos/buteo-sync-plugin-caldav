@@ -205,6 +205,10 @@ namespace {
             incidences[i]->setLastModified(dt);
         }
     }
+    bool isFlaggedAsUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(app, name) == QStringLiteral("upload");
+    }
     void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
         const QDateTime dt = incidence->lastModified();
@@ -919,14 +923,18 @@ bool NotebookSyncAgent::calculateDelta(
                 // this is a real local modification.
                 LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
                 localModifications->append(incidence);
+            } else if (isFlaggedAsUploadFailure(incidence)) {
+                // this one failed to upload last time, we retry it.
+                LOG_DEBUG("have failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                localModifications->append(incidence);
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
-    // Now determine local deletions reported by mkcal since the last sync date.
+    // List all local deletions reported by mkcal.
     KCalendarCore::Incidence::List deleted;
-    if (!mStorage->deletedIncidences(&deleted, syncDateTime, mNotebook->uid())) {
+    if (!mStorage->deletedIncidences(&deleted, QDateTime(), mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
@@ -954,6 +962,7 @@ bool NotebookSyncAgent::calculateDelta(
                     // TODO: improve handling of this case.
                     LOG_DEBUG("ignoring local deletion due to remote modification:"
                               << incidence->uid() << incidence->recurrenceId().toString());
+                    mPurgeList.append(incidence);
                 }
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
@@ -969,17 +978,6 @@ bool NotebookSyncAgent::calculateDelta(
     const QStringList keys = remoteUriEtags.keys();
     for (const QString &remoteUri : keys) {
         if (!localUriEtags.contains(remoteUri)) {
-            // this is probably a pure server-side addition, but there is one other possibility:
-            // if it was newly added to the server before the previous sync cycle, then it will
-            // have been added locally (due to remote addition) during the last sync cycle.
-            // If the event was subsequently deleted locally prior to this sync cycle, then
-            // mKCal will NOT report it as a deletion (or an addition) because it assumes that
-            // it was a pure local addition + deletion.
-            // The solution?  We need to manually search every deleted incidence for uri value.
-            // Unfortunately, the mKCal API doesn't allow us to get all deleted incidences,
-            // but we can get all incidences deleted since the last sync date.
-            // That should suffice, and we've already injected those deletions into the deletions
-            // list, so if we hit this branch, then it must be a new remote addition.
             LOG_DEBUG("have new remote addition:" << remoteUri);
             remoteAdditions.insert(remoteUri);
         } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
