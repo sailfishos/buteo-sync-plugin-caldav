@@ -176,11 +176,7 @@ namespace {
         for (int i = 0; i < incidences.size(); i++) {
             bool doit = true;
             const QString href = incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit);
-            QString uid(incidences[i]->uid());
-            if (incidences[i]->hasRecurrenceId()) {
-                uid.append(QString::fromLatin1(":RECID:"));
-                uid.append(incidences[i]->recurrenceId().toString()); // Put Qt::ISODate
-            }
+            const QString uid(incidences[i]->instanceIdentifier());
             const Buteo::TargetResults::ItemOperationStatus status = failingHrefs.contains(href)
                 ? Buteo::TargetResults::ITEM_OPERATION_FAILED
                 : Buteo::TargetResults::ITEM_OPERATION_SUCCEEDED;
