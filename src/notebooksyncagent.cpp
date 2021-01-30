@@ -864,16 +864,27 @@ bool NotebookSyncAgent::calculateDelta(
     // Here we can determine local additions and remote deletions.
     QHash<QString, QString> localUriEtags; // remote uri to the etag we saw last time.
     for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
+        bool modified = (incidence->created() < syncDateTime && incidence->lastModified() >= syncDateTime);
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
         if (uriWasEmpty) {
             // must be either a new local addition or a previously-upsynced local addition
             // if we failed to update its uri after the successful upsync.
             if (remoteUriEtags.contains(remoteUri)) { // we saw this on remote side...
-                // previously partially upsynced, needs uri update.
-                LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
-                // ensure that it will be seen as a remote modification and trigger download
-                localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                // we previously upsynced this incidence but then connectivity died.
+                if (!modified) {
+                    LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
+                    // ensure that it will be seen as a remote modification and trigger download for etag and uri update.
+                    localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                } else  {
+                    LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
+                    // we treat this as a "definite" local modification due to the partially-synced status.
+                    setIncidenceHrefUri(incidence, remoteUri);
+                    setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
+                    localModifications->append(incidence);
+                    localUriEtags.insert(remoteUri, incidenceETag(incidence));
+                }
             } else { // it doesn't exist on remote side...
                 // new local addition.
                 LOG_DEBUG("have new local addition:" << incidence->uid() << incidence->recurrenceId().toString());
@@ -890,6 +901,7 @@ bool NotebookSyncAgent::calculateDelta(
                     LOG_DEBUG("ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 } else {
                     LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    // Ignoring local modifications if any.
                     remoteDeletions->append(incidence);
                 }
             } else if (isCopiedDetachedIncidence(incidence)) {
@@ -902,6 +914,11 @@ bool NotebookSyncAgent::calculateDelta(
                 }
             } else if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
                 mUpdatingList.append(incidence);
+                // Ignoring local modifications if any.
+            } else if (modified) {
+                // this is a real local modification.
+                LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
+                localModifications->append(incidence);
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
@@ -944,59 +961,6 @@ bool NotebookSyncAgent::calculateDelta(
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
             mPurgeList.append(incidence);
-        }
-    }
-
-    // Now determine local modifications.
-    KCalendarCore::Incidence::List modified;
-    if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
-        LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
-        return false;
-    }
-    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(modified)) {
-        // if it also appears in localDeletions, ignore it - it was deleted locally.
-        // if it also appears in localAdditions, ignore it - we are already uploading it.
-        // if it doesn't appear in remoteEtags, ignore it - it was deleted remotely.
-        // if its etag has changed remotely, ignore it - it was modified remotely.
-        bool uriWasEmpty = false;
-        QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
-        if (uriWasEmpty) {
-            // incidence either hasn't been synced before, or was partially synced.
-            if (remoteUriEtags.contains(remoteUri)) { // yep, we previously upsynced it but then connectivity died.
-                // partially synced previously, connectivity died before we could update the uri field with remote url.
-                LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
-                // we treat this as a "definite" local modification due to the partially-synced status.
-                setIncidenceHrefUri(incidence, remoteUri);
-                setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
-                localModifications->append(incidence);
-                localUriEtags.insert(remoteUri, incidenceETag(incidence));
-            } else if (localAdditions->contains(incidence)) {
-                LOG_DEBUG("ignoring local modification to locally added incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                continue;
-            } else {
-                LOG_DEBUG("ignoring local modification to remotely removed partially-synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                continue;
-            }
-        } else {
-            // we have a modification to a previously-synced incidence.
-            if (!remoteUriEtags.contains(remoteUri)) {
-                LOG_DEBUG("ignoring local modification to remotely deleted incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-            } else {
-                // determine if the remote etag is still the same.
-                // if it is not, then the incidence was modified server-side.
-                if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
-                    // if the etags are different, then the event was also modified remotely.
-                    // we only support PreferRemote conflict resolution, so we discard the local modification.
-                    LOG_DEBUG("ignoring local modification to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                    // Don't append it here, it will be appended later when treating remote modifications.
-                    // remoteModifications->append(remoteUri);
-                } else {
-                    // this is a real local modification.
-                    LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
-                    localModifications->append(incidence);
-                }
-            }
         }
     }
 
