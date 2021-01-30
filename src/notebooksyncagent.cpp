@@ -195,25 +195,33 @@ namespace {
                            const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
+            const QDateTime dt = incidences[i]->lastModified();
             bool doit = true;
             if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit))) {
                 incidences[i]->setCustomProperty(app, name, QStringLiteral("upload"));
             } else {
                 incidences[i]->removeCustomProperty(app, name);
             }
+            incidences[i]->setLastModified(dt);
         }
     }
     void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->removeCustomProperty(app, name);
+        incidence->setLastModified(dt);
     }
     void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("update"));
+        incidence->setLastModified(dt);
     }
     void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("delete"));
+        incidence->setLastModified(dt);
     }
 }
 
@@ -1274,14 +1282,16 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 
     if (!mFailingUpdates.isEmpty()) {
         for (int i = 0; i < mUpdatingList.size(); i++){
-            const QString uid = mUpdatingList[i]->uid();
-            const QDateTime recid = mUpdatingList[i]->recurrenceId();
-            KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
-            if (!incidence && mStorage->load(uid, recid)) {
-                incidence = mCalendar->incidence(uid, recid);
-            }
-            if (incidence && mFailingUpdates.contains(incidenceHrefUri(incidence))) {
-                flagUpdateFailure(incidence);
+            if (mFailingUpdates.contains(incidenceHrefUri(mUpdatingList[i]))) {
+                const QString uid = mUpdatingList[i]->uid();
+                const QDateTime recid = mUpdatingList[i]->recurrenceId();
+                KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
+                if (!incidence && mStorage->load(uid, recid)) {
+                    incidence = mCalendar->incidence(uid, recid);
+                }
+                if (incidence) {
+                    flagUpdateFailure(incidence);
+                }
             }
         }
     }
