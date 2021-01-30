@@ -242,7 +242,6 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mEnableUpsync(true)
     , mEnableDownsync(true)
     , mReadOnlyFlag(readOnlyFlag)
-    , mHasUpdatedEtags(false)
 {
     // the calendar path may be percent-encoded.  Return UTF-8 QString.
     mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
@@ -629,7 +628,6 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
                 // Apply Etag and Href changes immediately since incidences are now
                 // for sure on server.
                 updateHrefETag(mSentUids.take(uri), uri, etag);
-                mHasUpdatedEtags = true;
             }
         } else {
             // Don't try to get etag later for a failed upload.
@@ -685,12 +683,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
     // Flag (or remove flag) for all failing (or not) local changes.
     flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalAdditions), mRemoteCalendarPath);
     flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalModifications));
-
-    // All PUT requests have been finished, some etags may have
-    // been updated already. Try to save them in storage.
-    if (mHasUpdatedEtags && !mStorage->save()) {
-        LOG_WARNING("Unable to save calendar storage after etag changes!");
-    }
 
     // mSentUids have been cleared from uids that have already
     // been updated with new etag value. Just remains the ones
