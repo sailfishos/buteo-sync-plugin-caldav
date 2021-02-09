@@ -287,6 +287,8 @@ void NotebookSyncAgent::clearRequests()
 
 static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
 static const QByteArray EMAIL_PROPERTY = QByteArrayLiteral("userPrincipalEmail");
+static const QByteArray SERVER_COLOR_PROPERTY = QByteArrayLiteral("serverColor");
+
 bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                                             const QString &color,
                                             const QString &userEmail,
@@ -303,7 +305,15 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                 || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
             LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
             mNotebook = notebook;
-            mNotebook->setColor(color);
+            if (!color.isEmpty()
+                && notebook->customProperty(SERVER_COLOR_PROPERTY) != color) {
+                if (!notebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
+                    // Override user-selected notebook color only on each server change
+                    // and not if there was no server color saved.
+                    mNotebook->setColor(color);
+                }
+                mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
+            }
             mNotebook->setName(notebookName);
             mNotebook->setSyncProfile(syncProfile);
             mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
@@ -319,7 +329,10 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
     mNotebook->setSyncProfile(syncProfile);
     mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
     mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-    mNotebook->setColor(color);
+    if (!color.isEmpty()) {
+        mNotebook->setColor(color);
+        mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
+    }
     return true;
 }
 
