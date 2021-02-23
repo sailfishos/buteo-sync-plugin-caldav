@@ -176,11 +176,7 @@ namespace {
         for (int i = 0; i < incidences.size(); i++) {
             bool doit = true;
             const QString href = incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit);
-            QString uid(incidences[i]->uid());
-            if (incidences[i]->hasRecurrenceId()) {
-                uid.append(QString::fromLatin1(":RECID:"));
-                uid.append(incidences[i]->recurrenceId().toString()); // Put Qt::ISODate
-            }
+            const QString uid(incidences[i]->instanceIdentifier());
             const Buteo::TargetResults::ItemOperationStatus status = failingHrefs.contains(href)
                 ? Buteo::TargetResults::ITEM_OPERATION_FAILED
                 : Buteo::TargetResults::ITEM_OPERATION_SUCCEEDED;
@@ -199,25 +195,37 @@ namespace {
                            const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
+            const QDateTime dt = incidences[i]->lastModified();
             bool doit = true;
             if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit))) {
                 incidences[i]->setCustomProperty(app, name, QStringLiteral("upload"));
             } else {
                 incidences[i]->removeCustomProperty(app, name);
             }
+            incidences[i]->setLastModified(dt);
         }
+    }
+    bool isFlaggedAsUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(app, name) == QStringLiteral("upload");
     }
     void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->removeCustomProperty(app, name);
+        incidence->setLastModified(dt);
     }
     void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("update"));
+        incidence->setLastModified(dt);
     }
     void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
+        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("delete"));
+        incidence->setLastModified(dt);
     }
 }
 
@@ -242,7 +250,6 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mEnableUpsync(true)
     , mEnableDownsync(true)
     , mReadOnlyFlag(readOnlyFlag)
-    , mHasUpdatedEtags(false)
 {
     // the calendar path may be percent-encoded.  Return UTF-8 QString.
     mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
@@ -629,7 +636,6 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
                 // Apply Etag and Href changes immediately since incidences are now
                 // for sure on server.
                 updateHrefETag(mSentUids.take(uri), uri, etag);
-                mHasUpdatedEtags = true;
             }
         } else {
             // Don't try to get etag later for a failed upload.
@@ -685,12 +691,6 @@ void NotebookSyncAgent::finalizeSendingLocalChanges()
     // Flag (or remove flag) for all failing (or not) local changes.
     flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalAdditions), mRemoteCalendarPath);
     flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalModifications));
-
-    // All PUT requests have been finished, some etags may have
-    // been updated already. Try to save them in storage.
-    if (mHasUpdatedEtags && !mStorage->save()) {
-        LOG_WARNING("Unable to save calendar storage after etag changes!");
-    }
 
     // mSentUids have been cleared from uids that have already
     // been updated with new etag value. Just remains the ones
@@ -868,16 +868,27 @@ bool NotebookSyncAgent::calculateDelta(
     // Here we can determine local additions and remote deletions.
     QHash<QString, QString> localUriEtags; // remote uri to the etag we saw last time.
     for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
+        bool modified = (incidence->created() < syncDateTime && incidence->lastModified() >= syncDateTime);
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
         if (uriWasEmpty) {
             // must be either a new local addition or a previously-upsynced local addition
             // if we failed to update its uri after the successful upsync.
             if (remoteUriEtags.contains(remoteUri)) { // we saw this on remote side...
-                // previously partially upsynced, needs uri update.
-                LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
-                // ensure that it will be seen as a remote modification and trigger download
-                localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                // we previously upsynced this incidence but then connectivity died.
+                if (!modified) {
+                    LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
+                    // ensure that it will be seen as a remote modification and trigger download for etag and uri update.
+                    localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                } else  {
+                    LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
+                    // we treat this as a "definite" local modification due to the partially-synced status.
+                    setIncidenceHrefUri(incidence, remoteUri);
+                    setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
+                    localModifications->append(incidence);
+                    localUriEtags.insert(remoteUri, incidenceETag(incidence));
+                }
             } else { // it doesn't exist on remote side...
                 // new local addition.
                 LOG_DEBUG("have new local addition:" << incidence->uid() << incidence->recurrenceId().toString());
@@ -894,6 +905,7 @@ bool NotebookSyncAgent::calculateDelta(
                     LOG_DEBUG("ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString());
                 } else {
                     LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    // Ignoring local modifications if any.
                     remoteDeletions->append(incidence);
                 }
             } else if (isCopiedDetachedIncidence(incidence)) {
@@ -906,14 +918,23 @@ bool NotebookSyncAgent::calculateDelta(
                 }
             } else if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
                 mUpdatingList.append(incidence);
+                // Ignoring local modifications if any.
+            } else if (modified) {
+                // this is a real local modification.
+                LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
+                localModifications->append(incidence);
+            } else if (isFlaggedAsUploadFailure(incidence)) {
+                // this one failed to upload last time, we retry it.
+                LOG_DEBUG("have failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                localModifications->append(incidence);
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
-    // Now determine local deletions reported by mkcal since the last sync date.
+    // List all local deletions reported by mkcal.
     KCalendarCore::Incidence::List deleted;
-    if (!mStorage->deletedIncidences(&deleted, syncDateTime, mNotebook->uid())) {
+    if (!mStorage->deletedIncidences(&deleted, QDateTime(), mNotebook->uid())) {
         LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
         return false;
     }
@@ -941,6 +962,7 @@ bool NotebookSyncAgent::calculateDelta(
                     // TODO: improve handling of this case.
                     LOG_DEBUG("ignoring local deletion due to remote modification:"
                               << incidence->uid() << incidence->recurrenceId().toString());
+                    mPurgeList.append(incidence);
                 }
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
@@ -951,75 +973,11 @@ bool NotebookSyncAgent::calculateDelta(
         }
     }
 
-    // Now determine local modifications.
-    KCalendarCore::Incidence::List modified;
-    if (!mStorage->modifiedIncidences(&modified, syncDateTime, mNotebook->uid())) {
-        LOG_WARNING("mKCal::ExtendedStorage::modifiedIncidences() failed");
-        return false;
-    }
-    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(modified)) {
-        // if it also appears in localDeletions, ignore it - it was deleted locally.
-        // if it also appears in localAdditions, ignore it - we are already uploading it.
-        // if it doesn't appear in remoteEtags, ignore it - it was deleted remotely.
-        // if its etag has changed remotely, ignore it - it was modified remotely.
-        bool uriWasEmpty = false;
-        QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
-        if (uriWasEmpty) {
-            // incidence either hasn't been synced before, or was partially synced.
-            if (remoteUriEtags.contains(remoteUri)) { // yep, we previously upsynced it but then connectivity died.
-                // partially synced previously, connectivity died before we could update the uri field with remote url.
-                LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
-                // we treat this as a "definite" local modification due to the partially-synced status.
-                setIncidenceHrefUri(incidence, remoteUri);
-                setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
-                localModifications->append(incidence);
-                localUriEtags.insert(remoteUri, incidenceETag(incidence));
-            } else if (localAdditions->contains(incidence)) {
-                LOG_DEBUG("ignoring local modification to locally added incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                continue;
-            } else {
-                LOG_DEBUG("ignoring local modification to remotely removed partially-synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                continue;
-            }
-        } else {
-            // we have a modification to a previously-synced incidence.
-            if (!remoteUriEtags.contains(remoteUri)) {
-                LOG_DEBUG("ignoring local modification to remotely deleted incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-            } else {
-                // determine if the remote etag is still the same.
-                // if it is not, then the incidence was modified server-side.
-                if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
-                    // if the etags are different, then the event was also modified remotely.
-                    // we only support PreferRemote conflict resolution, so we discard the local modification.
-                    LOG_DEBUG("ignoring local modification to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString());
-                    // Don't append it here, it will be appended later when treating remote modifications.
-                    // remoteModifications->append(remoteUri);
-                } else {
-                    // this is a real local modification.
-                    LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
-                    localModifications->append(incidence);
-                }
-            }
-        }
-    }
-
     // now determine remote additions and modifications.
     QSet<QString> remoteAdditions, remoteModifications;
     const QStringList keys = remoteUriEtags.keys();
     for (const QString &remoteUri : keys) {
         if (!localUriEtags.contains(remoteUri)) {
-            // this is probably a pure server-side addition, but there is one other possibility:
-            // if it was newly added to the server before the previous sync cycle, then it will
-            // have been added locally (due to remote addition) during the last sync cycle.
-            // If the event was subsequently deleted locally prior to this sync cycle, then
-            // mKCal will NOT report it as a deletion (or an addition) because it assumes that
-            // it was a pure local addition + deletion.
-            // The solution?  We need to manually search every deleted incidence for uri value.
-            // Unfortunately, the mKCal API doesn't allow us to get all deleted incidences,
-            // but we can get all incidences deleted since the last sync date.
-            // That should suffice, and we've already injected those deletions into the deletions
-            // list, so if we hit this branch, then it must be a new remote addition.
             LOG_DEBUG("have new remote addition:" << remoteUri);
             remoteAdditions.insert(remoteUri);
         } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
@@ -1286,14 +1244,16 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
 
     if (!mFailingUpdates.isEmpty()) {
         for (int i = 0; i < mUpdatingList.size(); i++){
-            const QString uid = mUpdatingList[i]->uid();
-            const QDateTime recid = mUpdatingList[i]->recurrenceId();
-            KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
-            if (!incidence && mStorage->load(uid, recid)) {
-                incidence = mCalendar->incidence(uid, recid);
-            }
-            if (incidence && mFailingUpdates.contains(incidenceHrefUri(incidence))) {
-                flagUpdateFailure(incidence);
+            if (mFailingUpdates.contains(incidenceHrefUri(mUpdatingList[i]))) {
+                const QString uid = mUpdatingList[i]->uid();
+                const QDateTime recid = mUpdatingList[i]->recurrenceId();
+                KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
+                if (!incidence && mStorage->load(uid, recid)) {
+                    incidence = mCalendar->incidence(uid, recid);
+                }
+                if (incidence) {
+                    flagUpdateFailure(incidence);
+                }
             }
         }
     }

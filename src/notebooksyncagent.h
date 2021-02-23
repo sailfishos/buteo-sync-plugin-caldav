@@ -143,7 +143,6 @@ private:
     KCalendarCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
-    bool mHasUpdatedEtags;
     QSet<QString> mFailingUploads; // List of hrefs with upload errors.
     QSet<QString> mFailingUpdates; // List of hrefs from which incidences failed to update.
 
