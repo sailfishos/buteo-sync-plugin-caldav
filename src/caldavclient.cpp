@@ -668,6 +668,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
                      QLatin1String("unable to open calendar storage"));
         return;
     }
+    mCalendar->setUpdateLastModifiedOnChange(false);
 
     cleanSyncRequired(mAccountId);
 

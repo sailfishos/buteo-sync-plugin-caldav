@@ -195,14 +195,12 @@ namespace {
                            const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
-            const QDateTime dt = incidences[i]->lastModified();
             bool doit = true;
             if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit))) {
                 incidences[i]->setCustomProperty(app, name, QStringLiteral("upload"));
             } else {
                 incidences[i]->removeCustomProperty(app, name);
             }
-            incidences[i]->setLastModified(dt);
         }
     }
     bool isFlaggedAsUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
@@ -211,21 +209,15 @@ namespace {
     }
     void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        const QDateTime dt = incidence->lastModified();
         incidence->removeCustomProperty(app, name);
-        incidence->setLastModified(dt);
     }
     void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("update"));
-        incidence->setLastModified(dt);
     }
     void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        const QDateTime dt = incidence->lastModified();
         incidence->setCustomProperty(app, name, QStringLiteral("delete"));
-        incidence->setLastModified(dt);
     }
 }
 
@@ -1061,9 +1053,7 @@ void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
         // Avoid spurious detections of modified incidences
         // by ensuring that the received last modification date time
         // is previous to the sync date time.
-        if (incidence->lastModified() < mNotebookSyncedDateTime) {
-            storedIncidence->setLastModified(incidence->lastModified());
-        } else {
+        if (storedIncidence->lastModified() > mNotebookSyncedDateTime) {
             storedIncidence->setLastModified(mNotebookSyncedDateTime.addSecs(-2));
         }
 
@@ -1104,7 +1094,6 @@ bool NotebookSyncAgent::addException(KCalendarCore::Incidence::Ptr incidence,
                                      KCalendarCore::Incidence::Ptr recurringIncidence,
                                      bool ensureRDate)
 {
-    QDateTime modified = recurringIncidence->lastModified();
     if (ensureRDate && recurringIncidence->allDay()
         && !recurringIncidence->recursOn(incidence->recurrenceId().date(),
                                          incidence->recurrenceId().timeZone())) {
@@ -1120,8 +1109,6 @@ bool NotebookSyncAgent::addException(KCalendarCore::Incidence::Ptr incidence,
     } else {
         recurringIncidence->recurrence()->addExDateTime(incidence->recurrenceId());
     }
-    // Don't update the modification date of the parent.
-    recurringIncidence->setLastModified(modified);
 
     return addIncidence(incidence);
 }
@@ -1301,17 +1288,13 @@ void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, 
 
     KCalendarCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
     if (localBaseIncidence) {
-        QDateTime modificationDt = localBaseIncidence->lastModified();
         updateIncidenceHrefEtag(localBaseIncidence, href, etag);
         localBaseIncidence->updated();
-        localBaseIncidence->setLastModified(modificationDt);
         if (localBaseIncidence->recurs()) {
             const KCalendarCore::Incidence::List instances = mCalendar->instances(localBaseIncidence);
             for (const KCalendarCore::Incidence::Ptr &instance : instances) {
-                QDateTime instanceDt = instance->lastModified();
                 updateIncidenceHrefEtag(instance, href, etag);
                 instance->updated();
-                instance->setLastModified(instanceDt);
             }
         }
     } else {
