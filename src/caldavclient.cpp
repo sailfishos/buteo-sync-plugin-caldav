@@ -486,6 +486,7 @@ bool CalDavClient::initConfig()
         LOG_WARNING("remote_address not found in service settings");
         return false;
     }
+    mSettings.setDavRootPath(account->value("webdav_path").toString());
     mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
     account->selectService(Accounts::Service());
 
