@@ -12,7 +12,7 @@ BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
 BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.20
 BuildRequires:  pkgconfig(KF5CalendarCore) >= 5.79
-BuildRequires:  pkgconfig(buteosyncfw5) >= 0.9.16
+BuildRequires:  pkgconfig(buteosyncfw5) >= 0.10.0
 BuildRequires:  pkgconfig(accounts-qt5)
 BuildRequires:  pkgconfig(signon-oauth2plugin)
 BuildRequires:  pkgconfig(QmfClient)
@@ -32,10 +32,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %defattr(-,root,root,-)
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
-#out-of-process-plugin
-%{_libdir}/buteo-plugins-qt5/oopp/caldav-client
-#in-process-plugin
-#%{_libdir}/buteo-plugins-qt5/libcaldav-client.so
+%{_libdir}/buteo-plugins-qt5/oopp/libcaldav-client.so
 #mkcal invitation plugin
 %{_libdir}/mkcalplugins/libcaldavinvitationplugin.so
 
@@ -74,7 +71,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %setup -q -n %{name}-%{version}
 
 %build
-%qmake5 "DEFINES+=BUTEO_OUT_OF_PROCESS_SUPPORT"
+%qmake5
 make %{?_smp_mflags}
 
 %pre
