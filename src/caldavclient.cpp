@@ -1,7 +1,7 @@
 /*
  * This file is part of buteo-sync-plugin-caldav package
  *
- * Copyright (c) 2013 - 2020 Jolla Ltd. and/or its subsidiary(-ies).
+ * Copyright (c) 2013 - 2021 Jolla Ltd. and/or its subsidiary(-ies).
  * Copyright (c) 2020 Open Mobile Platform LLC.
  *
  * Contributors: Mani Chandrasekar <maninc@gmail.com>
@@ -56,16 +56,12 @@ const char * const SYNC_NEXT_PERIOD_KEY = "Sync Next Months Span";
 
 }
 
-extern "C" CalDavClient* createPlugin(const QString& aPluginName,
-                                         const Buteo::SyncProfile& aProfile,
-                                         Buteo::PluginCbInterface *aCbInterface)
+Buteo::ClientPlugin* CalDavClientLoader::createClientPlugin(
+        const QString& pluginName,
+        const Buteo::SyncProfile& profile,
+        Buteo::PluginCbInterface* cbInterface)
 {
-    return new CalDavClient(aPluginName, aProfile, aCbInterface);
-}
-
-extern "C" void destroyPlugin(CalDavClient *aClient)
-{
-    delete aClient;
+    return new CalDavClient(pluginName, profile, cbInterface);
 }
 
 CalDavClient::CalDavClient(const QString& aPluginName,

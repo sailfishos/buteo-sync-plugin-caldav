@@ -1,7 +1,7 @@
 /*
  * This file is part of buteo-sync-plugin-caldav package
  *
- * Copyright (C) 2013 Jolla Ltd. and/or its subsidiary(-ies).
+ * Copyright (C) 2013 - 2021 Jolla Ltd. and/or its subsidiary(-ies).
  *
  * Contributors: Mani Chandrasekar <maninc@gmail.com>
  *
@@ -39,6 +39,7 @@
 #include <ClientPlugin.h>
 #include <SyncResults.h>
 #include <SyncCommonDefs.h>
+#include <SyncPluginLoader.h>
 
 #include <Accounts/Manager>
 
@@ -179,21 +180,24 @@ private:
     friend class tst_CalDavClient;
 };
 
-/*! \brief Creates CalDav client plugin
- *
- * @param aPluginName Name of this client plugin
- * @param aProfile Profile to use
- * @param aCbInterface Pointer to the callback interface
- * @return Client plugin on success, otherwise NULL
- */
-extern "C" CalDavClient* createPlugin(const QString &aPluginName,
-                                      const Buteo::SyncProfile &aProfile,
-                                      Buteo::PluginCbInterface *aCbInterface);
 
-/*! \brief Destroys CalDav client plugin
- *
- * @param aClient CalDav client plugin instance to destroy
- */
-extern "C" void destroyPlugin(CalDavClient *aClient);
+class CalDavClientLoader : public Buteo::SyncPluginLoader
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID "org.sailfishos.plugins.sync.CalDavClientLoader")
+    Q_INTERFACES(Buteo::SyncPluginLoader)
+
+public:
+    /*! \brief Creates CalDav client plugin
+     *
+     * @param aPluginName Name of this client plugin
+     * @param aProfile Profile to use
+     * @param aCbInterface Pointer to the callback interface
+     * @return Client plugin on success, otherwise NULL
+     */
+    Buteo::ClientPlugin* createClientPlugin(const QString& pluginName,
+                                            const Buteo::SyncProfile& profile,
+                                            Buteo::PluginCbInterface* cbInterface) override;
+};
 
 #endif // CALDAVCLIENT_H
