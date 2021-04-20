@@ -413,7 +413,9 @@ void PropFind::listCurrentUserPrincipal()
             "</d:propfind>"
     ));
     mUserPrincipal.clear();
-    sendRequest(QStringLiteral("/"), requestData, UserPrincipal);
+    const QString &rootPath = mSettings->davRootPath();
+    sendRequest(rootPath.isEmpty() ? QStringLiteral("/") : rootPath,
+                requestData, UserPrincipal);
 }
 
 void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType)
@@ -424,7 +426,10 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
 
     QNetworkRequest request;
     prepareRequest(&request, remotePath);
-    request.setRawHeader("Depth", "1");
+    if (reqType == ListCalendars)
+        request.setRawHeader("Depth", "1");
+    else
+        request.setRawHeader("Depth", "0");
     request.setRawHeader("Prefer", "return-minimal");
     request.setHeader(QNetworkRequest::ContentLengthHeader, requestData.length());
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/xml; charset=utf-8");
@@ -458,6 +463,7 @@ void PropFind::processResponse()
     reply->deleteLater();
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
+        debugReplyAndReadAll(reply);
         finishedWithReplyResult(uri, reply->error());
         return;
     }

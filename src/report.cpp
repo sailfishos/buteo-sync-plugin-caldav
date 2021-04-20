@@ -172,6 +172,7 @@ void Report::processResponse()
     reply->deleteLater();
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
+        debugReplyAndReadAll(reply);
         finishedWithReplyResult(uri, reply->error());
         return;
     }

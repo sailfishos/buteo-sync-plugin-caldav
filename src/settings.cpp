@@ -89,6 +89,16 @@ QString Settings::serverAddress() const
     return mServerAddress;
 }
 
+void Settings::setDavRootPath(const QString &path)
+{
+    mDavRootPath = path;
+}
+
+QString Settings::davRootPath() const
+{
+    return mDavRootPath;
+}
+
 void Settings::setUserPrincipal(const QString &href)
 {
     mUserPrincipal = href;
