@@ -1025,8 +1025,7 @@ static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr s
 }
 
 void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
-                                        KCalendarCore::Incidence::Ptr storedIncidence,
-                                        const KCalendarCore::Incidence::List instances)
+                                        KCalendarCore::Incidence::Ptr storedIncidence)
 {
     if (incidence->status() == KCalendarCore::Incidence::StatusCanceled
         || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
@@ -1036,16 +1035,6 @@ void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
         LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString());
         storedIncidence->startUpdates();
         *storedIncidence.staticCast<KCalendarCore::IncidenceBase>() = *incidence.staticCast<KCalendarCore::IncidenceBase>();
-
-        // if this incidence is a recurring incidence, we should get all persistent occurrences
-        // and add them back as EXDATEs.  This is because mkcal expects that dissociated
-        // single instances will correspond to an EXDATE, but most sync servers do not (and
-        // so will not include the RECURRENCE-ID values as EXDATEs of the parent).
-        for (KCalendarCore::Incidence::Ptr instance : instances) {
-            if (instance->hasRecurrenceId()) {
-                storedIncidence->recurrence()->addExDateTime(instance->recurrenceId());
-            }
-        }
 
         flagUpdateSuccess(storedIncidence);
 
@@ -1101,13 +1090,6 @@ bool NotebookSyncAgent::addException(KCalendarCore::Incidence::Ptr incidence,
     } else if (ensureRDate && !recurringIncidence->allDay()
                && !recurringIncidence->recursAt(incidence->recurrenceId())) {
         recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
-    }
-    // This modification is due to internal of mkcal storing
-    // exception recurrenceId as ex-dates.
-    if (recurringIncidence->allDay()) {
-        recurringIncidence->recurrence()->addExDate(incidence->recurrenceId().date());
-    } else {
-        recurringIncidence->recurrence()->addExDateTime(incidence->recurrenceId());
     }
 
     return addIncidence(incidence);
@@ -1174,18 +1156,12 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         LOG_DEBUG("Saving the added/updated base incidence before saving persistent exceptions:" << uid);
-        KCalendarCore::Incidence::List localInstances;
         KCalendarCore::Incidence::Ptr localBaseIncidence =
             loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
         if (localBaseIncidence) {
             if (parentIndex >= 0) {
-                if (localBaseIncidence->recurs()) {
-                    // load the local (persistent) occurrences of the series.
-                    // Later we will update or remove them as required.
-                    localInstances = mCalendar->instances(localBaseIncidence);
-                }
                 resource.incidences[parentIndex]->setUid(localBaseIncidence->uid());
-                updateIncidence(resource.incidences[parentIndex], localBaseIncidence, localInstances);
+                updateIncidence(resource.incidences[parentIndex], localBaseIncidence);
             }
         } else {
             if (parentIndex == -1) {
@@ -1232,6 +1208,9 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         // remove persistent exceptions which are not in the remote list.
+        KCalendarCore::Incidence::List localInstances;
+        if (localBaseIncidence->recurs())
+            localInstances = mCalendar->instances(localBaseIncidence);
         for (int i = 0; i < localInstances.size(); ++i) {
             KCalendarCore::Incidence::Ptr localInstance = localInstances[i];
             if (!remoteRecurrenceIds.contains(localInstance->recurrenceId())) {

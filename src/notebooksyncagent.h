@@ -94,8 +94,7 @@ private:
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
     bool deleteIncidences(const KCalendarCore::Incidence::List deletedIncidences);
     void updateIncidence(KCalendarCore::Incidence::Ptr incidence,
-                         KCalendarCore::Incidence::Ptr storedIncidence,
-                         const KCalendarCore::Incidence::List instances = KCalendarCore::Incidence::List());
+                         KCalendarCore::Incidence::Ptr storedIncidence);
     bool addIncidence(KCalendarCore::Incidence::Ptr incidence);
     bool addException(KCalendarCore::Incidence::Ptr incidence,
                       KCalendarCore::Incidence::Ptr recurringIncidence,
