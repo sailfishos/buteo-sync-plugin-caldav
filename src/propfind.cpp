@@ -28,7 +28,7 @@
 #include <QBuffer>
 #include <QXmlStreamReader>
 
-#include <LogMacros.h>
+#include "logging.h"
 
 #define PROP_URI "uri"
 
@@ -370,7 +370,7 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
 PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "PROPFIND", parent)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void PropFind::listCalendars(const QString &calendarsPath)
@@ -420,7 +420,7 @@ void PropFind::listCurrentUserPrincipal()
 
 void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     mPropFindRequestType = reqType;
 
@@ -446,12 +446,12 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
 
 void PropFind::processResponse()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    LOG_DEBUG("Process PROPFIND response.");
+    qCDebug(lcCalDav) << "Process PROPFIND response.";
 
     if (wasDeleted()) {
-        LOG_DEBUG("PROPFIND request was aborted");
+        qCDebug(lcCalDav) << "PROPFIND request was aborted";
         return;
     }
 

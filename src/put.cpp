@@ -32,7 +32,7 @@
 #include <QStringList>
 #include <QUrl>
 
-#include <LogMacros.h>
+#include "logging.h"
 
 #define PROP_INCIDENCE_URI "uri"
 
@@ -44,7 +44,7 @@ Put::Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
 void Put::sendIcalData(const QString &uri, const QString &icalData,
                        const QString &eTag)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (uri.isEmpty()) {
         finishedWithInternalError("no uri provided");
@@ -82,10 +82,10 @@ void Put::sendIcalData(const QString &uri, const QString &icalData,
 
 void Put::requestFinished()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (wasDeleted()) {
-        LOG_DEBUG(command() << "request was aborted");
+        qCDebug(lcCalDav) << command() << "request was aborted";
         return;
     }
 
@@ -96,7 +96,7 @@ void Put::requestFinished()
     }
     reply->deleteLater();
 
-    LOG_DEBUG("PUT request finished:" << reply->error());
+    qCDebug(lcCalDav) << "PUT request finished:" << reply->error();
     debugReplyAndReadAll(reply);
 
     // If the put was denied by server (e.g. read-only calendar), the etag

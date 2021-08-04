@@ -27,7 +27,7 @@
 #include <QNetworkAccessManager>
 #include <QDebug>
 
-#include <LogMacros.h>
+#include "logging.h"
 
 #define PROP_INCIDENCE_URI "uri"
 
@@ -36,12 +36,12 @@ static const QString VCalExtension = QStringLiteral(".ics");
 Delete::Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "DELETE", parent)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void Delete::deleteEvent(const QString &href)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     QNetworkRequest request;
     prepareRequest(&request, href);
@@ -55,10 +55,10 @@ void Delete::deleteEvent(const QString &href)
 
 void Delete::requestFinished()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (wasDeleted()) {
-        LOG_DEBUG(command() << "request was aborted");
+        qCDebug(lcCalDav) << command() << "request was aborted";
         return;
     }
 

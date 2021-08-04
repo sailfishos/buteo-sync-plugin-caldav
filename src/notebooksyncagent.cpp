@@ -30,7 +30,7 @@
 #include "delete.h"
 #include "reader.h"
 
-#include <LogMacros.h>
+#include "logging.h"
 #include <SyncResults.h>
 
 #include <KCalendarCore/Incidence>
@@ -42,7 +42,7 @@
 #include <QDebug>
 
 
-#define NOTEBOOK_FUNCTION_CALL_TRACE FUNCTION_CALL_TRACE(QLatin1String(Q_FUNC_INFO) + " " + (mNotebook ? mNotebook->account() : ""))
+#define NOTEBOOK_FUNCTION_CALL_TRACE qCDebug(lcCalDavTrace) << Q_FUNC_INFO << (mNotebook ? mNotebook->account() : "")
 
 namespace {
     // mKCal deletes custom properties of deleted incidences.
@@ -60,10 +60,10 @@ namespace {
                     // the uri before storing it, because otherwise kcal doesn't
                     // split the comments properly.
                     uri = QUrl::fromPercentEncoding(uri.toUtf8());
-                    LOG_DEBUG("URI comment was percent encoded:" << comment << ", returning uri:" << uri);
+                    qCDebug(lcCalDav) << "URI comment was percent encoded:" << comment << ", returning uri:" << uri;
                 }
                 if (uri.isEmpty() && uriNeedsFilling) {
-                    LOG_WARNING("Stored uri was empty for:" << incidence->uid() << incidence->recurrenceId().toString());
+                    qCWarning(lcCalDav) << "Stored uri was empty for:" << incidence->uid() << incidence->recurrenceId().toString();
                     return remoteCalendarPath + incidence->uid() + ".ics";
                 }
                 return uri;
@@ -75,7 +75,7 @@ namespace {
             *uriNeedsFilling = true;
             return remoteCalendarPath + incidence->uid() + ".ics";
         }
-        LOG_WARNING("Returning empty uri for:" << incidence->uid() << incidence->recurrenceId().toString());
+        qCWarning(lcCalDav) << "Returning empty uri for:" << incidence->uid() << incidence->recurrenceId().toString();
         return QString();
     }
     void setIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &hrefUri)
@@ -121,7 +121,7 @@ namespace {
                                  const QString &href, const QString &etag)
     {
         // Set the URI and the ETAG property to the required values.
-        LOG_DEBUG("Adding URI and ETAG to incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << href << etag);
+        qCDebug(lcCalDav) << "Adding URI and ETAG to incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << href << etag;
         if (!href.isEmpty())
             setIncidenceHrefUri(incidence, href);
         if (!etag.isEmpty())
@@ -295,7 +295,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
         if (notebook->account() == accountId
             && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
                 || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
-            LOG_DEBUG("found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath);
+            qCDebug(lcCalDav) << "found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath;
             mNotebook = notebook;
             if (!color.isEmpty()
                 && notebook->customProperty(SERVER_COLOR_PROPERTY) != color) {
@@ -313,7 +313,7 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             return true;
         }
     }
-    LOG_DEBUG("no notebook exists for" << mRemoteCalendarPath);
+    qCDebug(lcCalDav) << "no notebook exists for" << mRemoteCalendarPath;
     // or create a new one
     mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookName, QString()));
     mNotebook->setAccount(accountId);
@@ -335,7 +335,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     if (!mNotebook) {
-        LOG_DEBUG("no notebook to sync.");
+        qCDebug(lcCalDav) << "no notebook to sync.";
         return;
     }
 
@@ -356,8 +356,8 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 2) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        LOG_DEBUG("Start slow sync for notebook:" << mNotebook->name() << "for account" << mNotebook->account()
-                  << "between" << fromDateTime << "to" << toDateTime);
+        qCDebug(lcCalDav) << "Start slow sync for notebook:" << mNotebook->name() << "for account" << mNotebook->account()
+                  << "between" << fromDateTime << "to" << toDateTime;
         mSyncMode = SlowSync;
 
         // Even if down sync is disabled in profile, we down sync the
@@ -376,9 +376,9 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 5) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        LOG_DEBUG("Start quick sync for notebook:" << mNotebook->uid()
+        qCDebug(lcCalDav) << "Start quick sync for notebook:" << mNotebook->uid()
                   << "between" << fromDateTime << "to" << toDateTime
-                  << ", sync changes since" << mNotebook->syncDate());
+                  << ", sync changes since" << mNotebook->syncDate();
         mSyncMode = QuickSync;
 
         fetchRemoteChanges();
@@ -420,7 +420,7 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         emit finished();
         return;
     }
-    LOG_DEBUG("report request finished with result:" << report->errorCode() << report->errorString());
+    qCDebug(lcCalDav) << "report request finished with result:" << report->errorCode() << report->errorString();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         // NOTE: we don't store the remote artifacts yet
@@ -428,13 +428,13 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         // Once ALL notebooks are finished, then we apply the remote changes.
         // This prevents the worst partial-sync issues.
         mReceivedCalendarResources += report->receivedCalendarResources();
-        LOG_DEBUG("Report request finished: received:"
-                  << report->receivedCalendarResources().length() << "iCal blobs");
+        qCDebug(lcCalDav) << "Report request finished: received:"
+                  << report->receivedCalendarResources().length() << "iCal blobs";
     } else if (mSyncMode == SlowSync
                && report->networkError() == QNetworkReply::AuthenticationRequiredError
                && !mRetriedReport) {
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
-        LOG_WARNING("Retrying REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
+        qCWarning(lcCalDav) << "Retrying REPORT after request failed with QNetworkReply::AuthenticationRequiredError";
         mRetriedReport = true;
         sendReportRequest();
     } else if (mSyncMode == SlowSync
@@ -444,7 +444,7 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         // so we can have local calendar metadata for remotely removed calendars.
         // In this case, we just skip sync of this calendar, as it was deleted.
         mNotebookNeedsDeletion = true;
-        LOG_DEBUG("calendar" << uri << "was deleted remotely, skipping sync locally.");
+        qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, skipping sync locally.";
     } else {
         mFailingUpdates += QSet<QString>::fromList(report->fetchedUris());
         mFailingUpdates.insert(uri);
@@ -464,16 +464,16 @@ void NotebookSyncAgent::processETags(const QString &uri)
         emit finished();
         return;
     }
-    LOG_DEBUG("fetch etags finished with result:" << report->errorCode() << report->errorString());
+    qCDebug(lcCalDav) << "fetch etags finished with result:" << report->errorCode() << report->errorString();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
-        LOG_DEBUG("Process tags for server path" << uri);
+        qCDebug(lcCalDav) << "Process tags for server path" << uri;
         // we have a hash from resource href-uri to resource info (including etags).
         QHash<QString, QString> remoteHrefUriToEtags;
         for (const Reader::CalendarResource &resource :
                    report->receivedCalendarResources()) {
             if (!resource.href.contains(mRemoteCalendarPath)) {
-                LOG_WARNING("href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath);
+                qCWarning(lcCalDav) << "href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath;
                 mFailingUpdates.insert(uri);
                 clearRequests();
                 emit finished();
@@ -489,7 +489,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                             &mLocalDeletions,
                             &mRemoteChanges,
                             &mRemoteDeletions)) {
-            LOG_WARNING("unable to calculate the sync delta for:" << mRemoteCalendarPath);
+            qCWarning(lcCalDav) << "unable to calculate the sync delta for:" << mRemoteCalendarPath;
             mFailingUpdates.insert(uri);
             clearRequests();
             emit finished();
@@ -503,7 +503,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
         sendLocalChanges();
     } else if (report->networkError() == QNetworkReply::AuthenticationRequiredError && !mRetriedReport) {
         // Yahoo sometimes fails the initial request with an authentication error. Let's try once more
-        LOG_WARNING("Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError");
+        qCWarning(lcCalDav) << "Retrying ETAG REPORT after request failed with QNetworkReply::AuthenticationRequiredError";
         mRetriedReport = true;
         fetchRemoteChanges();
     } else if (report->networkError() == QNetworkReply::ContentNotFoundError) {
@@ -512,7 +512,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
         // so we can have local calendars which mirror remotely-removed calendars.
         // In this situation, we need to delete the local calendar.
         mNotebookNeedsDeletion = true;
-        LOG_DEBUG("calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name());
+        qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name();
     } else {
         mFailingUpdates.insert(uri);
     }
@@ -529,16 +529,16 @@ void NotebookSyncAgent::sendLocalChanges()
     if (!mLocalAdditions.count() && !mLocalModifications.count() && !mLocalDeletions.count()) {
         // no local changes to upsync.
         // we're finished syncing.
-        LOG_DEBUG("no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath);
+        qCDebug(lcCalDav) << "no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath;
         return;
     } else if (!mEnableUpsync) {
-        LOG_DEBUG("Not upsyncing local changes, upsync disable in profile.");
+        qCDebug(lcCalDav) << "Not upsyncing local changes, upsync disable in profile.";
         return;
     } else if (mReadOnlyFlag) {
-        LOG_DEBUG("Not upsyncing local changes, upstream read only calendar.");
+        qCDebug(lcCalDav) << "Not upsyncing local changes, upstream read only calendar.";
         return;
     } else {
-        LOG_DEBUG("upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count());
+        qCDebug(lcCalDav) << "upsyncing local changes: A/M/R:" << mLocalAdditions.count() << "/" << mLocalModifications.count() << "/" << mLocalDeletions.count();
     }
 
     // For deletions, if a persistent exception is deleted we may need to do a PUT
@@ -563,14 +563,14 @@ void NotebookSyncAgent::sendLocalChanges()
                 mLocalModifications.append(recurringSeries);
                 continue; // finished with this deletion.
             } else {
-                LOG_WARNING("Unable to load recurring incidence for deleted exception; deleting entire series instead");
+                qCWarning(lcCalDav) << "Unable to load recurring incidence for deleted exception; deleting entire series instead";
                 // fall through to the DELETE code below.
             }
         }
 
         // the whole series is being deleted; can DELETE.
         QString remoteUri = uidToUri.value(uid);
-        LOG_DEBUG("deleting whole series:" << remoteUri << "with uid:" << uid);
+        qCDebug(lcCalDav) << "deleting whole series:" << remoteUri << "with uid:" << uid;
         Delete *del = new Delete(mNetworkManager, mSettings);
         mRequests.insert(del);
         connect(del, &Delete::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
@@ -585,7 +585,7 @@ void NotebookSyncAgent::sendLocalChanges()
         bool create = false;
         QString href = incidenceHrefUri(toUpload[i], mRemoteCalendarPath, &create);
         if (mSentUids.contains(href)) {
-            LOG_DEBUG("Already handled upload" << i << "via series update");
+            qCDebug(lcCalDav) << "Already handled upload" << i << "via series update";
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
         QString icsData;
@@ -596,19 +596,19 @@ void NotebookSyncAgent::sendLocalChanges()
                     icsData = IncidenceHandler::toIcs(recurringIncidence,
                                                       mCalendar->instances(recurringIncidence));
                 } else {
-                    LOG_WARNING("Cannot find parent of " << toUpload[i]->uid() << "for upload of series.");
+                    qCWarning(lcCalDav) << "Cannot find parent of " << toUpload[i]->uid() << "for upload of series.";
                 }
             } else {
-                LOG_WARNING("Cannot load series " << toUpload[i]->uid());
+                qCWarning(lcCalDav) << "Cannot load series " << toUpload[i]->uid();
             }
         } else {
             icsData = IncidenceHandler::toIcs(toUpload[i]);
         }
         if (icsData.isEmpty()) {
-            LOG_DEBUG("Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid());
+            qCDebug(lcCalDav) << "Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid();
             mFailingUploads.insert(href);
         } else {
-            LOG_DEBUG("Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid());
+            qCDebug(lcCalDav) << "Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid();
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
             connect(put, &Put::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
@@ -710,7 +710,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
     if (!mNotebook) {
-        LOG_DEBUG("Missing notebook in apply changes.");
+        qCDebug(lcCalDav) << "Missing notebook in apply changes.";
         return false;
     }
     // mNotebook may not exist in mStorage, because it is new, or
@@ -719,7 +719,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     if (mEnableDownsync && mNotebookNeedsDeletion) {
         // delete the notebook from local database
         if (notebook && !mStorage->deleteNotebook(notebook)) {
-            LOG_WARNING("Cannot delete notebook" << notebook->name() << "from storage.");
+            qCWarning(lcCalDav) << "Cannot delete notebook" << notebook->name() << "from storage.";
             mNotebookNeedsDeletion = false;
         }
         return mNotebookNeedsDeletion;
@@ -728,7 +728,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     // If current notebook is not already in storage, we add it.
     if (!notebook) {
         if (!mStorage->addNotebook(mNotebook)) {
-            LOG_DEBUG("Unable to (re)create notebook" << mNotebook->name() << "for account" << mNotebook->account() << ":" << mRemoteCalendarPath);
+            qCDebug(lcCalDav) << "Unable to (re)create notebook" << mNotebook->name() << "for account" << mNotebook->account() << ":" << mRemoteCalendarPath;
             return false;
         }
         notebook = mNotebook;
@@ -750,7 +750,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     }
     if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
         // Silently ignore failed purge action in database.
-        LOG_WARNING("Cannot purge from database the marked as deleted incidences.");
+        qCWarning(lcCalDav) << "Cannot purge from database the marked as deleted incidences.";
     }
 
     notebook->setIsReadOnly(mReadOnlyFlag);
@@ -760,7 +760,7 @@ bool NotebookSyncAgent::applyRemoteChanges()
     notebook->setSyncProfile(mNotebook->syncProfile());
     notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
     if (!mStorage->updateNotebook(notebook)) {
-        LOG_WARNING("Cannot update notebook" << notebook->name() << "in storage.");
+        qCWarning(lcCalDav) << "Cannot update notebook" << notebook->name() << "in storage.";
         success = false;
     }
 
@@ -864,7 +864,7 @@ bool NotebookSyncAgent::calculateDelta(
     // load all local incidences
     KCalendarCore::Incidence::List localIncidences;
     if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
-        LOG_WARNING("Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid());
+        qCWarning(lcCalDav) << "Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid();
         return false;
     }
 
@@ -882,11 +882,11 @@ bool NotebookSyncAgent::calculateDelta(
             if (remoteUriEtags.contains(remoteUri)) { // we saw this on remote side...
                 // we previously upsynced this incidence but then connectivity died.
                 if (!modified) {
-                    LOG_DEBUG("have previously partially upsynced local addition, needs uri update:" << remoteUri);
+                    qCDebug(lcCalDav) << "have previously partially upsynced local addition, needs uri update:" << remoteUri;
                     // ensure that it will be seen as a remote modification and trigger download for etag and uri update.
                     localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
                 } else  {
-                    LOG_DEBUG("have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    qCDebug(lcCalDav) << "have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                     // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
                     // we treat this as a "definite" local modification due to the partially-synced status.
                     setIncidenceHrefUri(incidence, remoteUri);
@@ -896,7 +896,7 @@ bool NotebookSyncAgent::calculateDelta(
                 }
             } else { // it doesn't exist on remote side...
                 // new local addition.
-                LOG_DEBUG("have new local addition:" << incidence->uid() << incidence->recurrenceId().toString());
+                qCDebug(lcCalDav) << "have new local addition:" << incidence->uid() << incidence->recurrenceId().toString();
                 localAdditions->append(incidence);
                 // Note: if it was partially upsynced and then connection failed
                 // and then removed remotely, then on next sync (ie, this one)
@@ -907,18 +907,18 @@ bool NotebookSyncAgent::calculateDelta(
             // OR a newly-added persistent occurrence to a previously-synced recurring series.
             if (!remoteUriEtags.contains(remoteUri)) {
                 if (!incidenceWithin(incidence, mFromDateTime, mToDateTime)) {
-                    LOG_DEBUG("ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    qCDebug(lcCalDav) << "ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                 } else {
-                    LOG_DEBUG("have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    qCDebug(lcCalDav) << "have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                     // Ignoring local modifications if any.
                     remoteDeletions->append(incidence);
                 }
             } else if (isCopiedDetachedIncidence(incidence)) {
                 if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
-                    LOG_DEBUG("Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                    qCDebug(lcCalDav) << "Found new locally-added persistent exception:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri;
                     localAdditions->append(incidence);
                 } else {
-                    LOG_DEBUG("ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri);
+                    qCDebug(lcCalDav) << "ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri;
                     mUpdatingList.append(incidence);
                 }
             } else if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
@@ -926,11 +926,11 @@ bool NotebookSyncAgent::calculateDelta(
                 // Ignoring local modifications if any.
             } else if (modified) {
                 // this is a real local modification.
-                LOG_DEBUG("have local modification:" << incidence->uid() << incidence->recurrenceId().toString());
+                qCDebug(lcCalDav) << "have local modification:" << incidence->uid() << incidence->recurrenceId().toString();
                 localModifications->append(incidence);
             } else if (isFlaggedAsUploadFailure(incidence)) {
                 // this one failed to upload last time, we retry it.
-                LOG_DEBUG("have failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                qCDebug(lcCalDav) << "have failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                 localModifications->append(incidence);
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
@@ -940,7 +940,7 @@ bool NotebookSyncAgent::calculateDelta(
     // List all local deletions reported by mkcal.
     KCalendarCore::Incidence::List deleted;
     if (!mStorage->deletedIncidences(&deleted, QDateTime(), mNotebook->uid())) {
-        LOG_WARNING("mKCal::ExtendedStorage::deletedIncidences() failed");
+        qCWarning(lcCalDav) << "mKCal::ExtendedStorage::deletedIncidences() failed";
         return false;
     }
     for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(deleted)) {
@@ -952,7 +952,7 @@ bool NotebookSyncAgent::calculateDelta(
                 // lost before we updated the uid of it locally to include the remote uri.
                 // subsequently, the user deleted the incidence.
                 // Hence, it exists remotely, and has been deleted locally.
-                LOG_DEBUG("have local deletion for partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                qCDebug(lcCalDav) << "have local deletion for partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                 // We treat this as a local deletion.
                 setIncidenceHrefUri(incidence, remoteUri);
                 setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
@@ -960,20 +960,20 @@ bool NotebookSyncAgent::calculateDelta(
             } else {
                 if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
                     // the incidence was previously synced successfully.  it has now been deleted locally.
-                    LOG_DEBUG("have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+                    qCDebug(lcCalDav) << "have local deletion for previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                     localDeletions->append(incidence);
                 } else {
                     // Sub-optimal case for persistent exceptions.
                     // TODO: improve handling of this case.
-                    LOG_DEBUG("ignoring local deletion due to remote modification:"
-                              << incidence->uid() << incidence->recurrenceId().toString());
+                    qCDebug(lcCalDav) << "ignoring local deletion due to remote modification:"
+                              << incidence->uid() << incidence->recurrenceId().toString();
                     mPurgeList.append(incidence);
                 }
             }
             localUriEtags.insert(remoteUri, incidenceETag(incidence));
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
-            LOG_DEBUG("ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri);
+            qCDebug(lcCalDav) << "ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri;
             mPurgeList.append(incidence);
         }
     }
@@ -983,22 +983,22 @@ bool NotebookSyncAgent::calculateDelta(
     const QStringList keys = remoteUriEtags.keys();
     for (const QString &remoteUri : keys) {
         if (!localUriEtags.contains(remoteUri)) {
-            LOG_DEBUG("have new remote addition:" << remoteUri);
+            qCDebug(lcCalDav) << "have new remote addition:" << remoteUri;
             remoteAdditions.insert(remoteUri);
         } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
             // etag changed; this is a server-side modification.
-            LOG_DEBUG("have remote modification to previously synced incidence at:" << remoteUri);
-            LOG_DEBUG("previously seen ETag was:" << localUriEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri));
+            qCDebug(lcCalDav) << "have remote modification to previously synced incidence at:" << remoteUri;
+            qCDebug(lcCalDav) << "previously seen ETag was:" << localUriEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri);
             remoteModifications.insert(remoteUri);
         } else {
             // this incidence is unchanged since last sync.
-            LOG_DEBUG("unchanged server-side since last sync:" << remoteUri);
+            qCDebug(lcCalDav) << "unchanged server-side since last sync:" << remoteUri;
         }
     }
     *remoteChanges = remoteAdditions + remoteModifications;
 
-    LOG_DEBUG("Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size());
-    LOG_DEBUG("Calculated remote A/M/R:" << remoteAdditions.size() << "/" << remoteModifications.size() << "/" << remoteDeletions->size());
+    qCDebug(lcCalDav) << "Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size();
+    qCDebug(lcCalDav) << "Calculated remote A/M/R:" << remoteAdditions.size() << "/" << remoteModifications.size() << "/" << remoteDeletions->size();
 
     return true;
 }
@@ -1029,10 +1029,10 @@ void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
 {
     if (incidence->status() == KCalendarCore::Incidence::StatusCanceled
         || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
-        LOG_DEBUG("Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString());
+        qCDebug(lcCalDav) << "Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString();
         mLocalDeletions.append(incidence);
     } else {
-        LOG_DEBUG("Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString());
+        qCDebug(lcCalDav) << "Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString();
         storedIncidence->startUpdates();
         *storedIncidence.staticCast<KCalendarCore::IncidenceBase>() = *incidence.staticCast<KCalendarCore::IncidenceBase>();
 
@@ -1057,7 +1057,7 @@ void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
 
 bool NotebookSyncAgent::addIncidence(KCalendarCore::Incidence::Ptr incidence)
 {
-    LOG_DEBUG("Adding new incidence:" << incidence->uid() << incidence->recurrenceId().toString());
+    qCDebug(lcCalDav) << "Adding new incidence:" << incidence->uid() << incidence->recurrenceId().toString();
     mRemoteAdditions.append(incidence);
 
     // To avoid spurious appearings of added events when later
@@ -1074,7 +1074,7 @@ bool NotebookSyncAgent::addIncidence(KCalendarCore::Incidence::Ptr incidence)
     // Set-up the default notebook when adding new incidences.
     mCalendar->addNotebook(mNotebook->uid(), true);
     if (!mCalendar->setDefaultNotebook(mNotebook->uid())) {
-        LOG_WARNING("Cannot set default notebook to " << mNotebook->uid());
+        qCWarning(lcCalDav) << "Cannot set default notebook to " << mNotebook->uid();
     }
     return mCalendar->addIncidence(incidence);
 }
@@ -1146,7 +1146,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         int parentIndex = -1;
         for (int i = 0; i < resource.incidences.size(); ++i) {
             if (!resource.incidences[i] || resource.incidences[i]->uid() != uid) {
-                LOG_WARNING("Updated incidence list contains incidences with non-matching uids!");
+                qCWarning(lcCalDav) << "Updated incidence list contains incidences with non-matching uids!";
                 return false; // this is always an error.  each resource corresponds to a single event series.
             }
             if (!resource.incidences[i]->hasRecurrenceId()) {
@@ -1155,7 +1155,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             updateIncidenceHrefEtag(resource.incidences[i], resource.href, resource.etag);
         }
 
-        LOG_DEBUG("Saving the added/updated base incidence before saving persistent exceptions:" << uid);
+        qCDebug(lcCalDav) << "Saving the added/updated base incidence before saving persistent exceptions:" << uid;
         KCalendarCore::Incidence::Ptr localBaseIncidence =
             loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
         if (localBaseIncidence) {
@@ -1179,7 +1179,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             }
         }
         if (!localBaseIncidence) {
-            LOG_WARNING("Error saving base incidence of resource" << resource.href);
+            qCWarning(lcCalDav) << "Error saving base incidence of resource" << resource.href;
             mFailingUpdates.insert(resource.href);
             success = false;
             continue; // don't return false and block the entire sync cycle, just ignore this event.
@@ -1194,13 +1194,13 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             }
             remoteRecurrenceIds.append(remoteInstance->recurrenceId());
 
-            LOG_DEBUG("Now saving a persistent exception:" << remoteInstance->recurrenceId().toString());
+            qCDebug(lcCalDav) << "Now saving a persistent exception:" << remoteInstance->recurrenceId().toString();
             remoteInstance->setUid(localBaseIncidence->uid());
             KCalendarCore::Incidence::Ptr localInstance = mCalendar->incidence(remoteInstance->uid(), remoteInstance->recurrenceId());
             if (localInstance) {
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
-                LOG_WARNING("Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString());
+                qCWarning(lcCalDav) << "Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString();
                 mFailingUpdates.insert(resource.href);
                 success = false;
                 continue; // don't return false and block the entire sync cycle, just ignore this event.
@@ -1214,7 +1214,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         for (int i = 0; i < localInstances.size(); ++i) {
             KCalendarCore::Incidence::Ptr localInstance = localInstances[i];
             if (!remoteRecurrenceIds.contains(localInstance->recurrenceId())) {
-                LOG_DEBUG("Schedule for removal persistent occurrence:" << localInstance->recurrenceId().toString());
+                qCDebug(lcCalDav) << "Schedule for removal persistent occurrence:" << localInstance->recurrenceId().toString();
                 // Will be deleted in the call to deleteIncidences
                 mRemoteDeletions.append(localInstance);
             }
@@ -1247,12 +1247,12 @@ bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List de
     for (KCalendarCore::Incidence::Ptr doomed : deletedIncidences) {
         mStorage->load(doomed->uid(), doomed->recurrenceId());
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
-            LOG_WARNING("Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString());
+            qCWarning(lcCalDav) << "Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString();
             mFailingUpdates.insert(incidenceHrefUri(doomed));
             flagDeleteFailure(doomed);
             success = false;
         } else {
-            LOG_DEBUG("Deleted incidence: " << doomed->uid() << doomed->recurrenceId().toString());
+            qCDebug(lcCalDav) << "Deleted incidence: " << doomed->uid() << doomed->recurrenceId().toString();
         }
     }
     return success;
@@ -1261,7 +1261,7 @@ bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List de
 void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
     if (!mStorage->loadSeries(uid)) {
-        LOG_WARNING("Unable to load incidence from database:" << uid);
+        qCWarning(lcCalDav) << "Unable to load incidence from database:" << uid;
         return;
     }
 
@@ -1277,6 +1277,6 @@ void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, 
             }
         }
     } else {
-        LOG_WARNING("Unable to find base incidence: " << uid);
+        qCWarning(lcCalDav) << "Unable to find base incidence: " << uid;
     }
 }

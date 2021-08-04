@@ -60,7 +60,6 @@ tst_Reader::~tst_Reader()
 
 void tst_Reader::initTestCase()
 {
-    qputenv("MSYNCD_LOGGING_LEVEL", "8");
 }
 
 void tst_Reader::cleanupTestCase()
