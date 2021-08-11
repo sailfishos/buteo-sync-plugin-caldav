@@ -151,26 +151,6 @@ KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore:
         }
     }
 
-    // Icalformat from kcalcore converts second-type duration into day-type duration
-    // whenever possible. We do the same to have consistent comparisons.
-    const KCalendarCore::Alarm::List alarms = incidence->alarms();
-    for (KCalendarCore::Alarm::Ptr alarm : alarms) {
-        if (!alarm->hasTime()) {
-            KCalendarCore::Duration offset(0);
-            if (alarm->hasEndOffset())
-                offset = alarm->endOffset();
-            else
-                offset = alarm->startOffset();
-            if (!offset.isDaily() && !(offset.value() % (60 * 60 * 24))) {
-                LOG_DEBUG("Converting to day-type duration " << offset.asDays());
-                if (alarm->hasEndOffset())
-                    alarm->setEndOffset(KCalendarCore::Duration(offset.asDays(), KCalendarCore::Duration::Days));
-                else
-                    alarm->setStartOffset(KCalendarCore::Duration(offset.asDays(), KCalendarCore::Duration::Days));
-            }
-        }
-    }
-
     switch (incidence->type()) {
     case KCalendarCore::IncidenceBase::TypeEvent: {
         KCalendarCore::Event::Ptr event = incidence.staticCast<KCalendarCore::Event>();
