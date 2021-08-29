@@ -23,7 +23,7 @@
 
 #include "request.h"
 
-#include <LogMacros.h>
+#include "logging.h"
 
 Request::Request(QNetworkAccessManager *manager,
                  Settings *settings,
@@ -36,7 +36,7 @@ Request::Request(QNetworkAccessManager *manager,
     , mNetworkError(QNetworkReply::NoError)
     , mMinorCode(Buteo::SyncResults::NO_ERROR)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     mSelfPointer = this;
 }
@@ -69,7 +69,7 @@ void Request::finishedWithReplyResult(const QString &uri, QNetworkReply::Network
     } else if (error == QNetworkReply::ContentOperationNotPermittedError) {
         // Gracefully continue when the operation fails for permission
         // reasons (like pushing to a read-only resource).
-        LOG_DEBUG("The" << command() << "operation requested on the remote content is not permitted");
+        qCDebug(lcCalDav) << "The" << command() << "operation requested on the remote content is not permitted";
         finishedWithSuccess(uri);
     } else {
         Buteo::SyncResults::MinorCode errorCode = Buteo::SyncResults::INTERNAL_ERROR;
@@ -79,7 +79,7 @@ void Request::finishedWithReplyResult(const QString &uri, QNetworkReply::Network
         } else if (error < 200) {
             errorCode = Buteo::SyncResults::CONNECTION_ERROR;
         }
-        LOG_WARNING("The" << command() << "operation failed with error:" << error << ":" << errorCode);
+        qCWarning(lcCalDav) << "The" << command() << "operation failed with error:" << error << ":" << errorCode;
         finishedWithError(uri, errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(error));
     }
 }
@@ -93,17 +93,17 @@ void Request::slotSslErrors(QList<QSslError> errors)
     debugReplyAndReadAll(reply);
 
     if (mSettings->ignoreSSLErrors()) {
-        LOG_DEBUG("Ignoring SSL error response");
+        qCDebug(lcCalDav) << "Ignoring SSL error response";
         reply->ignoreSslErrors(errors);
     } else {
-        LOG_WARNING(command() << "request received SSL error response!");
+        qCWarning(lcCalDav) << command() << "request received SSL error response!";
     }
 }
 
 void Request::finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode, const QString &errorString)
 {
     if (minorCode != Buteo::SyncResults::NO_ERROR) {
-        LOG_WARNING(REQUEST_TYPE << "request failed." << minorCode << errorString);
+        qCWarning(lcCalDav) << REQUEST_TYPE << "request failed." << minorCode << errorString;
     }
     mMinorCode = minorCode;
     mErrorString = errorString;
@@ -144,7 +144,7 @@ void Request::debugRequest(const QNetworkRequest &request, const QByteArray &dat
 {
     const QStringList lines = debuggingString(request, data).split('\n', QString::SkipEmptyParts);
     for (QString line : lines) {
-        LOG_PROTOCOL(line.replace('\r', ' '));
+        qCDebug(lcCalDavProtocol) << line.replace('\r', ' ');
     }
 }
 
@@ -152,7 +152,7 @@ void Request::debugRequest(const QNetworkRequest &request, const QString &data)
 {
     const QStringList lines = debuggingString(request, data.toUtf8()).split('\n', QString::SkipEmptyParts);
     for (QString line : lines) {
-        LOG_PROTOCOL(line.replace('\r', ' '));
+        qCDebug(lcCalDavProtocol) << line.replace('\r', ' ');
     }
 }
 
@@ -160,7 +160,7 @@ void Request::debugReply(const QNetworkReply &reply, const QByteArray &data)
 {
     const QStringList lines = debuggingString(reply, data).split('\n', QString::SkipEmptyParts);
     for (QString line : lines) {
-        LOG_PROTOCOL(line.replace('\r', ' '));
+        qCDebug(lcCalDavProtocol) << line.replace('\r', ' ');
     }
 }
 
@@ -168,7 +168,7 @@ void Request::debugReplyAndReadAll(QNetworkReply *reply)
 {
     const QStringList lines = debuggingString(*reply, reply->readAll()).split('\n', QString::SkipEmptyParts);
     for (QString line : lines) {
-        LOG_PROTOCOL(line.replace('\r', ' '));
+        qCDebug(lcCalDavProtocol) << line.replace('\r', ' ');
     }
 }
 

@@ -64,7 +64,6 @@ tst_Propfind::~tst_Propfind()
 
 void tst_Propfind::initTestCase()
 {
-    qputenv("MSYNCD_LOGGING_LEVEL", "8");
     mNAManager = new QNetworkAccessManager;
 }
 

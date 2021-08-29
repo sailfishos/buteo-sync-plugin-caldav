@@ -93,7 +93,6 @@ tst_NotebookSyncAgent::~tst_NotebookSyncAgent()
 void tst_NotebookSyncAgent::initTestCase()
 {
     qputenv("SQLITESTORAGEDB", "./db");
-    qputenv("MSYNCD_LOGGING_LEVEL", "8");
 
     QFile::remove("./db");
 }

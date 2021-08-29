@@ -35,7 +35,7 @@
 #include <KCalendarCore/Exceptions>
 #include <KCalendarCore/MemoryCalendar>
 
-#include <LogMacros.h>
+#include "logging.h"
 
 namespace {
    /* Some servers don't XML-escape the ics content when they return it
@@ -102,7 +102,7 @@ namespace {
                 fixed.append(line);
                 if (!storedUidLine.isEmpty()) {
                     fixed.append(storedUidLine);
-                    LOG_DEBUG("The UID was before VEVENT data! Report a bug to the application that generated this file.");
+                    qCDebug(lcCalDav) << "The UID was before VEVENT data! Report a bug to the application that generated this file.";
                     continue; // BEGIN:VEVENT line already appended
                 }
                 eventCount = -1;
@@ -208,7 +208,7 @@ void Reader::readResponse()
         }
     }
     if (resource.href.isEmpty()) {
-        LOG_WARNING("Ignoring received calendar object data, is missing href value");
+        qCWarning(lcCalDav) << "Ignoring received calendar object data, is missing href value";
         return;
     }
     if (!resource.iCalData.trimmed().isEmpty()) {
@@ -221,7 +221,7 @@ void Reader::readResponse()
                 == KCalendarCore::Exception::CalVersion1) {
                 KCalendarCore::VCalFormat vCalFormat;
                 if (!vCalFormat.fromString(cal, icsData)) {
-                    LOG_WARNING("unable to parse vCal data");
+                    qCWarning(lcCalDav) << "unable to parse vCal data";
                     parsed = false;
                 }
             } else if (iCalFormat.exception()
@@ -230,27 +230,27 @@ void Reader::readResponse()
                            || iCalFormat.exception()->code()
                            == KCalendarCore::Exception::VersionPropertyMissing)) {
                 iCalFormat.setException(0);
-                LOG_WARNING("unknown or missing version, trying iCal 2.0");
+                qCWarning(lcCalDav) << "unknown or missing version, trying iCal 2.0";
                 icsData = ensureICalVersion(icsData);
                 if (!iCalFormat.fromString(cal, icsData)) {
-                    LOG_WARNING("unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1));
+                    qCWarning(lcCalDav) << "unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
                     parsed = false;
                 }
             } else {
-                LOG_WARNING("unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1));
+                qCWarning(lcCalDav) << "unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
                 parsed = false;
             }
         }
         if (parsed) {
             const KCalendarCore::Incidence::List incidences = cal->incidences();
-            LOG_DEBUG("iCal data contains" << incidences.count() << " incidences");
+            qCDebug(lcCalDav) << "iCal data contains" << incidences.count() << " incidences";
             if (incidences.count()) {
                 QString uid = incidences.first()->uid();
                 // In case of more than one incidence, it contains some
                 // recurring event information, with exception / RECURRENCE-ID defined.
                 for (const KCalendarCore::Incidence::Ptr &incidence : incidences) {
                     if (incidence->uid() != uid) {
-                        LOG_WARNING("iCal data contains invalid incidences with conflicting uids");
+                        qCWarning(lcCalDav) << "iCal data contains invalid incidences with conflicting uids";
                         uid.clear();
                         break;
                     }
@@ -262,9 +262,9 @@ void Reader::readResponse()
                             resource.incidences.append(incidence);
                     }
                 }
-                LOG_DEBUG("parsed" << resource.incidences.count() << "events or todos from the iCal data");
+                qCDebug(lcCalDav) << "parsed" << resource.incidences.count() << "events or todos from the iCal data";
             } else {
-                LOG_WARNING("iCal data doesn't contain a valid incidence");
+                qCWarning(lcCalDav) << "iCal data doesn't contain a valid incidence";
             }
         }
     }

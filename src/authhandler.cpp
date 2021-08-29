@@ -38,7 +38,7 @@
 #include <oauth2data.h>
 
 #include <ProfileEngineDefs.h>
-#include <LogMacros.h>
+#include "logging.h"
 
 #include <sailfishkeyprovider.h>
 
@@ -66,10 +66,10 @@ AuthHandler::AuthHandler(Accounts::Manager *manager, const quint32 accountId, co
 
 bool AuthHandler::init()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (mAccount == NULL) {
-        LOG_DEBUG("Invalid account");
+        qCDebug(lcCalDav) << "Invalid account";
         return false;
     }
 
@@ -77,12 +77,12 @@ bool AuthHandler::init()
 
     Accounts::Service srv = mAccountManager->service(m_accountService);
     if (!srv.isValid()) {
-        LOG_WARNING("Cannot select service:" << m_accountService);
+        qCWarning(lcCalDav) << "Cannot select service:" << m_accountService;
         return false;
     }
     mAccount->selectService(srv);
     if (!mAccount->enabled()) {
-        LOG_WARNING("Service:" << m_accountService << "is not enabled for account:" << mAccount->id());
+        qCWarning(lcCalDav) << "Service:" << m_accountService << "is not enabled for account:" << mAccount->id();
         return false;
     }
 
@@ -94,18 +94,18 @@ bool AuthHandler::init()
     mAccount->selectService(Accounts::Service());
 
     if (cId == 0) {
-        LOG_WARNING("Cannot authenticate, no credentials stored for service:" << m_accountService);
+        qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:" << m_accountService;
         return false;
     }
     mIdentity = Identity::existingIdentity(cId);
     if (!mIdentity) {
-        LOG_WARNING("Cannot get existing identity for credentials:" << cId);
+        qCWarning(lcCalDav) << "Cannot get existing identity for credentials:" << cId;
         return false;
     }
 
     mSession = mIdentity->createSession(mMethod.toLatin1());
     if (!mSession) {
-        LOG_DEBUG("Signon session could not be created with method" << mMethod);
+        qCDebug(lcCalDav) << "Signon session could not be created with method" << mMethod;
         return false;
     }
 
@@ -120,7 +120,7 @@ bool AuthHandler::init()
 
 void AuthHandler::sessionResponse(const SessionData &sessionData)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (mMethod.compare("password", Qt::CaseInsensitive) == 0) {
         const QStringList propertyList = sessionData.propertyNames();
@@ -135,11 +135,11 @@ void AuthHandler::sessionResponse(const SessionData &sessionData)
         OAuth2PluginNS::OAuth2PluginTokenData response = sessionData.data<OAuth2PluginNS::OAuth2PluginTokenData>();
         mToken = response.AccessToken();
     } else {
-        LOG_FATAL("Unsupported Mechanism requested!");
+        qCCritical(lcCalDav) << "Unsupported Mechanism requested!";
         emit failed();
         return;
     }
-    LOG_DEBUG("Authenticated!");
+    qCDebug(lcCalDav) << "Authenticated!";
     emit success();
 }
 
@@ -160,7 +160,7 @@ const QString AuthHandler::password()
 
 void AuthHandler::authenticate()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     QByteArray providerName = mAccount->providerName().toLatin1();
 
@@ -215,21 +215,21 @@ void AuthHandler::authenticate()
 
         mSession->process(data, mMechanism);
     } else {
-        LOG_FATAL("Unsupported Method requested!");
+        qCCritical(lcCalDav) << "Unsupported Method requested!";
         emit failed();
     }
 }
 
 void AuthHandler::error(const SignOn::Error & error)
 {
-    FUNCTION_CALL_TRACE;
-    LOG_DEBUG("Auth error:" << error.message());
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
+    qCDebug(lcCalDav) << "Auth error:" << error.message();
     emit failed();
 }
 
 QString AuthHandler::storedKeyValue(const char *provider, const char *service, const char *keyName)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     char *storedKey = NULL;
     QString retn;

@@ -19,7 +19,8 @@ SOURCES += \
         $$PWD/request.cpp \
         $$PWD/authhandler.cpp \
         $$PWD/incidencehandler.cpp \
-        $$PWD/notebooksyncagent.cpp
+        $$PWD/notebooksyncagent.cpp \
+        $$PWD/logging.cpp
 
 HEADERS += \
         $$PWD/caldavclient.h \
@@ -33,7 +34,8 @@ HEADERS += \
         $$PWD/request.h \
         $$PWD/authhandler.h \
         $$PWD/incidencehandler.h \
-        $$PWD/notebooksyncagent.h
+        $$PWD/notebooksyncagent.h \
+        $$PWD/logging.h
 
 OTHER_FILES += \
         $$PWD/xmls/client/caldav.xml \

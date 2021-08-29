@@ -31,7 +31,7 @@
 #include <QDebug>
 #include <QStringList>
 
-#include <LogMacros.h>
+#include "logging.h"
 
 #define PROP_URI "uri"
 
@@ -67,18 +67,18 @@ static QByteArray timeRangeFilterXml(const QDateTime &fromDateTime, const QDateT
 Report::Report(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "REPORT", parent)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void Report::getAllEvents(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, true);
 }
 
 void Report::getAllETags(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, false);
 }
 
@@ -87,7 +87,7 @@ void Report::sendCalendarQuery(const QString &remoteCalendarPath,
                                const QDateTime &toDateTime,
                                bool getCalendarData)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
     QByteArray requestData = \
             "<c:calendar-query xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">" \
                 "<d:prop>" \
@@ -112,7 +112,7 @@ void Report::sendCalendarQuery(const QString &remoteCalendarPath,
 
 void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
     if (eventHrefList.isEmpty()) {
         return;
     }
@@ -133,7 +133,7 @@ void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList
 
 void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &requestData)
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
     mRemoteCalendarPath = remoteCalendarPath;
 
     QNetworkRequest request;
@@ -155,12 +155,12 @@ void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &re
 
 void Report::processResponse()
 {
-    FUNCTION_CALL_TRACE;
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    LOG_DEBUG("Process REPORT response for server path" << mRemoteCalendarPath);
+    qCDebug(lcCalDav) << "Process REPORT response for server path" << mRemoteCalendarPath;
 
     if (wasDeleted()) {
-        LOG_DEBUG("REPORT request was aborted");
+        qCDebug(lcCalDav) << "REPORT request was aborted";
         return;
     }
 
