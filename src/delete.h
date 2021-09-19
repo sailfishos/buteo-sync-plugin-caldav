@@ -42,9 +42,8 @@ public:
 
     void deleteEvent(const QString &href);
 
-private Q_SLOTS:
-    void requestFinished();
-
+protected:
+    virtual void handleReply(QNetworkReply *reply);
 };
 
 #endif // DELETE_H

@@ -51,8 +51,8 @@ public:
     const QList<Reader::CalendarResource>& receivedCalendarResources() const;
     const QStringList& fetchedUris() const;
 
-private Q_SLOTS:
-    void processResponse();
+protected:
+    virtual void handleReply(QNetworkReply *reply);
 
 private:
     void sendRequest(const QString &remoteCalendarPath, const QByteArray &requestData);

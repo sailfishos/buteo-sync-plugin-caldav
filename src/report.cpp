@@ -148,58 +148,38 @@ void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &re
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remoteCalendarPath);
     debugRequest(request, buffer->buffer());
-    connect(reply, SIGNAL(finished()), this, SLOT(processResponse()));
+    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
             this, SLOT(slotSslErrors(QList<QSslError>)));
 }
 
-void Report::processResponse()
+void Report::handleReply(QNetworkReply *reply)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    qCDebug(lcCalDav) << "Process REPORT response for server path" << mRemoteCalendarPath;
-
-    if (wasDeleted()) {
-        qCDebug(lcCalDav) << "REPORT request was aborted";
-        return;
-    }
-
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) {
-        finishedWithInternalError(QString());
-        return;
-    }
-    reply->deleteLater();
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
-        debugReplyAndReadAll(reply);
-        finishedWithReplyResult(uri, reply->error());
+        finishedWithReplyResult(uri, reply);
         return;
     }
-    QVariant statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
-    if (statusCode.isValid()) {
-        int status = statusCode.toInt();
-        if (status > 299) {
-            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                              QString("Got error status response for REPORT: %1").arg(status));
-            return;
-        }
-    }
 
-    QByteArray data = reply->readAll();
+    const QByteArray data = reply->readAll();
     debugReply(*reply, data);
 
     if (!data.isNull() && !data.isEmpty()) {
         Reader reader;
         reader.read(data);
         if (reader.hasError()) {
-            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR, QString("Malformed response body for REPORT"));
+            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
+                              QString("Malformed response body for REPORT"), data);
         } else {
             mReceivedResources = reader.results();
             finishedWithSuccess(uri);
         }
     } else {
-        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR, QString("Empty response body for REPORT"));
+        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
+                          QString("Empty response body for REPORT"),
+                          QByteArray());
     }
 }
 

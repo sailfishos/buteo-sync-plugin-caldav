@@ -142,8 +142,8 @@ private:
     KCalendarCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
-    QSet<QString> mFailingUploads; // List of hrefs with upload errors.
-    QSet<QString> mFailingUpdates; // List of hrefs from which incidences failed to update.
+    QHash<QString, QByteArray> mFailingUploads; // List of hrefs with upload errors, with the server response.
+    QHash<QString, QByteArray> mFailingUpdates; // List of hrefs from which incidences failed to update.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;

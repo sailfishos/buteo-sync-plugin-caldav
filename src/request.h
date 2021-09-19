@@ -46,7 +46,8 @@ public:
 
     QString command() const;
     Buteo::SyncResults::MinorCode errorCode() const;
-    QString errorString() const;
+    QString errorMessage() const;
+    QByteArray errorData() const;
     QNetworkReply::NetworkError networkError() const;
 
 Q_SIGNALS:
@@ -54,16 +55,19 @@ Q_SIGNALS:
 
 protected Q_SLOTS:
     virtual void slotSslErrors(QList<QSslError>);
+    void requestFinished();
 
 protected:
     void prepareRequest(QNetworkRequest *request, const QString &requestPath);
+    virtual void handleReply(QNetworkReply *reply) = 0;
 
     bool wasDeleted() const;
 
     void finishedWithSuccess(const QString &uri);
-    void finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode, const QString &errorString);
+    void finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode,
+                           const QString &errorMessage, const QByteArray &errorData);
     void finishedWithInternalError(const QString &uri, const QString &errorString = QString());
-    void finishedWithReplyResult(const QString &uri, QNetworkReply::NetworkError error);
+    void finishedWithReplyResult(const QString &uri, QNetworkReply *reply);
 
     void debugRequest(const QNetworkRequest &request, const QByteArray &data);
     void debugRequest(const QNetworkRequest &request, const QString &data);
@@ -79,7 +83,8 @@ protected:
     QPointer<Request> mSelfPointer;
     QNetworkReply::NetworkError mNetworkError;
     Buteo::SyncResults::MinorCode mMinorCode;
-    QString mErrorString;
+    QString mErrorMessage;
+    QByteArray mErrorData;
 };
 
 #endif // REQUEST_H

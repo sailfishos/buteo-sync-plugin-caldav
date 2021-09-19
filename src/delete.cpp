@@ -53,28 +53,15 @@ void Delete::deleteEvent(const QString &href)
             this, SLOT(slotSslErrors(QList<QSslError>)));
 }
 
-void Delete::requestFinished()
+void Delete::handleReply(QNetworkReply *reply)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
-
-    if (wasDeleted()) {
-        qCDebug(lcCalDav) << command() << "request was aborted";
-        return;
-    }
-
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) {
-        finishedWithInternalError(QString());
-        return;
-    }
-    reply->deleteLater();
-    debugReplyAndReadAll(reply);
 
     const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
     if (reply->error() == QNetworkReply::ContentNotFoundError) {
         // Consider a success if the content does not exist on server.
         finishedWithSuccess(uri);
     } else {
-        finishedWithReplyResult(uri, reply->error());
+        finishedWithReplyResult(uri, reply);
     }
 }

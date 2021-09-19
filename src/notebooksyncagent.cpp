@@ -34,10 +34,6 @@
 #include <SyncResults.h>
 
 #include <KCalendarCore/Incidence>
-#include <KCalendarCore/Event>
-#include <KCalendarCore/Todo>
-#include <KCalendarCore/Journal>
-#include <KCalendarCore/Attendee>
 
 #include <QDebug>
 
@@ -169,7 +165,7 @@ namespace {
     } Target;
     void summarizeResults(Buteo::TargetResults *results, Target target,
                           Buteo::TargetResults::ItemOperation operation,
-                          const QSet<QString> &failingHrefs,
+                          const QHash<QString, QByteArray> &failingHrefs,
                           const KCalendarCore::Incidence::List &incidences,
                           const QString &remotePath = QString())
     {
@@ -177,20 +173,22 @@ namespace {
             bool doit = true;
             const QString href = incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit);
             const QString uid(incidences[i]->instanceIdentifier());
-            const Buteo::TargetResults::ItemOperationStatus status = failingHrefs.contains(href)
+            const QHash<QString, QByteArray>::ConstIterator failure = failingHrefs.find(href);
+            const Buteo::TargetResults::ItemOperationStatus status = failure != failingHrefs.constEnd()
                 ? Buteo::TargetResults::ITEM_OPERATION_FAILED
                 : Buteo::TargetResults::ITEM_OPERATION_SUCCEEDED;
+            const QString data = failure != failingHrefs.constEnd() ? QString::fromUtf8(failure.value()) : QString();
             if (target == LOCAL) {
-                results->addLocalDetails(uid, operation, status);
+                results->addLocalDetails(uid, operation, status, data);
             } else {
-                results->addRemoteDetails(uid, operation, status);
+                results->addRemoteDetails(uid, operation, status, data);
             }
         }
     }
 
     static const QByteArray app = QByteArrayLiteral("VOLATILE");
     static const QByteArray name = QByteArrayLiteral("SYNC-FAILURE");
-    void flagUploadFailure(const QSet<QString> &failingHrefs,
+    void flagUploadFailure(const QHash<QString, QByteArray> &failingHrefs,
                            const KCalendarCore::Incidence::List &incidences,
                            const QString &remotePath = QString())
     {
@@ -415,12 +413,12 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
 
     Report *report = qobject_cast<Report*>(sender());
     if (!report) {
-        mFailingUpdates.insert(uri);
+        mFailingUpdates.insert(uri, QByteArray());
         clearRequests();
         emit finished();
         return;
     }
-    qCDebug(lcCalDav) << "report request finished with result:" << report->errorCode() << report->errorString();
+    qCDebug(lcCalDav) << "report request finished with result:" << report->errorCode() << report->errorMessage();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         // NOTE: we don't store the remote artifacts yet
@@ -446,8 +444,10 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         mNotebookNeedsDeletion = true;
         qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, skipping sync locally.";
     } else {
-        mFailingUpdates += QSet<QString>::fromList(report->fetchedUris());
-        mFailingUpdates.insert(uri);
+        for (const QString href : report->fetchedUris()) {
+            mFailingUpdates.insert(href, report->errorData());
+        }
+        mFailingUpdates.insert(uri, report->errorData());
     }
 
     requestFinished(report);
@@ -459,12 +459,12 @@ void NotebookSyncAgent::processETags(const QString &uri)
 
     Report *report = qobject_cast<Report*>(sender());
     if (!report) {
-        mFailingUpdates.insert(uri);
+        mFailingUpdates.insert(uri, QByteArray());
         clearRequests();
         emit finished();
         return;
     }
-    qCDebug(lcCalDav) << "fetch etags finished with result:" << report->errorCode() << report->errorString();
+    qCDebug(lcCalDav) << "fetch etags finished with result:" << report->errorCode() << report->errorMessage();
 
     if (report->errorCode() == Buteo::SyncResults::NO_ERROR) {
         qCDebug(lcCalDav) << "Process tags for server path" << uri;
@@ -474,7 +474,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                    report->receivedCalendarResources()) {
             if (!resource.href.contains(mRemoteCalendarPath)) {
                 qCWarning(lcCalDav) << "href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath;
-                mFailingUpdates.insert(uri);
+                mFailingUpdates.insert(uri, QByteArray("Mismatch in hrefs from server response."));
                 clearRequests();
                 emit finished();
                 return;
@@ -490,7 +490,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                             &mRemoteChanges,
                             &mRemoteDeletions)) {
             qCWarning(lcCalDav) << "unable to calculate the sync delta for:" << mRemoteCalendarPath;
-            mFailingUpdates.insert(uri);
+            mFailingUpdates.insert(uri, QByteArray("Cannot compute delta."));
             clearRequests();
             emit finished();
             return;
@@ -514,7 +514,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
         mNotebookNeedsDeletion = true;
         qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name();
     } else {
-        mFailingUpdates.insert(uri);
+        mFailingUpdates.insert(uri, QByteArray("Cannot fetch selected items."));
     }
 
     requestFinished(report);
@@ -606,7 +606,7 @@ void NotebookSyncAgent::sendLocalChanges()
         }
         if (icsData.isEmpty()) {
             qCDebug(lcCalDav) << "Skipping upload of broken incidence:" << i << ":" << toUpload[i]->uid();
-            mFailingUploads.insert(href);
+            mFailingUploads.insert(href, QByteArray("Cannot generate ICS data."));
         } else {
             qCDebug(lcCalDav) << "Uploading incidence" << i << "via PUT for uid:" << toUpload[i]->uid();
             Put *put = new Put(mNetworkManager, mSettings);
@@ -624,13 +624,13 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
 
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
-        mFailingUploads.insert(uri);
+        mFailingUploads.insert(uri, QByteArray());
         clearRequests();
         emit finished();
         return;
     }
     if (request->errorCode() != Buteo::SyncResults::NO_ERROR) {
-        mFailingUploads.insert(uri);
+        mFailingUploads.insert(uri, request->errorData());
     }
 
     Put *putRequest = qobject_cast<Put*>(request);
@@ -1180,7 +1180,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
         if (!localBaseIncidence) {
             qCWarning(lcCalDav) << "Error saving base incidence of resource" << resource.href;
-            mFailingUpdates.insert(resource.href);
+            mFailingUpdates.insert(resource.href, QByteArray("Cannot create local parent."));
             success = false;
             continue; // don't return false and block the entire sync cycle, just ignore this event.
         }
@@ -1201,7 +1201,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 updateIncidence(remoteInstance, localInstance);
             } else if (!addException(remoteInstance, localBaseIncidence, parentIndex == -1)) {
                 qCWarning(lcCalDav) << "Error saving updated persistent occurrence of resource" << resource.href << ":" << remoteInstance->recurrenceId().toString();
-                mFailingUpdates.insert(resource.href);
+                mFailingUpdates.insert(resource.href, QByteArray("Cannot create exception."));
                 success = false;
                 continue; // don't return false and block the entire sync cycle, just ignore this event.
             }
@@ -1248,7 +1248,7 @@ bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List de
         mStorage->load(doomed->uid(), doomed->recurrenceId());
         if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
             qCWarning(lcCalDav) << "Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString();
-            mFailingUpdates.insert(incidenceHrefUri(doomed));
+            mFailingUpdates.insert(incidenceHrefUri(doomed), QByteArray("Cannot delete incidence."));
             flagDeleteFailure(doomed);
             success = false;
         } else {
