@@ -103,7 +103,6 @@ private:
 
     void sendLocalChanges();
     QString constructLocalChangeIcs(KCalendarCore::Incidence::Ptr updatedIncidence);
-    void finalizeSendingLocalChanges();
 
     bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
                         KCalendarCore::Incidence::List *localAdditions,
