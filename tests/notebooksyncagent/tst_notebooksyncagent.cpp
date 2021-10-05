@@ -940,10 +940,12 @@ void tst_NotebookSyncAgent::result()
     m_agent->mLocalModifications = KCalendarCore::Incidence::List()
         << lMod1 << lMod2 << lMod3 << lMod4;
 
-    m_agent->mFailingUpdates = QSet<QString>()
-        << "/path/event1" << "/path/event01" << "/path/event11";
-    m_agent->mFailingUploads = QSet<QString>()
-        << "/testCal/event001.ics" << "/path/event101" << "/path/event111";
+    m_agent->mFailingUpdates.insert("/path/event1", QByteArrayLiteral("test1"));
+    m_agent->mFailingUpdates.insert("/path/event01", QByteArrayLiteral("test1"));
+    m_agent->mFailingUpdates.insert("/path/event11", QByteArrayLiteral("test1"));
+    m_agent->mFailingUploads.insert("/testCal/event001.ics", QByteArrayLiteral("test1"));
+    m_agent->mFailingUploads.insert("/path/event101", QByteArrayLiteral("test1"));
+    m_agent->mFailingUploads.insert("/path/event111", QByteArrayLiteral("test1"));
 
     Buteo::TargetResults results = m_agent->result();
     QCOMPARE(results.targetName(), QLatin1String("test1"));
