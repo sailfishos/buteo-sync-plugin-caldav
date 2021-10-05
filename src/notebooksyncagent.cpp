@@ -668,8 +668,11 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
         last = last && (*it == request ||
                         (!qobject_cast<Put*>(*it) && !qobject_cast<Delete*>(*it)));
     }
-    if (last) {
-        finalizeSendingLocalChanges();
+    if (last && !mSentUids.isEmpty()) {
+        // mSentUids have been cleared from uids that have already
+        // been updated with new etag value. Just remains the ones
+        // that requires additional retrieval to get etag values.
+        sendReportRequest(mSentUids.keys());
     }
 
     requestFinished(request);
@@ -687,22 +690,6 @@ static KCalendarCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storag
         }
     }
     return out;
-}
-
-void NotebookSyncAgent::finalizeSendingLocalChanges()
-{
-    NOTEBOOK_FUNCTION_CALL_TRACE;
-
-    // Flag (or remove flag) for all failing (or not) local changes.
-    flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalAdditions), mRemoteCalendarPath);
-    flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalModifications));
-
-    // mSentUids have been cleared from uids that have already
-    // been updated with new etag value. Just remains the ones
-    // that requires additional retrieval to get etag values.
-    if (!mSentUids.isEmpty()) {
-        sendReportRequest(mSentUids.keys());
-    }
 }
 
 bool NotebookSyncAgent::applyRemoteChanges()
@@ -807,6 +794,19 @@ void NotebookSyncAgent::requestFinished(Request *request)
     request->deleteLater();
 
     if (mRequests.isEmpty()) {
+        if (!mSentUids.isEmpty()) {
+            const QList<Reader::CalendarResource> &resources = mReceivedCalendarResources;
+            for (const Reader::CalendarResource &resource : resources) {
+                if (mSentUids.contains(resource.href) && resource.etag.isEmpty()) {
+                    // Asked for a resource etag but didn't get it.
+                    mFailingUploads.insert(resource.href, QByteArray("Unable to retrieve etag."));
+                }
+            }
+        }
+        // Flag (or remove flag) for all failing (or not) local changes.
+        flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalAdditions), mRemoteCalendarPath);
+        flagUploadFailure(mFailingUploads, loadAll(mStorage, mCalendar, mLocalModifications));
+
         emit finished();
     }
 }
