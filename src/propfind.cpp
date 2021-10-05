@@ -439,42 +439,19 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remotePath);
     debugRequest(request, buffer->buffer());
-    connect(reply, SIGNAL(finished()), this, SLOT(processResponse()));
+    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
     connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
             this, SLOT(slotSslErrors(QList<QSslError>)));
 }
 
-void PropFind::processResponse()
+void PropFind::handleReply(QNetworkReply *reply)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    qCDebug(lcCalDav) << "Process PROPFIND response.";
-
-    if (wasDeleted()) {
-        qCDebug(lcCalDav) << "PROPFIND request was aborted";
-        return;
-    }
-
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) {
-        finishedWithInternalError(QString());
-        return;
-    }
-    reply->deleteLater();
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
-        debugReplyAndReadAll(reply);
-        finishedWithReplyResult(uri, reply->error());
+        finishedWithReplyResult(uri, reply);
         return;
-    }
-    QVariant statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute);
-    if (statusCode.isValid()) {
-        int status = statusCode.toInt();
-        if (status > 299) {
-            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                              QString("Got error status response for PROPFIND: %1").arg(status));
-            return;
-        }
     }
 
     QByteArray data = reply->readAll();
@@ -495,7 +472,7 @@ void PropFind::processResponse()
         finishedWithSuccess(uri);
     } else {
         finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                          QString("Cannot parse response body for PROPFIND"));
+                          QString("Cannot parse response body for PROPFIND"), data);
     }
 }
 

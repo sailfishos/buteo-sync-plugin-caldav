@@ -67,8 +67,8 @@ public:
     void listCalendars(const QString &calendarsPath);
     const QList<CalendarInfo>& calendars() const;
 
-private Q_SLOTS:
-    void processResponse();
+protected:
+    virtual void handleReply(QNetworkReply *reply);
 
 private:
     enum PropFindRequestType {

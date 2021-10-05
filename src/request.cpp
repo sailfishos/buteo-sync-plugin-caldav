@@ -46,9 +46,14 @@ Buteo::SyncResults::MinorCode Request::errorCode() const
     return mMinorCode;
 }
 
-QString Request::errorString() const
+QString Request::errorMessage() const
 {
-    return mErrorString;
+    return mErrorMessage;
+}
+
+QByteArray Request::errorData() const
+{
+    return mErrorData;
 }
 
 QNetworkReply::NetworkError Request::networkError() const
@@ -61,26 +66,29 @@ QString Request::command() const
     return REQUEST_TYPE;
 }
 
-void Request::finishedWithReplyResult(const QString &uri, QNetworkReply::NetworkError error)
+void Request::finishedWithReplyResult(const QString &uri, QNetworkReply *reply)
 {
-    mNetworkError = error;
-    if (error == QNetworkReply::NoError) {
+    mNetworkError = reply->error();
+    if (reply->error() == QNetworkReply::NoError) {
+        debugReplyAndReadAll(reply);
         finishedWithSuccess(uri);
-    } else if (error == QNetworkReply::ContentOperationNotPermittedError) {
+    } else if (reply->error() == QNetworkReply::ContentOperationNotPermittedError) {
         // Gracefully continue when the operation fails for permission
         // reasons (like pushing to a read-only resource).
         qCDebug(lcCalDav) << "The" << command() << "operation requested on the remote content is not permitted";
+        debugReplyAndReadAll(reply);
         finishedWithSuccess(uri);
     } else {
-        Buteo::SyncResults::MinorCode errorCode = Buteo::SyncResults::INTERNAL_ERROR;
-        if (error == QNetworkReply::SslHandshakeFailedError || error == QNetworkReply::ContentAccessDenied ||
-                error == QNetworkReply::AuthenticationRequiredError) {
+        Buteo::SyncResults::MinorCode errorCode = Buteo::SyncResults::CONNECTION_ERROR;
+        if (reply->error() == QNetworkReply::SslHandshakeFailedError
+            || reply->error() == QNetworkReply::ContentAccessDenied
+            || reply->error() == QNetworkReply::AuthenticationRequiredError) {
             errorCode = Buteo::SyncResults::AUTHENTICATION_FAILURE;
-        } else if (error < 200) {
-            errorCode = Buteo::SyncResults::CONNECTION_ERROR;
         }
-        qCWarning(lcCalDav) << "The" << command() << "operation failed with error:" << error << ":" << errorCode;
-        finishedWithError(uri, errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(error));
+        qCWarning(lcCalDav) << "The" << command() << "operation failed with error:" << reply->error();
+        const QByteArray data(reply->readAll());
+        debugReply(*reply, data);
+        finishedWithError(uri, errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(reply->error()), data);
     }
 }
 
@@ -100,19 +108,44 @@ void Request::slotSslErrors(QList<QSslError> errors)
     }
 }
 
-void Request::finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode, const QString &errorString)
+void Request::requestFinished()
+{
+    FUNCTION_CALL_TRACE(lcCalDavTrace);
+
+    if (wasDeleted()) {
+        qCDebug(lcCalDav) << command() << "request was aborted";
+        return;
+    }
+
+    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
+    if (!reply) {
+        finishedWithInternalError(QString());
+        return;
+    }
+    reply->deleteLater();
+
+    qCDebug(lcCalDav) << command() << "request finished:" << reply->error();
+
+    handleReply(reply);
+}
+
+void Request::finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode,
+                                const QString &errorString, const QByteArray &errorData)
 {
     if (minorCode != Buteo::SyncResults::NO_ERROR) {
         qCWarning(lcCalDav) << REQUEST_TYPE << "request failed." << minorCode << errorString;
     }
     mMinorCode = minorCode;
-    mErrorString = errorString;
+    mErrorMessage = errorString;
+    mErrorData = errorData;
     emit finished(uri);
 }
 
 void Request::finishedWithInternalError(const QString &uri, const QString &errorString)
 {
-    finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR, errorString.isEmpty() ? QStringLiteral("Internal error") : errorString);
+    finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
+                      errorString.isEmpty() ? QStringLiteral("Internal error") : errorString,
+                      QByteArray());
 }
 
 void Request::finishedWithSuccess(const QString &uri)

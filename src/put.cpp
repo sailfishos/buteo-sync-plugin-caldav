@@ -80,24 +80,9 @@ void Put::sendIcalData(const QString &uri, const QString &icalData,
             this, SLOT(slotSslErrors(QList<QSslError>)));
 }
 
-void Put::requestFinished()
+void Put::handleReply(QNetworkReply *reply)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
-
-    if (wasDeleted()) {
-        qCDebug(lcCalDav) << command() << "request was aborted";
-        return;
-    }
-
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (!reply) {
-        finishedWithInternalError(QString(), "Internal error: PUT request finished but null");
-        return;
-    }
-    reply->deleteLater();
-
-    qCDebug(lcCalDav) << "PUT request finished:" << reply->error();
-    debugReplyAndReadAll(reply);
 
     // If the put was denied by server (e.g. read-only calendar), the etag
     // is not updated, so NotebookSyncAgent::finalizeSendingLocalChanges()
@@ -113,7 +98,7 @@ void Put::requestFinished()
     }
     mLocalUriList.remove(uri);
 
-    finishedWithReplyResult(uri, reply->error());
+    finishedWithReplyResult(uri, reply);
 }
 
 QString Put::updatedETag(const QString &uri) const

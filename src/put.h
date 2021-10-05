@@ -46,8 +46,8 @@ public:
 
     QString updatedETag(const QString &uri) const;
 
-private Q_SLOTS:
-    void requestFinished();
+protected:
+    virtual void handleReply(QNetworkReply *reply);
 
 private:
     QSet<QString> mLocalUriList;
