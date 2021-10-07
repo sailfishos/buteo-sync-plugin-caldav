@@ -253,17 +253,12 @@ NotebookSyncAgent::~NotebookSyncAgent()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    clearRequests();
+    if (!mRequests.isEmpty()) {
+        abort();
+    }
 }
 
 void NotebookSyncAgent::abort()
-{
-    NOTEBOOK_FUNCTION_CALL_TRACE;
-
-    clearRequests();
-}
-
-void NotebookSyncAgent::clearRequests()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
@@ -273,6 +268,8 @@ void NotebookSyncAgent::clearRequests()
         requests[i]->deleteLater();
     }
     mRequests.clear();
+
+    emit finished();
 }
 
 static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
@@ -413,9 +410,7 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
 
     Report *report = qobject_cast<Report*>(sender());
     if (!report) {
-        mFailingUpdates.insert(uri, QByteArray());
-        clearRequests();
-        emit finished();
+        setFatal(uri, "Internal reportRequest error");
         return;
     }
     qCDebug(lcCalDav) << "report request finished with result:" << report->errorCode() << report->errorMessage();
@@ -443,11 +438,13 @@ void NotebookSyncAgent::reportRequestFinished(const QString &uri)
         // In this case, we just skip sync of this calendar, as it was deleted.
         mNotebookNeedsDeletion = true;
         qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, skipping sync locally.";
+    } else if (mSyncMode == SlowSync) {
+        setFatal(uri, report->errorData());
+        return;
     } else {
-        for (const QString href : report->fetchedUris()) {
+        for (const QString &href : report->fetchedUris()) {
             mFailingUpdates.insert(href, report->errorData());
         }
-        mFailingUpdates.insert(uri, report->errorData());
     }
 
     requestFinished(report);
@@ -459,9 +456,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
 
     Report *report = qobject_cast<Report*>(sender());
     if (!report) {
-        mFailingUpdates.insert(uri, QByteArray());
-        clearRequests();
-        emit finished();
+        setFatal(uri, "Internal processETags error");
         return;
     }
     qCDebug(lcCalDav) << "fetch etags finished with result:" << report->errorCode() << report->errorMessage();
@@ -474,9 +469,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                    report->receivedCalendarResources()) {
             if (!resource.href.contains(mRemoteCalendarPath)) {
                 qCWarning(lcCalDav) << "href does not contain server path:" << resource.href << ":" << mRemoteCalendarPath;
-                mFailingUpdates.insert(uri, QByteArray("Mismatch in hrefs from server response."));
-                clearRequests();
-                emit finished();
+                setFatal(uri, "Mismatch in hrefs from server response.");
                 return;
             }
             remoteHrefUriToEtags.insert(resource.href, resource.etag);
@@ -490,9 +483,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
                             &mRemoteChanges,
                             &mRemoteDeletions)) {
             qCWarning(lcCalDav) << "unable to calculate the sync delta for:" << mRemoteCalendarPath;
-            mFailingUpdates.insert(uri, QByteArray("Cannot compute delta."));
-            clearRequests();
-            emit finished();
+            setFatal(uri, "Unable to calculate the sync delta.");
             return;
         }
 
@@ -514,7 +505,8 @@ void NotebookSyncAgent::processETags(const QString &uri)
         mNotebookNeedsDeletion = true;
         qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name();
     } else {
-        mFailingUpdates.insert(uri, QByteArray("Cannot fetch selected items."));
+        setFatal(uri, report->errorData());
+        return;
     }
 
     requestFinished(report);
@@ -624,9 +616,7 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
 
     Request *request = qobject_cast<Request*>(sender());
     if (!request) {
-        mFailingUploads.insert(uri, QByteArray());
-        clearRequests();
-        emit finished();
+        setFatal(uri, "Internal nonReportRequestFinished error");
         return;
     }
     if (request->errorCode() != Buteo::SyncResults::NO_ERROR) {
@@ -811,6 +801,13 @@ void NotebookSyncAgent::requestFinished(Request *request)
     }
 }
 
+void NotebookSyncAgent::setFatal(const QString &uri, const QByteArray &errorData)
+{
+    mFailingUpdates.insert(uri, errorData);
+    mFatalUri = uri;
+    abort();
+}
+
 void NotebookSyncAgent::finalize()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
@@ -819,6 +816,11 @@ void NotebookSyncAgent::finalize()
 bool NotebookSyncAgent::isFinished() const
 {
     return mRequests.isEmpty();
+}
+
+bool NotebookSyncAgent::isCompleted() const
+{
+    return mFatalUri.isEmpty();
 }
 
 bool NotebookSyncAgent::isDeleted() const

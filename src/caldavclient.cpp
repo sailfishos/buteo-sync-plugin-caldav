@@ -521,10 +521,11 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
         mStorage.clear();
     }
 
-    if (minorErrorCode == Buteo::SyncResults::NO_ERROR) {
+    if (minorErrorCode == Buteo::SyncResults::NO_ERROR
+        || minorErrorCode == Buteo::SyncResults::ITEM_FAILURES) {
         qCDebug(lcCalDav) << "CalDAV sync succeeded!" << message;
         mResults.setMajorCode(Buteo::SyncResults::SYNC_RESULT_SUCCESS);
-        mResults.setMinorCode(Buteo::SyncResults::NO_ERROR);
+        mResults.setMinorCode(minorErrorCode);
         emit success(getProfileName(), message);
     } else {
         qCWarning(lcCalDav) << "CalDAV sync failed:" << minorErrorCode << message;
@@ -740,11 +741,13 @@ void CalDavClient::notebookSyncFinished()
         }
     }
     if (finished) {
+        bool hasFatalError = false;
         bool hasDatabaseErrors = false;
         bool hasDownloadErrors = false;
         bool hasUploadErrors = false;
         QStringList deletedNotebooks;
         for (int i=0; i<mNotebookSyncAgents.count(); i++) {
+            hasFatalError = hasFatalError || !mNotebookSyncAgents[i]->isCompleted();
             hasDownloadErrors = hasDownloadErrors || mNotebookSyncAgents[i]->hasDownloadErrors();
             hasUploadErrors = hasUploadErrors || mNotebookSyncAgents[i]->hasUploadErrors();
             if (!mNotebookSyncAgents[i]->applyRemoteChanges()) {
@@ -759,14 +762,17 @@ void CalDavClient::notebookSyncFinished()
             mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
-        if (hasDownloadErrors) {
+        if (hasFatalError) {
             syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+                         QLatin1String("unable to complete the sync process"));
+        } else if (hasDownloadErrors) {
+            syncFinished(Buteo::SyncResults::ITEM_FAILURES,
                          QLatin1String("unable to fetch all upstream changes"));
         } else if (hasUploadErrors) {
-            syncFinished(Buteo::SyncResults::CONNECTION_ERROR,
+            syncFinished(Buteo::SyncResults::ITEM_FAILURES,
                          QLatin1String("unable to upsync all local changes"));
         } else if (hasDatabaseErrors) {
-            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
+            syncFinished(Buteo::SyncResults::ITEM_FAILURES,
                          QLatin1String("unable to apply all remote changes"));
         } else {
             qCDebug(lcCalDav) << "Calendar storage saved successfully after writing notebook changes!";
