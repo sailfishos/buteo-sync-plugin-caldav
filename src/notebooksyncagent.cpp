@@ -1083,13 +1083,18 @@ bool NotebookSyncAgent::addException(KCalendarCore::Incidence::Ptr incidence,
                                      KCalendarCore::Incidence::Ptr recurringIncidence,
                                      bool ensureRDate)
 {
-    if (ensureRDate && recurringIncidence->allDay()
-        && !recurringIncidence->recursOn(incidence->recurrenceId().date(),
-                                         incidence->recurrenceId().timeZone())) {
-        recurringIncidence->recurrence()->addRDate(incidence->recurrenceId().date());
-    } else if (ensureRDate && !recurringIncidence->allDay()
-               && !recurringIncidence->recursAt(incidence->recurrenceId())) {
-        recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
+    if (ensureRDate) {
+        const QDateTime lastModified = recurringIncidence->lastModified();
+        if (recurringIncidence->allDay()
+            && !recurringIncidence->recursOn(incidence->recurrenceId().date(),
+                                             incidence->recurrenceId().timeZone())) {
+            recurringIncidence->recurrence()->addRDate(incidence->recurrenceId().date());
+            recurringIncidence->setLastModified(lastModified);
+        } else if (!recurringIncidence->allDay()
+                   && !recurringIncidence->recursAt(incidence->recurrenceId())) {
+            recurringIncidence->recurrence()->addRDateTime(incidence->recurrenceId());
+            recurringIncidence->setLastModified(lastModified);
+        }
     }
 
     return addIncidence(incidence);
