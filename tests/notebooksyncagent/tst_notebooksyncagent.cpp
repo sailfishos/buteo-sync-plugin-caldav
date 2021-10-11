@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 4 -*- */
 /*
- * Copyright (C) 2016 Caliste Damien.
+ * Copyright (C) 2016-2021 Caliste Damien.
  * Contact: Damien Caliste <dcaliste@free.fr>
  *
  * This library is free software; you can redistribute it and/or
@@ -24,6 +24,7 @@
 #include "incidencehandler.h"
 #include "report.h"
 #include "put.h"
+#include "logging.h"
 
 #include <KCalendarCore/MemoryCalendar>
 #include <KCalendarCore/ICalFormat>
@@ -113,14 +114,16 @@ void tst_NotebookSyncAgent::init()
     mKCal::Notebook *notebook = new mKCal::Notebook("123456789", "test1", "test 1", "red", true, false, false, false, false);
 
     m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
+    store->addNotebook(m_agent->mNotebook);
 }
 
 void tst_NotebookSyncAgent::cleanup()
 {
+    m_agent->mStorage->save();
+
     mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook("123456789");
     m_agent->mStorage->deleteNotebook(notebook);
 
-    m_agent->mStorage->save();
     m_agent->mStorage->close();
 
     delete m_agent->mNetworkManager;
@@ -243,7 +246,7 @@ void tst_NotebookSyncAgent::insertMultipleEvents()
             QDateTime recId = QDateTime::fromString(expectedRecurrenceIDs[i], Qt::ISODate);
             ev = m_agent->mCalendar->event(expectedUIDs[i], recId);
         }
-        qWarning() << "Trying to find event:" << expectedUIDs[i] << expectedRecurrenceIDs[i];
+        qCDebug(lcCalDav) << "Trying to find event:" << expectedUIDs[i] << expectedRecurrenceIDs[i];
         QVERIFY(ev);
         QCOMPARE(ev->uid(), expectedUIDs[i]);
         QCOMPARE(ev->summary(), expectedSummaries[i]);
@@ -436,6 +439,9 @@ void tst_NotebookSyncAgent::calculateDelta()
     ev888->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag888"));
     ev888->setSummary("unchanged synced incidence");
     QDateTime recId = QDateTime::currentDateTimeUtc();
+    recId.setTime(QTime(recId.time().hour(),
+                        recId.time().minute(),
+                        recId.time().second()));
     ev888->setDtStart( recId );
     ev888->recurrence()->addRDateTime(recId);
     m_agent->mCalendar->addEvent(ev888.staticCast<KCalendarCore::Event>(),
@@ -469,9 +475,9 @@ void tst_NotebookSyncAgent::calculateDelta()
     // Perform local modifications.
     KCalendarCore::Incidence::Ptr ev111 = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
     ev111->setSummary("local addition");
-    ev113->setDescription(QStringLiteral("Modified summary."));
     m_agent->mCalendar->addEvent(ev111.staticCast<KCalendarCore::Event>(),
                                  m_agent->mNotebook->uid());
+    ev113->setDescription(QStringLiteral("Modified summary."));
     ev222->setDescription(QStringLiteral("Modified summary."));
     m_agent->mCalendar->deleteIncidence(ev333);
     ev444->setDescription(QStringLiteral("Modified summary."));
@@ -513,10 +519,9 @@ void tst_NotebookSyncAgent::calculateDelta()
     QCOMPARE(m_agent->mLocalAdditions.count(), 2);
     QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev111));
     QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev999));
-    QCOMPARE(m_agent->mLocalModifications.count(), 3);
+    QCOMPARE(m_agent->mLocalModifications.count(), 2);
     QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev222));
     QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev113));
-    QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev888));
     // ev444 have been locally modified, but is not in mLocalModifications
     // because of precedence of remote modifications by default.
     QCOMPARE(m_agent->mLocalDeletions.count(), 1);
@@ -565,15 +570,16 @@ void tst_NotebookSyncAgent::oneDownSyncCycle_data()
     ev->recurrence()->setDaily(1);
     ev->recurrence()->setDuration(28);
     QDateTime refId = ev->recurrence()->getNextDateTime(ev->dtStart().addDays(4));
-    KCalendarCore::Incidence::Ptr ex =
-        m_agent->mCalendar->dissociateSingleOccurrence(ev, refId);
+    KCalendarCore::Incidence::Ptr ex = KCalendarCore::Calendar::createException(ev, refId);
+    QVERIFY(ex);
     ex->setSummary("Persistent exception");
     QTest::newRow("recurent event with exception")
         << QStringLiteral("notebook-down-2")
         << QStringLiteral("222") << (KCalendarCore::Incidence::List() << ev << ex);
 
     refId = ev->recurrence()->getNextDateTime(ev->dtStart().addDays(2));
-    ex = m_agent->mCalendar->dissociateSingleOccurrence(ev, refId);
+    ex = KCalendarCore::Calendar::createException(ev, refId);
+    QVERIFY(ex);
     ex->setSummary("orphan event");
     QTest::newRow("orphan persistent exception event")
         << QStringLiteral("notebook-down-3")
@@ -684,8 +690,8 @@ void tst_NotebookSyncAgent::oneUpSyncCycle_data()
     ev->recurrence()->setDaily(1);
     ev->recurrence()->setDuration(28);
     QDateTime refId = ev->recurrence()->getNextDateTime(ev->dtStart().addDays(4));
-    KCalendarCore::Incidence::Ptr ex =
-        m_agent->mCalendar->dissociateSingleOccurrence(ev, refId);
+    KCalendarCore::Incidence::Ptr ex = KCalendarCore::Calendar::createException(ev, refId);
+    QVERIFY(ex);
     ex->setSummary("Persistent exception");
     QTest::newRow("added recurent event with exception")
         << QStringLiteral("200")
@@ -701,8 +707,12 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
 
     /* We create a notebook for this test. */
     const QString nbook = QStringLiteral("notebook-up-%1").arg(id++);
-    mKCal::Notebook *notebook = new mKCal::Notebook(nbook, "test1", "test 1", "red", true, false, false, false, false);
-    m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
+    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(nbook);
+    if (!notebook) {
+        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(nbook, "test1", "test 1", "red", true, false, false, false, false));
+        m_agent->mStorage->addNotebook(notebook);
+    }
+    m_agent->mNotebook = notebook;
 
     const QString nbuid = QStringLiteral("NBUID:%1:%2").arg(nbook).arg(uid);
     const QString uri = QStringLiteral("/testCal/%1.ics").arg(nbuid);
