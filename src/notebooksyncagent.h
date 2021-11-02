@@ -72,6 +72,7 @@ public:
     void finalize();
 
     bool isFinished() const;
+    bool isCompleted() const;
     bool isDeleted() const;
     bool hasDownloadErrors() const;
     bool hasUploadErrors() const;
@@ -87,8 +88,8 @@ private slots:
     void processETags(const QString &uri);
 private:
     void sendReportRequest(const QStringList &remoteUris = QStringList());
-    void clearRequests();
     void requestFinished(Request *request);
+    void setFatal(const QString &uri, const QByteArray &errorData);
 
     void fetchRemoteChanges();
     bool updateIncidences(const QList<Reader::CalendarResource> &resources);
@@ -143,6 +144,7 @@ private:
                                        // local additions, modifications.
     QHash<QString, QByteArray> mFailingUploads; // List of hrefs with upload errors, with the server response.
     QHash<QString, QByteArray> mFailingUpdates; // List of hrefs from which incidences failed to update.
+    QString mFatalUri; // A key from mFailingUpdates that prevents the sync to complete.
 
     // received remote incidence resource data
     QList<Reader::CalendarResource> mReceivedCalendarResources;
