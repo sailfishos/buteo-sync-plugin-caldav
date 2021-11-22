@@ -3,7 +3,7 @@ Summary:    Syncs calendar data from CalDAV services
 Version:    0.2.3
 Release:    1
 License:    LGPLv2
-URL:        https://git.sailfishos.org/mer-core/buteo-sync-plugin-caldav
+URL:        https://github.com/sailfishos/buteo-sync-plugin-caldav/
 Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5DBus)
@@ -30,6 +30,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 
 %files
 %defattr(-,root,root,-)
+%license LICENSE
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
 %{_libdir}/buteo-plugins-qt5/oopp/libcaldav-client.so
