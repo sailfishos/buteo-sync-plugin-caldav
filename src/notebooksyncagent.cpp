@@ -535,7 +535,6 @@ void NotebookSyncAgent::sendLocalChanges()
 
     // For deletions, if a persistent exception is deleted we may need to do a PUT
     // containing all of the still-existing events in the series.
-    // (Alternative is to push a STATUS:CANCELLED event?)
     // Hence, we first need to find out if any deletion is a lone-persistent-exception deletion.
     QMultiHash<QString, QDateTime> uidToRecurrenceIdDeletions;
     QHash<QString, QString> uidToUri;  // we cannot look up custom properties of deleted incidences, so cache them here.
@@ -1029,31 +1028,25 @@ static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr s
 void NotebookSyncAgent::updateIncidence(KCalendarCore::Incidence::Ptr incidence,
                                         KCalendarCore::Incidence::Ptr storedIncidence)
 {
-    if (incidence->status() == KCalendarCore::Incidence::StatusCanceled
-        || incidence->customStatus().compare(QStringLiteral("CANCELLED"), Qt::CaseInsensitive) == 0) {
-        qCDebug(lcCalDav) << "Queuing existing event for deletion:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString();
-        mLocalDeletions.append(incidence);
-    } else {
-        qCDebug(lcCalDav) << "Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString();
-        storedIncidence->startUpdates();
-        *storedIncidence.staticCast<KCalendarCore::IncidenceBase>() = *incidence.staticCast<KCalendarCore::IncidenceBase>();
+    qCDebug(lcCalDav) << "Updating existing event:" << storedIncidence->uid() << storedIncidence->recurrenceId().toString();
+    storedIncidence->startUpdates();
+    *storedIncidence.staticCast<KCalendarCore::IncidenceBase>() = *incidence.staticCast<KCalendarCore::IncidenceBase>();
 
-        flagUpdateSuccess(storedIncidence);
+    flagUpdateSuccess(storedIncidence);
 
-        storedIncidence->endUpdates();
-        // Avoid spurious detections of modified incidences
-        // by ensuring that the received last modification date time
-        // is previous to the sync date time.
-        if (storedIncidence->lastModified() > mNotebookSyncedDateTime) {
-            storedIncidence->setLastModified(mNotebookSyncedDateTime.addSecs(-2));
-        }
+    storedIncidence->endUpdates();
+    // Avoid spurious detections of modified incidences
+    // by ensuring that the received last modification date time
+    // is previous to the sync date time.
+    if (storedIncidence->lastModified() > mNotebookSyncedDateTime) {
+        storedIncidence->setLastModified(mNotebookSyncedDateTime.addSecs(-2));
+    }
 
-        if (mRemoteChanges.contains(incidenceHrefUri(storedIncidence))) {
-            // Only stores as modifications the incidences that were noted
-            // as remote changes, since we may also update incidences after
-            // push when the etag is not part of the push answer.
-            mRemoteModifications.append(storedIncidence);
-        }
+    if (mRemoteChanges.contains(incidenceHrefUri(storedIncidence))) {
+        // Only stores as modifications the incidences that were noted
+        // as remote changes, since we may also update incidences after
+        // push when the etag is not part of the push answer.
+        mRemoteModifications.append(storedIncidence);
     }
 }
 
