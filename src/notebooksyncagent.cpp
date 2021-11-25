@@ -588,9 +588,13 @@ void NotebookSyncAgent::sendLocalChanges()
                                                       mCalendar->instances(recurringIncidence));
                 } else {
                     qCWarning(lcCalDav) << "Cannot find parent of " << toUpload[i]->uid() << "for upload of series.";
+                    mFailingUploads.insert(href, "This is an exception occurrence without recurring parent.");
+                    continue;
                 }
             } else {
                 qCWarning(lcCalDav) << "Cannot load series " << toUpload[i]->uid();
+                mFailingUploads.insert(href, "Database error, cannot load recurring series for the occurrence.");
+                continue;
             }
         } else {
             icsData = IncidenceHandler::toIcs(toUpload[i]);
