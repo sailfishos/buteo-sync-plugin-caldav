@@ -186,36 +186,69 @@ namespace {
         }
     }
 
-    static const QByteArray app = QByteArrayLiteral("VOLATILE");
-    static const QByteArray name = QByteArrayLiteral("SYNC-FAILURE");
+    const QByteArray APP = QByteArrayLiteral("VOLATILE");
+    const QByteArray NAME = QByteArrayLiteral("SYNC-FAILURE");
+    const QByteArray RESOLUTION = QByteArrayLiteral("SYNC-FAILURE-RESOLUTION");
     void flagUploadFailure(const QHash<QString, QByteArray> &failingHrefs,
                            const KCalendarCore::Incidence::List &incidences,
                            const QString &remotePath = QString())
     {
         for (int i = 0; i < incidences.size(); i++) {
-            bool doit = true;
-            if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &doit))) {
-                incidences[i]->setCustomProperty(app, name, QStringLiteral("upload"));
+            bool creation = false;
+            if (failingHrefs.contains(incidenceHrefUri(incidences[i], remotePath, remotePath.isEmpty() ? 0 : &creation))) {
+                incidences[i]->setCustomProperty(APP, NAME, creation ? QStringLiteral("upload-new") : QStringLiteral("upload"));
             } else {
-                incidences[i]->removeCustomProperty(app, name);
+                incidences[i]->removeCustomProperty(APP, NAME);
+                incidences[i]->removeCustomProperty(APP, RESOLUTION);
             }
         }
     }
-    bool isFlaggedAsUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
-    {
-        return incidence->customProperty(app, name) == QStringLiteral("upload");
-    }
     void flagUpdateSuccess(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        incidence->removeCustomProperty(app, name);
+        incidence->removeCustomProperty(APP, NAME);
+        incidence->removeCustomProperty(APP, RESOLUTION);
     }
     void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        incidence->setCustomProperty(app, name, QStringLiteral("update"));
+        incidence->setCustomProperty(APP, NAME, QStringLiteral("update"));
     }
     void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
     {
-        incidence->setCustomProperty(app, name, QStringLiteral("delete"));
+        incidence->setCustomProperty(APP, NAME, QStringLiteral("delete"));
+    }
+    bool isFlagged(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return !incidence->customProperty(APP, NAME).isEmpty();
+    }
+    bool retryUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME).startsWith(QStringLiteral("upload"))
+            && incidence->customProperty(APP, RESOLUTION).isEmpty();
+    }
+    bool retryUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME) == QStringLiteral("update")
+            && incidence->customProperty(APP, RESOLUTION).isEmpty();
+    }
+    bool retryDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME) == QStringLiteral("delete")
+                && incidence->customProperty(APP, RESOLUTION).isEmpty();
+    }
+    bool resetUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME) == QStringLiteral("upload")
+            && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("server-reset");
+    }
+    bool resetUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME) == QStringLiteral("update")
+            && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("device-reset");
+    }
+    bool resetDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
+    {
+        return incidence->customProperty(APP, NAME) == QStringLiteral("delete")
+            && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("device-reset");
     }
 }
 
@@ -875,37 +908,33 @@ bool NotebookSyncAgent::calculateDelta(
 
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
-    // Here we can determine local additions and remote deletions.
-    QHash<QString, QString> localUriEtags; // remote uri to the etag we saw last time.
+    // Here we can determine local additions, modifications and remote modifications, deletions.
+    QSet<QString> localUris;
     for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
         bool modified = (incidence->created() < syncDateTime && incidence->lastModified() >= syncDateTime);
         bool uriWasEmpty = false;
         QString remoteUri = incidenceHrefUri(incidence, mRemoteCalendarPath, &uriWasEmpty);
+        localUris.insert(remoteUri);
         if (uriWasEmpty) {
-            // must be either a new local addition or a previously-upsynced local addition
-            // if we failed to update its uri after the successful upsync.
-            if (remoteUriEtags.contains(remoteUri)) { // we saw this on remote side...
-                // we previously upsynced this incidence but then connectivity died.
+            if (remoteUriEtags.contains(remoteUri)) {
+                // we previously upsynced this incidence but then connectivity died and etag was not set.
                 if (!modified) {
                     qCDebug(lcCalDav) << "have previously partially upsynced local addition, needs uri update:" << remoteUri;
-                    // ensure that it will be seen as a remote modification and trigger download for etag and uri update.
-                    localUriEtags.insert(remoteUri, QStringLiteral("missing ETag"));
+                    // Treat it as a remote modification and trigger download for etag and uri update.
+                    mUpdatingList.append(incidence);
+                    remoteChanges->insert(remoteUri);
                 } else  {
                     qCDebug(lcCalDav) << "have local modification to partially synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
-                    // note: we cannot check the etag to determine if it changed, since we may not have received the updated etag after the partial sync.
-                    // we treat this as a "definite" local modification due to the partially-synced status.
+                    // note: we cannot check the etag to determine if it changed also on server side.
+                    // we assume here local modifications only.
                     setIncidenceHrefUri(incidence, remoteUri);
                     setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
                     localModifications->append(incidence);
-                    localUriEtags.insert(remoteUri, incidenceETag(incidence));
                 }
-            } else { // it doesn't exist on remote side...
-                // new local addition.
+            } else if (!isFlagged(incidence) || retryUploadFailure(incidence)) {
+                // it doesn't exist on remote side... new local addition.
                 qCDebug(lcCalDav) << "have new local addition:" << incidence->uid() << incidence->recurrenceId().toString();
                 localAdditions->append(incidence);
-                // Note: if it was partially upsynced and then connection failed
-                // and then removed remotely, then on next sync (ie, this one)
-                // it will appear like a "new" local addition.  TODO: FIXME? How?
             }
         } else {
             // this is a previously-synced incidence with a remote uri,
@@ -913,10 +942,13 @@ bool NotebookSyncAgent::calculateDelta(
             if (!remoteUriEtags.contains(remoteUri)) {
                 if (!incidenceWithin(incidence, mFromDateTime, mToDateTime)) {
                     qCDebug(lcCalDav) << "ignoring out-of-range missing remote incidence:" << incidence->uid() << incidence->recurrenceId().toString();
-                } else {
+                } else if (!isFlagged(incidence) || retryDeleteFailure(incidence)) {
                     qCDebug(lcCalDav) << "have remote deletion of previously synced incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                     // Ignoring local modifications if any.
                     remoteDeletions->append(incidence);
+                } else if (resetDeleteFailure(incidence)) {
+                    qCDebug(lcCalDav) << "reset remote deletion:" << incidence->uid() << incidence->recurrenceId().toString();
+                    localAdditions->append(incidence);
                 }
             } else if (isCopiedDetachedIncidence(incidence)) {
                 if (incidenceETag(incidence) == remoteUriEtags.value(remoteUri)) {
@@ -925,20 +957,36 @@ bool NotebookSyncAgent::calculateDelta(
                 } else {
                     qCDebug(lcCalDav) << "ignoring new locally-added persistent exception to remotely modified incidence:" << incidence->uid() << incidence->recurrenceId().toString() << ":" << remoteUri;
                     mUpdatingList.append(incidence);
+                    remoteChanges->insert(remoteUri);
                 }
             } else if (incidenceETag(incidence) != remoteUriEtags.value(remoteUri)) {
-                mUpdatingList.append(incidence);
-                // Ignoring local modifications if any.
+                qCDebug(lcCalDav) << "have remote modification to previously synced incidence at:" << remoteUri;
+                if (!isFlagged(incidence) || retryUpdateFailure(incidence)) {
+                    qCDebug(lcCalDav) << "device etag:" << incidenceETag(incidence) << "server etag:" << remoteUriEtags.value(remoteUri);
+                    mUpdatingList.append(incidence);
+                    // Ignoring local modifications if any.
+                    remoteChanges->insert(remoteUri);
+                } else if (resetUpdateFailure(incidence)) {
+                    qCDebug(lcCalDav) << "reset remote modification:" << incidence->uid() << incidence->recurrenceId().toString();
+                    setIncidenceETag(incidence, remoteUriEtags.value(remoteUri));
+                    localModifications->append(incidence);
+                } else {
+                    qCDebug(lcCalDav) << "ignoring remote modification of flagged incidence:" << incidence->instanceIdentifier();
+                }
             } else if (modified) {
                 // this is a real local modification.
                 qCDebug(lcCalDav) << "have local modification:" << incidence->uid() << incidence->recurrenceId().toString();
                 localModifications->append(incidence);
-            } else if (isFlaggedAsUploadFailure(incidence)) {
+            } else if (retryUploadFailure(incidence)) {
                 // this one failed to upload last time, we retry it.
                 qCDebug(lcCalDav) << "have failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString();
                 localModifications->append(incidence);
+            } else if (resetUploadFailure(incidence)) {
+                // scratch previously failing upload with server version.
+                qCDebug(lcCalDav) << "reset failing to upload incidence:" << incidence->uid() << incidence->recurrenceId().toString();
+                mUpdatingList.append(incidence);
+                remoteChanges->insert(remoteUri);
             }
-            localUriEtags.insert(remoteUri, incidenceETag(incidence));
         }
     }
 
@@ -973,9 +1021,10 @@ bool NotebookSyncAgent::calculateDelta(
                     qCDebug(lcCalDav) << "ignoring local deletion due to remote modification:"
                               << incidence->uid() << incidence->recurrenceId().toString();
                     mPurgeList.append(incidence);
+                    remoteChanges->insert(remoteUri);
                 }
             }
-            localUriEtags.insert(remoteUri, incidenceETag(incidence));
+            localUris.insert(remoteUri);
         } else {
             // it was either already deleted remotely, or was never upsynced from the local prior to deletion.
             qCDebug(lcCalDav) << "ignoring local deletion of non-existent remote incidence:" << incidence->uid() << incidence->recurrenceId().toString() << "at" << remoteUri;
@@ -983,27 +1032,17 @@ bool NotebookSyncAgent::calculateDelta(
         }
     }
 
-    // now determine remote additions and modifications.
-    QSet<QString> remoteAdditions, remoteModifications;
-    const QStringList keys = remoteUriEtags.keys();
-    for (const QString &remoteUri : keys) {
-        if (!localUriEtags.contains(remoteUri)) {
+    // now determine remote additions.
+    const int nRemoteModifications = remoteChanges->size();
+    for (const QString &remoteUri : remoteUriEtags.keys()) {
+        if (!localUris.contains(remoteUri)) {
             qCDebug(lcCalDav) << "have new remote addition:" << remoteUri;
-            remoteAdditions.insert(remoteUri);
-        } else if (localUriEtags.value(remoteUri) != remoteUriEtags.value(remoteUri)) {
-            // etag changed; this is a server-side modification.
-            qCDebug(lcCalDav) << "have remote modification to previously synced incidence at:" << remoteUri;
-            qCDebug(lcCalDav) << "previously seen ETag was:" << localUriEtags.value(remoteUri) << "-> new ETag is:" << remoteUriEtags.value(remoteUri);
-            remoteModifications.insert(remoteUri);
-        } else {
-            // this incidence is unchanged since last sync.
-            qCDebug(lcCalDav) << "unchanged server-side since last sync:" << remoteUri;
+            remoteChanges->insert(remoteUri);
         }
     }
-    *remoteChanges = remoteAdditions + remoteModifications;
 
     qCDebug(lcCalDav) << "Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size();
-    qCDebug(lcCalDav) << "Calculated remote A/M/R:" << remoteAdditions.size() << "/" << remoteModifications.size() << "/" << remoteDeletions->size();
+    qCDebug(lcCalDav) << "Calculated remote A/M/R:" << (remoteChanges->size() - nRemoteModifications) << "/" << nRemoteModifications << "/" << remoteDeletions->size();
 
     return true;
 }
