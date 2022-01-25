@@ -12,7 +12,7 @@ BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
 BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.5.45
 BuildRequires:  pkgconfig(KF5CalendarCore) >= 5.79
-BuildRequires:  pkgconfig(buteosyncfw5) >= 0.10.0
+BuildRequires:  pkgconfig(buteosyncfw5) >= 0.10.11
 BuildRequires:  pkgconfig(accounts-qt5)
 BuildRequires:  pkgconfig(signon-oauth2plugin)
 BuildRequires:  pkgconfig(QmfClient)
