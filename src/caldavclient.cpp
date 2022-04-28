@@ -71,8 +71,6 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
     , mManager(0)
     , mAuth(0)
-    , mCalendar(0)
-    , mStorage(0)
     , mAccountId(0)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
@@ -180,7 +178,7 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedStora
     }
 }
 
-bool CalDavClient::cleanSyncRequired(int accountId)
+bool CalDavClient::cleanSyncRequired(int accountId, mKCal::ExtendedStorage::Ptr storage)
 {
     static const QByteArray iniFileDir = cleanSyncMarkersFileDir.toUtf8();
     static const QByteArray iniFile = cleanSyncMarkersFile.toUtf8();
@@ -202,12 +200,12 @@ bool CalDavClient::cleanSyncRequired(int accountId)
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << accountId << "due to clean sync";
-        deleteNotebooksForAccount(accountId, mStorage);
+        deleteNotebooksForAccount(accountId, storage);
         // now delete notebooks for non-existent accounts.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
         // a) find out which accounts are associated with each of our notebooks.
         QList<int> notebookAccountIds;
-        const QList<mKCal::Notebook> allNotebooks = mStorage->notebooks();
+        const QList<mKCal::Notebook> allNotebooks = storage->notebooks();
         for (const mKCal::Notebook &nb : allNotebooks) {
             QString nbAccount = nb.account();
             if (!nbAccount.isEmpty() && nb.pluginName().contains(QStringLiteral("caldav"))) {
@@ -234,7 +232,7 @@ bool CalDavClient::cleanSyncRequired(int accountId)
         for (int notebookAccountId : const_cast<const QList<int>&>(notebookAccountIds)) {
             if (!accountIdList.contains(notebookAccountId)) {
                 qCWarning(lcCalDav) << "purging notebooks for deleted caldav account" << notebookAccountId;
-                deleteNotebooksForAccount(notebookAccountId, mStorage);
+                deleteNotebooksForAccount(notebookAccountId, storage);
             }
         }
 
@@ -513,14 +511,6 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
 
     clearAgents();
 
-    if (mCalendar) {
-        mCalendar->close();
-    }
-    if (mStorage) {
-        mStorage->close();
-        mStorage.clear();
-    }
-
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR
         || minorErrorCode == Buteo::SyncResults::ITEM_FAILURES) {
         qCDebug(lcCalDav) << "CalDAV sync succeeded!" << message;
@@ -660,16 +650,16 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
                      QLatin1String("No calendars for this account"));
         return;
     }
-    mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
-    mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
-    if (!mStorage || !mStorage->open()) {
+    mKCal::ExtendedCalendar::Ptr calendar(new mKCal::ExtendedCalendar(QTimeZone::utc()));
+    mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
+    if (!storage || !storage->open()) {
         syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
                      QLatin1String("unable to open calendar storage"));
         return;
     }
-    mCalendar->setUpdateLastModifiedOnChange(false);
+    calendar->setUpdateLastModifiedOnChange(false);
 
-    cleanSyncRequired(mAccountId);
+    cleanSyncRequired(mAccountId, storage);
 
     QDateTime fromDateTime;
     QDateTime toDateTime;
@@ -681,7 +671,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
     for (const PropFind::CalendarInfo &calendarInfo : allCalendarInfo) {
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
-            (mCalendar, mStorage, mNAManager, &mSettings,
+            (calendar, storage, mNAManager, &mSettings,
              calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mSettings.userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
