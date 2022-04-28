@@ -51,12 +51,12 @@ public:
                                QNetworkAccessManager *networkAccessManager,
                                Settings *settings,
                                const QString &encodedRemotePath,
-                               bool readOnlyFlag = false,
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
     bool setNotebookFromInfo(const QString &notebookName,
                              const QString &color,
+                             bool readOnlyFlag,
                              const QString &userEmail,
                              const QString &accountId,
                              const QString &pluginName,
@@ -117,7 +117,7 @@ private:
     QSet<Request *> mRequests;
     mKCal::ExtendedCalendar::Ptr mCalendar;
     mKCal::ExtendedStorage::Ptr mStorage;
-    mKCal::Notebook::Ptr mNotebook;
+    mKCal::Notebook mNotebook;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
     QDateTime mNotebookSyncedDateTime;
@@ -127,7 +127,6 @@ private:
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
     bool mNotebookNeedsDeletion; // if the calendar was deleted remotely, we will need to delete it locally.
     bool mEnableUpsync, mEnableDownsync;
-    bool mReadOnlyFlag;
 
     // these are used only in quick-sync mode.
     // delta detection and change data

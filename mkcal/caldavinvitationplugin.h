@@ -60,17 +60,17 @@ public:
     QString uiName() const override;
     QString icon() const override;
     bool multiCalendar() const override;
-    QString emailAddress(const mKCal::Notebook::Ptr &notebook) override;
-    QString displayName(const mKCal::Notebook::Ptr &notebook) const override;
-    bool downloadAttachment(const mKCal::Notebook::Ptr &notebook,
+    QString emailAddress(const mKCal::Notebook &notebook) override;
+    QString displayName(const mKCal::Notebook &notebook) const override;
+    bool downloadAttachment(const mKCal::Notebook &notebook,
                             const QString &uri,
                             const QString &path) override;
-    bool deleteAttachment(const mKCal::Notebook::Ptr &notebook,
+    bool deleteAttachment(const mKCal::Notebook &notebook,
                           const Incidence::Ptr &incidence,
                           const QString &uri) override;
-    bool shareNotebook(const mKCal::Notebook::Ptr &notebook,
+    bool shareNotebook(const mKCal::Notebook &notebook,
                        const QStringList &sharedWith) override;
-    QStringList sharedWith(const mKCal::Notebook::Ptr &notebook) override;
+    QStringList sharedWith(const mKCal::Notebook &notebook) override;
     QString serviceName() const override;
     QString defaultNotebook() const override;
     bool checkProductId(const QString &productId) const override;

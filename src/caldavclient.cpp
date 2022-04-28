@@ -153,25 +153,25 @@ bool CalDavClient::cleanUp()
         return false;
     }
 
-    deleteNotebooksForAccount(accountId, calendar, storage);
+    deleteNotebooksForAccount(accountId, storage);
     storage->close();
     calendar->close();
     return true;
 }
 
-void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr, mKCal::ExtendedStorage::Ptr storage)
+void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedStorage::Ptr storage)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (storage) {
         QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
         QString accountIdStr = QString::number(accountId);
-        const mKCal::Notebook::List notebookList = storage->notebooks();
+        const QList<mKCal::Notebook> notebookList = storage->notebooks();
         qCDebug(lcCalDav) << "Total Number of Notebooks in device = " << notebookList.count();
         int deletedCount = 0;
-        for (mKCal::Notebook::Ptr notebook : notebookList) {
-            if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
-                if (storage->deleteNotebook(notebook)) {
+        for (const mKCal::Notebook &notebook : notebookList) {
+            if (notebook.account() == accountIdStr || notebook.account().startsWith(notebookAccountPrefix)) {
+                if (storage->deleteNotebook(notebook.uid())) {
                     deletedCount++;
                 }
             }
@@ -202,15 +202,15 @@ bool CalDavClient::cleanSyncRequired(int accountId)
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << accountId << "due to clean sync";
-        deleteNotebooksForAccount(accountId, mCalendar, mStorage);
+        deleteNotebooksForAccount(accountId, mStorage);
         // now delete notebooks for non-existent accounts.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
         // a) find out which accounts are associated with each of our notebooks.
         QList<int> notebookAccountIds;
-        const mKCal::Notebook::List allNotebooks = mStorage->notebooks();
-        for (mKCal::Notebook::Ptr nb : allNotebooks) {
-            QString nbAccount = nb->account();
-            if (!nbAccount.isEmpty() && nb->pluginName().contains(QStringLiteral("caldav"))) {
+        const QList<mKCal::Notebook> allNotebooks = mStorage->notebooks();
+        for (const mKCal::Notebook &nb : allNotebooks) {
+            QString nbAccount = nb.account();
+            if (!nbAccount.isEmpty() && nb.pluginName().contains(QStringLiteral("caldav"))) {
                 // caldav notebook->account() values used to be like: "55-/user/calendars/someCalendar"
                 int indexOfHyphen = nbAccount.indexOf('-');
                 if (indexOfHyphen > 0) {
@@ -220,9 +220,9 @@ bool CalDavClient::cleanSyncRequired(int accountId)
                 bool ok = true;
                 int notebookAccountId = nbAccount.toInt(&ok);
                 if (!ok) {
-                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb->account() << "->" << nbAccount << "->" << "not ok";
+                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb.account() << "->" << nbAccount << "->" << "not ok";
                 } else {
-                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb->account() << "->" << nbAccount;
+                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb.account() << "->" << nbAccount;
                     if (!notebookAccountIds.contains(notebookAccountId)) {
                         notebookAccountIds.append(notebookAccountId);
                     }
@@ -234,7 +234,7 @@ bool CalDavClient::cleanSyncRequired(int accountId)
         for (int notebookAccountId : const_cast<const QList<int>&>(notebookAccountIds)) {
             if (!accountIdList.contains(notebookAccountId)) {
                 qCWarning(lcCalDav) << "purging notebooks for deleted caldav account" << notebookAccountId;
-                deleteNotebooksForAccount(notebookAccountId, mCalendar, mStorage);
+                deleteNotebooksForAccount(notebookAccountId, mStorage);
             }
         }
 
@@ -682,12 +682,13 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
             (mCalendar, mStorage, mNAManager, &mSettings,
-             calendarInfo.remotePath, calendarInfo.readOnly, this);
+             calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mSettings.userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mSettings.userMailtoHref() : QString();
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
+                                        calendarInfo.readOnly,
                                         email,
                                         QString::number(mAccountId),
                                         getPluginName(),
