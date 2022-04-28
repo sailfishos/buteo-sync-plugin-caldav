@@ -71,9 +71,17 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
     , mManager(0)
     , mAuth(0)
-    , mAccountId(0)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
+
+    QString accountIdString = aProfile.key(Buteo::KEY_ACCOUNT_ID);
+    bool accountIdOk = false;
+    int accountId = accountIdString.toInt(&accountIdOk);
+    if (accountIdOk) {
+        mAccountId = accountId;
+    } else {
+        qCWarning(lcCalDav) << "no account id specified," << Buteo::KEY_ACCOUNT_ID << "not found in profile";
+    }
 }
 
 CalDavClient::~CalDavClient()
@@ -87,13 +95,32 @@ bool CalDavClient::init()
 
     mNAManager = new QNetworkAccessManager(this);
 
-    if (initConfig()) {
-        return true;
-    } else {
-        // Uninitialize everything that was initialized before failure.
-        uninit();
+    mManager = new Accounts::Manager(this);
+
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(&srv);
+    if (!account) {
         return false;
     }
+
+    mSettings.setServerAddress(account->value("server_address").toString());
+    if (mSettings.serverAddress().isEmpty()) {
+        qCWarning(lcCalDav) << "remote_address not found in service settings";
+        return false;
+    }
+    mSettings.setDavRootPath(account->value("webdav_path").toString());
+    mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
+    account->selectService(Accounts::Service());
+
+    mAuth = new AuthHandler(mManager, mAccountId, srv.name(), this);
+    if (!mAuth->init()) {
+        return false;
+    }
+
+    mSyncDirection = iProfile.syncDirection();
+    mConflictResPolicy = iProfile.conflictResolutionPolicy();
+
+    return true;
 }
 
 bool CalDavClient::uninit()
@@ -106,9 +133,8 @@ bool CalDavClient::startSync()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    if (!mAuth)
-        return false;
-
+    connect(mAuth, &AuthHandler::success, this, &CalDavClient::start);
+    connect(mAuth, &AuthHandler::failed, this, &CalDavClient::authenticationError);
     mAuth->authenticate();
 
     qCDebug(lcCalDav) << "Init done. Continuing with sync";
@@ -132,28 +158,21 @@ bool CalDavClient::cleanUp()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    // This function is called after the account has been deleted to allow the plugin to remove
-    // all the notebooks associated with the account.
-
-    QString accountIdString = iProfile.key(Buteo::KEY_ACCOUNT_ID);
-    int accountId = accountIdString.toInt();
-    if (accountId == 0) {
-        qCWarning(lcCalDav) << "profile does not specify" << Buteo::KEY_ACCOUNT_ID;
+    if (!mAccountId) {
         return false;
     }
 
-    mAccountId = accountId;
+    // This function is called after the account has been deleted to allow the plugin to remove
+    // all the notebooks associated with the account.
     mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
     if (!storage->open()) {
-        calendar->close();
         qCWarning(lcCalDav) << "unable to open calendar storage";
         return false;
     }
 
-    deleteNotebooksForAccount(accountId, storage);
-    storage->close();
-    calendar->close();
+    deleteNotebooksForAccount(mAccountId, storage);
+
     return true;
 }
 
@@ -456,54 +475,6 @@ void CalDavClient::removeAccountCalendars(const QStringList &paths)
     }
 }
 
-bool CalDavClient::initConfig()
-{
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-    qCDebug(lcCalDav) << "Initiating config...";
-
-    if (!mManager) {
-        mManager = new Accounts::Manager(this);
-    }
-
-    QString accountIdString = iProfile.key(Buteo::KEY_ACCOUNT_ID);
-    bool accountIdOk = false;
-    int accountId = accountIdString.toInt(&accountIdOk);
-    if (!accountIdOk) {
-        qCWarning(lcCalDav) << "no account id specified," << Buteo::KEY_ACCOUNT_ID << "not found in profile";
-        return false;
-    }
-    mAccountId = accountId;
-
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
-        return false;
-    }
-
-    mSettings.setServerAddress(account->value("server_address").toString());
-    if (mSettings.serverAddress().isEmpty()) {
-        qCWarning(lcCalDav) << "remote_address not found in service settings";
-        return false;
-    }
-    mSettings.setDavRootPath(account->value("webdav_path").toString());
-    mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
-    account->selectService(Accounts::Service());
-
-    mAuth = new AuthHandler(mManager, accountId, srv.name());
-    if (!mAuth->init()) {
-        return false;
-    }
-    connect(mAuth, SIGNAL(success()), this, SLOT(start()));
-    connect(mAuth, SIGNAL(failed()), this, SLOT(authenticationError()));
-
-    mSettings.setAccountId(accountId);
-
-    mSyncDirection = iProfile.syncDirection();
-    mConflictResPolicy = iProfile.conflictResolutionPolicy();
-
-    return true;
-}
-
 void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
                                 const QString &message)
 {
@@ -525,7 +496,7 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
         mResults.setMinorCode(minorErrorCode);
 
         if (minorErrorCode == Buteo::SyncResults::AUTHENTICATION_FAILURE) {
-            setCredentialsNeedUpdate(mSettings.accountId());
+            setCredentialsNeedUpdate(mAccountId);
         }
 
         emit error(getProfileName(), message, minorErrorCode);

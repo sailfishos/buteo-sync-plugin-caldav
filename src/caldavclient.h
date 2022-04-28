@@ -143,8 +143,6 @@ private Q_SLOTS:
     void notebookSyncFinished();
 
 private:
-    bool initConfig();
-    void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
     void clearAgents();
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedStorage::Ptr storage);

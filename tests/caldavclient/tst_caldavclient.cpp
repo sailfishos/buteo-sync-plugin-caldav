@@ -108,7 +108,6 @@ void tst_CalDavClient::initConfig()
 
     QVERIFY(client.init());
     QCOMPARE(client.mAccountId, int(mAccount->id()));
-    QCOMPARE(client.mSettings.accountId(), mAccount->id());
     QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
     QVERIFY(client.mSettings.ignoreSSLErrors());
 }

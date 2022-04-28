@@ -24,8 +24,7 @@
 #include "settings.h"
 
 Settings::Settings()
-    : mAccountId(0)
-    , mIgnoreSSLErrors(false)
+    : mIgnoreSSLErrors(false)
 {
 }
 
@@ -67,16 +66,6 @@ QString Settings::username() const
 void Settings::setUsername(const QString & username)
 {
     mUsername = username;
-}
-
-void Settings::setAccountId(quint32 accountId)
-{
-    mAccountId = accountId;
-}
-
-quint32 Settings::accountId() const
-{
-    return mAccountId;
 }
 
 void Settings::setServerAddress(const QString &serverAddress)
