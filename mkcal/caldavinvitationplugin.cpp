@@ -99,21 +99,21 @@ bool CalDAVInvitationPlugin::multiCalendar() const
 
 static const QByteArray EMAIL_PROPERTY = QByteArrayLiteral("userPrincipalEmail");
 QString CalDAVInvitationPlugin::emailAddress(
-        const mKCal::Notebook::Ptr &notebook)
+        const mKCal::Notebook &notebook)
 {
     d->m_errorCode = ServiceInterface::ErrorOk;
-    return notebook->customProperty(EMAIL_PROPERTY);
+    return notebook.customProperty(EMAIL_PROPERTY);
 }
 
 QString CalDAVInvitationPlugin::displayName(
-        const mKCal::Notebook::Ptr &) const
+        const mKCal::Notebook &) const
 {
     d->m_errorCode = ServiceInterface::ErrorNotSupported;
     return QString();
 }
 
 bool CalDAVInvitationPlugin::downloadAttachment(
-        const mKCal::Notebook::Ptr &,
+        const mKCal::Notebook &,
         const QString &,
         const QString &)
 {
@@ -122,7 +122,7 @@ bool CalDAVInvitationPlugin::downloadAttachment(
 }
 
 bool CalDAVInvitationPlugin::deleteAttachment(
-        const mKCal::Notebook::Ptr &,
+        const mKCal::Notebook &,
         const Incidence::Ptr &,
         const QString &)
 {
@@ -131,7 +131,7 @@ bool CalDAVInvitationPlugin::deleteAttachment(
 }
 
 bool CalDAVInvitationPlugin::shareNotebook(
-        const mKCal::Notebook::Ptr &,
+        const mKCal::Notebook &,
         const QStringList &)
 {
     d->m_errorCode = ServiceInterface::ErrorNotSupported;
@@ -139,7 +139,7 @@ bool CalDAVInvitationPlugin::shareNotebook(
 }
 
 QStringList CalDAVInvitationPlugin::sharedWith(
-        const mKCal::Notebook::Ptr &)
+        const mKCal::Notebook &)
 {
     d->m_errorCode = ServiceInterface::ErrorNotSupported;
     return QStringList();

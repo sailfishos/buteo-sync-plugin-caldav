@@ -71,11 +71,17 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
     , mManager(0)
     , mAuth(0)
-    , mCalendar(0)
-    , mStorage(0)
-    , mAccountId(0)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
+
+    QString accountIdString = aProfile.key(Buteo::KEY_ACCOUNT_ID);
+    bool accountIdOk = false;
+    int accountId = accountIdString.toInt(&accountIdOk);
+    if (accountIdOk) {
+        mAccountId = accountId;
+    } else {
+        qCWarning(lcCalDav) << "no account id specified," << Buteo::KEY_ACCOUNT_ID << "not found in profile";
+    }
 }
 
 CalDavClient::~CalDavClient()
@@ -89,13 +95,32 @@ bool CalDavClient::init()
 
     mNAManager = new QNetworkAccessManager(this);
 
-    if (initConfig()) {
-        return true;
-    } else {
-        // Uninitialize everything that was initialized before failure.
-        uninit();
+    mManager = new Accounts::Manager(this);
+
+    Accounts::Service srv;
+    Accounts::Account *account = getAccountForCalendars(&srv);
+    if (!account) {
         return false;
     }
+
+    mSettings.setServerAddress(account->value("server_address").toString());
+    if (mSettings.serverAddress().isEmpty()) {
+        qCWarning(lcCalDav) << "remote_address not found in service settings";
+        return false;
+    }
+    mSettings.setDavRootPath(account->value("webdav_path").toString());
+    mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
+    account->selectService(Accounts::Service());
+
+    mAuth = new AuthHandler(mManager, mAccountId, srv.name(), this);
+    if (!mAuth->init()) {
+        return false;
+    }
+
+    mSyncDirection = iProfile.syncDirection();
+    mConflictResPolicy = iProfile.conflictResolutionPolicy();
+
+    return true;
 }
 
 bool CalDavClient::uninit()
@@ -108,9 +133,8 @@ bool CalDavClient::startSync()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    if (!mAuth)
-        return false;
-
+    connect(mAuth, &AuthHandler::success, this, &CalDavClient::start);
+    connect(mAuth, &AuthHandler::failed, this, &CalDavClient::authenticationError);
     mAuth->authenticate();
 
     qCDebug(lcCalDav) << "Init done. Continuing with sync";
@@ -134,44 +158,37 @@ bool CalDavClient::cleanUp()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    // This function is called after the account has been deleted to allow the plugin to remove
-    // all the notebooks associated with the account.
-
-    QString accountIdString = iProfile.key(Buteo::KEY_ACCOUNT_ID);
-    int accountId = accountIdString.toInt();
-    if (accountId == 0) {
-        qCWarning(lcCalDav) << "profile does not specify" << Buteo::KEY_ACCOUNT_ID;
+    if (!mAccountId) {
         return false;
     }
 
-    mAccountId = accountId;
+    // This function is called after the account has been deleted to allow the plugin to remove
+    // all the notebooks associated with the account.
     mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
     if (!storage->open()) {
-        calendar->close();
         qCWarning(lcCalDav) << "unable to open calendar storage";
         return false;
     }
 
-    deleteNotebooksForAccount(accountId, calendar, storage);
-    storage->close();
-    calendar->close();
+    deleteNotebooksForAccount(mAccountId, storage);
+
     return true;
 }
 
-void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr, mKCal::ExtendedStorage::Ptr storage)
+void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedStorage::Ptr storage)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (storage) {
         QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
         QString accountIdStr = QString::number(accountId);
-        const mKCal::Notebook::List notebookList = storage->notebooks();
+        const QList<mKCal::Notebook> notebookList = storage->notebooks();
         qCDebug(lcCalDav) << "Total Number of Notebooks in device = " << notebookList.count();
         int deletedCount = 0;
-        for (mKCal::Notebook::Ptr notebook : notebookList) {
-            if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
-                if (storage->deleteNotebook(notebook)) {
+        for (const mKCal::Notebook &notebook : notebookList) {
+            if (notebook.account() == accountIdStr || notebook.account().startsWith(notebookAccountPrefix)) {
+                if (storage->deleteNotebook(notebook.uid())) {
                     deletedCount++;
                 }
             }
@@ -180,7 +197,7 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalen
     }
 }
 
-bool CalDavClient::cleanSyncRequired(int accountId)
+bool CalDavClient::cleanSyncRequired(int accountId, mKCal::ExtendedStorage::Ptr storage)
 {
     static const QByteArray iniFileDir = cleanSyncMarkersFileDir.toUtf8();
     static const QByteArray iniFile = cleanSyncMarkersFile.toUtf8();
@@ -202,15 +219,15 @@ bool CalDavClient::cleanSyncRequired(int accountId)
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << accountId << "due to clean sync";
-        deleteNotebooksForAccount(accountId, mCalendar, mStorage);
+        deleteNotebooksForAccount(accountId, storage);
         // now delete notebooks for non-existent accounts.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
         // a) find out which accounts are associated with each of our notebooks.
         QList<int> notebookAccountIds;
-        const mKCal::Notebook::List allNotebooks = mStorage->notebooks();
-        for (mKCal::Notebook::Ptr nb : allNotebooks) {
-            QString nbAccount = nb->account();
-            if (!nbAccount.isEmpty() && nb->pluginName().contains(QStringLiteral("caldav"))) {
+        const QList<mKCal::Notebook> allNotebooks = storage->notebooks();
+        for (const mKCal::Notebook &nb : allNotebooks) {
+            QString nbAccount = nb.account();
+            if (!nbAccount.isEmpty() && nb.pluginName().contains(QStringLiteral("caldav"))) {
                 // caldav notebook->account() values used to be like: "55-/user/calendars/someCalendar"
                 int indexOfHyphen = nbAccount.indexOf('-');
                 if (indexOfHyphen > 0) {
@@ -220,9 +237,9 @@ bool CalDavClient::cleanSyncRequired(int accountId)
                 bool ok = true;
                 int notebookAccountId = nbAccount.toInt(&ok);
                 if (!ok) {
-                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb->account() << "->" << nbAccount << "->" << "not ok";
+                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb.account() << "->" << nbAccount << "->" << "not ok";
                 } else {
-                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb->account() << "->" << nbAccount;
+                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb.account() << "->" << nbAccount;
                     if (!notebookAccountIds.contains(notebookAccountId)) {
                         notebookAccountIds.append(notebookAccountId);
                     }
@@ -234,7 +251,7 @@ bool CalDavClient::cleanSyncRequired(int accountId)
         for (int notebookAccountId : const_cast<const QList<int>&>(notebookAccountIds)) {
             if (!accountIdList.contains(notebookAccountId)) {
                 qCWarning(lcCalDav) << "purging notebooks for deleted caldav account" << notebookAccountId;
-                deleteNotebooksForAccount(notebookAccountId, mCalendar, mStorage);
+                deleteNotebooksForAccount(notebookAccountId, storage);
             }
         }
 
@@ -458,68 +475,12 @@ void CalDavClient::removeAccountCalendars(const QStringList &paths)
     }
 }
 
-bool CalDavClient::initConfig()
-{
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-    qCDebug(lcCalDav) << "Initiating config...";
-
-    if (!mManager) {
-        mManager = new Accounts::Manager(this);
-    }
-
-    QString accountIdString = iProfile.key(Buteo::KEY_ACCOUNT_ID);
-    bool accountIdOk = false;
-    int accountId = accountIdString.toInt(&accountIdOk);
-    if (!accountIdOk) {
-        qCWarning(lcCalDav) << "no account id specified," << Buteo::KEY_ACCOUNT_ID << "not found in profile";
-        return false;
-    }
-    mAccountId = accountId;
-
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
-        return false;
-    }
-
-    mSettings.setServerAddress(account->value("server_address").toString());
-    if (mSettings.serverAddress().isEmpty()) {
-        qCWarning(lcCalDav) << "remote_address not found in service settings";
-        return false;
-    }
-    mSettings.setDavRootPath(account->value("webdav_path").toString());
-    mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
-    account->selectService(Accounts::Service());
-
-    mAuth = new AuthHandler(mManager, accountId, srv.name());
-    if (!mAuth->init()) {
-        return false;
-    }
-    connect(mAuth, SIGNAL(success()), this, SLOT(start()));
-    connect(mAuth, SIGNAL(failed()), this, SLOT(authenticationError()));
-
-    mSettings.setAccountId(accountId);
-
-    mSyncDirection = iProfile.syncDirection();
-    mConflictResPolicy = iProfile.conflictResolutionPolicy();
-
-    return true;
-}
-
 void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
                                 const QString &message)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     clearAgents();
-
-    if (mCalendar) {
-        mCalendar->close();
-    }
-    if (mStorage) {
-        mStorage->close();
-        mStorage.clear();
-    }
 
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR
         || minorErrorCode == Buteo::SyncResults::ITEM_FAILURES) {
@@ -535,7 +496,7 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
         mResults.setMinorCode(minorErrorCode);
 
         if (minorErrorCode == Buteo::SyncResults::AUTHENTICATION_FAILURE) {
-            setCredentialsNeedUpdate(mSettings.accountId());
+            setCredentialsNeedUpdate(mAccountId);
         }
 
         emit error(getProfileName(), message, minorErrorCode);
@@ -660,16 +621,16 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
                      QLatin1String("No calendars for this account"));
         return;
     }
-    mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
-    mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
-    if (!mStorage || !mStorage->open()) {
+    mKCal::ExtendedCalendar::Ptr calendar(new mKCal::ExtendedCalendar(QTimeZone::utc()));
+    mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
+    if (!storage || !storage->open()) {
         syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
                      QLatin1String("unable to open calendar storage"));
         return;
     }
-    mCalendar->setUpdateLastModifiedOnChange(false);
+    calendar->setUpdateLastModifiedOnChange(false);
 
-    cleanSyncRequired(mAccountId);
+    cleanSyncRequired(mAccountId, storage);
 
     QDateTime fromDateTime;
     QDateTime toDateTime;
@@ -681,13 +642,14 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
     for (const PropFind::CalendarInfo &calendarInfo : allCalendarInfo) {
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
-            (mCalendar, mStorage, mNAManager, &mSettings,
-             calendarInfo.remotePath, calendarInfo.readOnly, this);
+            (calendar, storage, mNAManager, &mSettings,
+             calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mSettings.userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mSettings.userMailtoHref() : QString();
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
+                                        calendarInfo.readOnly,
                                         email,
                                         QString::number(mAccountId),
                                         getPluginName(),

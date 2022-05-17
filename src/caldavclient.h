@@ -143,13 +143,10 @@ private Q_SLOTS:
     void notebookSyncFinished();
 
 private:
-    bool initConfig();
-    void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
     void clearAgents();
-    bool deleteNotebook(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage, mKCal::Notebook::Ptr notebook);
-    void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
-    bool cleanSyncRequired(int accountId);
+    void deleteNotebooksForAccount(int accountId, mKCal::ExtendedStorage::Ptr storage);
+    bool cleanSyncRequired(int accountId, mKCal::ExtendedStorage::Ptr storage);
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
     Accounts::Account* getAccountForCalendars(Accounts::Service *service) const;
     QList<PropFind::CalendarInfo> loadAccountCalendars() const;
@@ -168,8 +165,6 @@ private:
     QNetworkAccessManager*      mNAManager;
     Accounts::Manager*          mManager;
     AuthHandler*                mAuth;
-    mKCal::ExtendedCalendar::Ptr mCalendar;
-    mKCal::ExtendedStorage::Ptr mStorage;
     Buteo::SyncResults          mResults;
     Sync::SyncStatus            mSyncStatus;
     Buteo::SyncProfile::SyncDirection mSyncDirection;
