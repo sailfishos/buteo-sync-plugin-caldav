@@ -123,24 +123,6 @@ KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore:
         }
     }
 
-    // The default storage implementation applies the organizer as an attendee by default.
-    // Undo this as it turns the incidence into a scheduled event requiring acceptance/rejection/etc.
-    const KCalendarCore::Person &organizer = incidence->organizer();
-    if (!organizer.isEmpty()) {
-        KCalendarCore::Attendee::List attendees = incidence->attendees();
-        KCalendarCore::Attendee::List::Iterator it = attendees.begin();
-        while (it != attendees.end()) {
-            if (it->email() == organizer.email() && it->fullName() == organizer.fullName()) {
-                qCDebug(lcCalDav) << "Discarding organizer as attendee" << it->fullName();
-                it = attendees.erase(it);
-            } else {
-                qCDebug(lcCalDav) << "Not discarding attendee:" << it->fullName() << it->email() << ": not organizer:" << organizer.fullName() << organizer.email();
-                it++;
-            }
-        }
-        incidence->setAttendees(attendees);
-    }
-
     // remove EXDATE values from the recurring incidence which correspond to the persistent occurrences (instances)
     if (incidence->recurs()) {
         for (KCalendarCore::Incidence::Ptr instance : instances) {
