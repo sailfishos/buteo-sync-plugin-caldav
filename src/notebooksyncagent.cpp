@@ -614,7 +614,7 @@ void NotebookSyncAgent::sendLocalChanges()
         }
         QString icsData;
         if (toUpload[i]->recurs() || toUpload[i]->hasRecurrenceId()) {
-            if (mStorage->loadSeries(toUpload[i]->uid())) {
+            if (mStorage->load(toUpload[i]->uid())) {
                 KCalendarCore::Incidence::Ptr recurringIncidence(toUpload[i]->recurs() ? toUpload[i] : mCalendar->incidence(toUpload[i]->uid()));
                 if (recurringIncidence) {
                     icsData = IncidenceHandler::toIcs(recurringIncidence,
@@ -708,7 +708,7 @@ static KCalendarCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storag
 {
     KCalendarCore::Incidence::List out;
     for (int i = 0; i < incidences.size(); i++){
-        if (storage->load(incidences[i]->uid(), incidences[i]->recurrenceId())) {
+        if (storage->load(incidences[i]->uid())) {
             const KCalendarCore::Incidence::Ptr incidence = calendar->incidence(incidences[i]->uid(), incidences[i]->recurrenceId());
             if (incidence) {
                 out.append(incidence);
@@ -1057,9 +1057,8 @@ static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr s
     const QString &nbuid = nbUid(notebookId, uid);
 
     // Load from storage any matching incidence by uid or modified uid.
-    // Use series loading to ensure that mCalendar->instances() are successful.
-    storage->loadSeries(uid);
-    storage->loadSeries(nbuid);
+    storage->load(uid);
+    storage->load(nbuid);
 
     KCalendarCore::Incidence::Ptr incidence = calendar->incidence(uid);
     if (!incidence) {
@@ -1270,7 +1269,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
                 const QString uid = mUpdatingList[i]->uid();
                 const QDateTime recid = mUpdatingList[i]->recurrenceId();
                 KCalendarCore::Incidence::Ptr incidence = mCalendar->incidence(uid, recid);
-                if (!incidence && mStorage->load(uid, recid)) {
+                if (!incidence && mStorage->load(uid)) {
                     incidence = mCalendar->incidence(uid, recid);
                 }
                 if (incidence) {
@@ -1287,9 +1286,13 @@ bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List de
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
     bool success = true;
-    for (KCalendarCore::Incidence::Ptr doomed : deletedIncidences) {
-        mStorage->load(doomed->uid(), doomed->recurrenceId());
-        if (!mCalendar->deleteIncidence(mCalendar->incidence(doomed->uid(), doomed->recurrenceId()))) {
+    for (KCalendarCore::Incidence::Ptr incidence : deletedIncidences) {
+        KCalendarCore::Incidence::Ptr doomed = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+        if (!doomed) {
+            mStorage->load(incidence->uid());
+            doomed = mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
+        }
+        if (doomed && !mCalendar->deleteIncidence(doomed)) {
             qCWarning(lcCalDav) << "Unable to delete incidence: " << doomed->uid() << doomed->recurrenceId().toString();
             mFailingUpdates.insert(storedIncidenceHrefUri(doomed), QByteArray("Cannot delete incidence."));
             flagDeleteFailure(doomed);
@@ -1303,7 +1306,7 @@ bool NotebookSyncAgent::deleteIncidences(const KCalendarCore::Incidence::List de
 
 void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, const QString &etag) const
 {
-    if (!mStorage->loadSeries(uid)) {
+    if (!mStorage->load(uid)) {
         qCWarning(lcCalDav) << "Unable to load incidence from database:" << uid;
         return;
     }
