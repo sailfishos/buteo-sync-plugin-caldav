@@ -45,7 +45,6 @@ private slots:
     void changedEventCustomStatusMakesDifferent();
     void changedEventSummaryMakesDifferent();
     void changedEventSecrecyMakesDifferent();
-    void changedEventGeoPresenceMakesDifferent();
     void changedEventLocationMakesDifferent();
     void changedEventLatitudeMakesDifferent();
     void changedEventLongitudeMakesDifferent();
@@ -207,19 +206,6 @@ void tst_IncidenceHandler::changedEventSecrecyMakesDifferent()
     QCOMPARE(*event1, *event2);
     event2->setSecrecy(Incidence::SecrecyPrivate);
     QVERIFY(*event1 != *event2);
-}
-
-void tst_IncidenceHandler::changedEventGeoPresenceMakesDifferent()
-{
-    Incidence::Ptr event1 = Incidence::Ptr(new Event);
-    event1->setHasGeo(false);
-    Incidence::Ptr event2 = Incidence::Ptr(event1->clone());
-    *event2.staticCast<KCalendarCore::IncidenceBase>() = *event1.staticCast<KCalendarCore::IncidenceBase>();
-    // geo related informatin are not compared in kcalcore.
-    QCOMPARE(*event1, *event2);
-    QCOMPARE(event1->hasGeo(), event2->hasGeo());
-    event2->setHasGeo(true);
-    QVERIFY(event1->hasGeo() != event2->hasGeo());
 }
 
 void tst_IncidenceHandler::changedEventLocationMakesDifferent()
