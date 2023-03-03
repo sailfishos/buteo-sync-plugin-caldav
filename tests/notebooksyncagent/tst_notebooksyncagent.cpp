@@ -93,9 +93,10 @@ tst_NotebookSyncAgent::~tst_NotebookSyncAgent()
 
 void tst_NotebookSyncAgent::initTestCase()
 {
-    qputenv("SQLITESTORAGEDB", "./db");
-
-    QFile::remove("./db");
+    if (qgetenv("SQLITESTORAGEDB").isEmpty()) {
+        qputenv("SQLITESTORAGEDB", "./db");
+        QFile::remove("./db");
+    }
 }
 
 void tst_NotebookSyncAgent::cleanupTestCase()
