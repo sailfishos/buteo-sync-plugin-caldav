@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testdefinition version="1.0">
+  <suite name="buteo-sync-plugin-caldav-tests" domain="mw">
+    <set name="unit-tests" feature="calendar sync">
+      <case manual="false" name="reader">
+        <step>/usr/sbin/run-blts-root /bin/su $USER -g privileged -c /opt/tests/buteo/plugins/caldav/tst_reader</step>
+      </case>
+      <case manual="false" name="propfind">
+        <step>/usr/sbin/run-blts-root /bin/su $USER -g privileged -c /opt/tests/buteo/plugins/caldav/tst_propfind</step>
+      </case>
+      <case manual="false" name="notebooksyncagent">
+        <step>rm -f /tmp/testdb; SQLITESTORAGEDB=/tmp/testdb /usr/sbin/run-blts-root /bin/su $USER -g privileged -c /opt/tests/buteo/plugins/caldav/tst_notebooksyncagent</step>
+      </case>
+      <case manual="false" name="caldavclient">
+        <step>/usr/sbin/run-blts-root /bin/su $USER -g privileged -c /opt/tests/buteo/plugins/caldav/tst_caldavclient</step>
+      </case>
+    </set>
+  </suite>
+</testdefinition>
