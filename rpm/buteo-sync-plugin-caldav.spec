@@ -24,6 +24,7 @@ A Buteo plugin which syncs calendar data from CalDAV services
 %package tests
 Summary: Unit tests for buteo-sync-plugin-caldav
 BuildRequires: pkgconfig(Qt5Test)
+Requires: blts-tools
 Requires: %{name} = %{version}-%{release}
 %description tests
 This package contains unit tests for the CalDAV Buteo sync plugin.
