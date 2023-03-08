@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <testdefinition version="1.0">
   <suite name="buteo-sync-plugin-caldav-tests" domain="mw">
-    <set name="unit-tests" feature="calendar sync">
+    <set name="unit-tests" feature="buteo-caldav">
       <case manual="false" name="reader">
         <step>/usr/sbin/run-blts-root /bin/su $USER -g privileged -c /opt/tests/buteo/plugins/caldav/tst_reader</step>
       </case>
