@@ -1,6 +1,6 @@
 Name:       buteo-sync-plugin-caldav
 Summary:    Syncs calendar data from CalDAV services
-Version:    0.3.1
+Version:    0.3.7
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/buteo-sync-plugin-caldav/
@@ -76,14 +76,6 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %qmake5
 make %{?_smp_mflags}
 
-%pre
-# remove legacy files
-rm -f /home/nemo/.cache/msyncd/sync/client/caldav.xml || :
-rm -f /home/nemo/.cache/msyncd/sync/caldav-sync.xml || :
-
 %install
-rm -rf %{buildroot}
 %qmake5_install
 
-%post
-systemctl-user try-restart msyncd.service || :
