@@ -612,11 +612,13 @@ void NotebookSyncAgent::sendLocalChanges()
             qCDebug(lcCalDav) << "Already handled upload" << i << "via series update";
             continue; // already handled this one, as a result of a previous update of another occurrence in the series.
         }
+        QString etag = incidenceETag(toUpload[i]);
         QString icsData;
         if (toUpload[i]->recurs() || toUpload[i]->hasRecurrenceId()) {
             if (mStorage->load(toUpload[i]->uid())) {
                 KCalendarCore::Incidence::Ptr recurringIncidence(toUpload[i]->recurs() ? toUpload[i] : mCalendar->incidence(toUpload[i]->uid()));
                 if (recurringIncidence) {
+                    etag = incidenceETag(recurringIncidence);
                     icsData = IncidenceHandler::toIcs(recurringIncidence,
                                                       mCalendar->instances(recurringIncidence));
                 } else {
@@ -640,7 +642,7 @@ void NotebookSyncAgent::sendLocalChanges()
             Put *put = new Put(mNetworkManager, mSettings);
             mRequests.insert(put);
             connect(put, &Put::finished, this, &NotebookSyncAgent::nonReportRequestFinished);
-            put->sendIcalData(href, icsData, incidenceETag(toUpload[i]));
+            put->sendIcalData(href, icsData, etag);
             mSentUids.insert(href, toUpload[i]->uid());
         }
     }
@@ -915,7 +917,8 @@ bool NotebookSyncAgent::calculateDelta(
         QString remoteUri = storedIncidenceHrefUri(incidence);
         if (remoteUri.isEmpty()) {
             remoteUri = createIncidenceHrefUri(incidence, mRemoteCalendarPath);
-            if (remoteUriEtags.contains(remoteUri)) {
+            // Imported exceptions don't have URI and etag inherited from parent.
+            if (!incidence->hasRecurrenceId() && remoteUriEtags.contains(remoteUri)) {
                 // we previously upsynced this incidence but then connectivity died and etag was not set.
                 if (!modified) {
                     qCDebug(lcCalDav) << "have previously partially upsynced local addition, needs uri update:" << remoteUri;
