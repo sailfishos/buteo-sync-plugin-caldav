@@ -435,6 +435,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     m_agent->mCalendar->addEvent(ev777.staticCast<KCalendarCore::Event>(),
                                  m_agent->mNotebook->uid());
     KCalendarCore::Incidence::Ptr ev888 = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
+    ev888->setUid("888");
     ev888->setRecurrenceId(QDateTime());
     ev888->addComment(QStringLiteral("buteo:caldav:uri:%1888.ics").arg(m_agent->mRemoteCalendarPath));
     ev888->addComment(QStringLiteral("buteo:caldav:etag:\"%1\"").arg("etag888"));
@@ -444,8 +445,15 @@ void tst_NotebookSyncAgent::calculateDelta()
                         recId.time().minute(),
                         recId.time().second()));
     ev888->setDtStart( recId );
-    ev888->recurrence()->addRDateTime(recId);
+    ev888->recurrence()->addRDateTime(recId.addDays(1));
     m_agent->mCalendar->addEvent(ev888.staticCast<KCalendarCore::Event>(),
+                                 m_agent->mNotebook->uid());
+    KCalendarCore::Incidence::Ptr ev889(ev888->clone());
+    ev889->setRecurrenceId(recId.addDays(1));
+    ev889->clearRecurrence();
+    ev889->setSummary("import exception to ev888");
+    ev889->clearComments(); // Imported exceptions don't have URI and ETAG from parent
+    m_agent->mCalendar->addEvent(ev889.staticCast<KCalendarCore::Event>(),
                                  m_agent->mNotebook->uid());
     KCalendarCore::Incidence::Ptr ev112 = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
     ev112->setSummary("partial local addition, need download");
@@ -517,9 +525,10 @@ void tst_NotebookSyncAgent::calculateDelta()
                                     &m_agent->mLocalDeletions,
                                     &m_agent->mRemoteChanges,
                                     &m_agent->mRemoteDeletions));
-    QCOMPARE(m_agent->mLocalAdditions.count(), 2);
+    QCOMPARE(m_agent->mLocalAdditions.count(), 3);
     QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev111));
     QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev999));
+    QVERIFY(incidenceListContains(m_agent->mLocalAdditions, ev889));
     QCOMPARE(m_agent->mLocalModifications.count(), 2);
     QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev222));
     QVERIFY(incidenceListContains(m_agent->mLocalModifications, ev113));
