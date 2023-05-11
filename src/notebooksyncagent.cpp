@@ -750,8 +750,6 @@ bool NotebookSyncAgent::applyRemoteChanges()
     }
 
     bool success = true;
-    // Make notebook writable for the time of the modifications.
-    notebook->setIsReadOnly(false);
     if ((mEnableDownsync || mSyncMode == SlowSync)
         && !updateIncidences(mReceivedCalendarResources)) {
         success = false;
