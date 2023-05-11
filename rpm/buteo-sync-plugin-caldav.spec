@@ -10,7 +10,7 @@ BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(Qt5Network)
 BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
-BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.7.6
+BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.7.17
 BuildRequires:  pkgconfig(KF5CalendarCore) >= 5.79
 BuildRequires:  pkgconfig(buteosyncfw5) >= 0.10.11
 BuildRequires:  pkgconfig(accounts-qt5)

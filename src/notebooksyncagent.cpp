@@ -750,8 +750,6 @@ bool NotebookSyncAgent::applyRemoteChanges()
     }
 
     bool success = true;
-    // Make notebook writable for the time of the modifications.
-    notebook->setIsReadOnly(false);
     if ((mEnableDownsync || mSyncMode == SlowSync)
         && !updateIncidences(mReceivedCalendarResources)) {
         success = false;
@@ -763,7 +761,8 @@ bool NotebookSyncAgent::applyRemoteChanges()
     if (!mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
         success = false;
     }
-    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
+    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList,
+                                                                   notebook->uid())) {
         // Silently ignore failed purge action in database.
         qCWarning(lcCalDav) << "Cannot purge from database the marked as deleted incidences.";
     }
