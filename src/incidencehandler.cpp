@@ -48,13 +48,13 @@ IncidenceHandler::~IncidenceHandler()
 QString IncidenceHandler::toIcs(const KCalendarCore::Incidence::Ptr incidence,
                                 const KCalendarCore::Incidence::List instances)
 {
-    KCalendarCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
-
     // create an in-memory calendar
     // add to it the required incidences (ie, check if has recurrenceId -> load parent and all instances; etc)
     // for each of those, we need to do the IncidenceToExport() modifications first
     // then, export from that calendar to .ics file.
     KCalendarCore::MemoryCalendar::Ptr memoryCalendar(new KCalendarCore::MemoryCalendar(QTimeZone::utc()));
+
+    KCalendarCore::Incidence::Ptr exportableIncidence = IncidenceHandler::incidenceToExport(incidence, instances);
     // store the base recurring event into the in-memory calendar
     if (!memoryCalendar->addIncidence(exportableIncidence)) {
         qCWarning(lcCalDav) << "Unable to add base series event to in-memory calendar for incidence:"
@@ -63,31 +63,12 @@ QString IncidenceHandler::toIcs(const KCalendarCore::Incidence::Ptr incidence,
     }
     // now create the persistent occurrences in the in-memory calendar
     for (KCalendarCore::Incidence::Ptr instance : instances) {
-        // We cannot call dissociateSingleOccurrence() on the MemoryCalendar
-        // as that's an mKCal specific function.
-        // We cannot call dissociateOccurrence() because that function
-        // takes only a QDate instead of a KDateTime recurrenceId.
-        // Thus, we need to manually create an exception occurrence.
-        KCalendarCore::Incidence::Ptr exportableOccurrence(exportableIncidence->clone());
-        exportableOccurrence->setCreated(instance->created());
-        exportableOccurrence->setRevision(instance->revision());
-        exportableOccurrence->clearRecurrence();
-        exportableOccurrence->setRecurrenceId(instance->recurrenceId());
-        exportableOccurrence->setDtStart(instance->recurrenceId());
+        KCalendarCore::Incidence::Ptr exportableOccurrence = IncidenceHandler::incidenceToExport(instance);
 
-        // add it, and then update it in-memory.
         if (!memoryCalendar->addIncidence(exportableOccurrence)) {
             qCWarning(lcCalDav) << "Unable to add this incidence to in-memory calendar for export:"
                         << instance->uid() << instance->recurrenceId().toString();
             return QString();
-        } else {
-            KCalendarCore::Incidence::Ptr reloadedOccurrence = memoryCalendar->incidence(exportableIncidence->uid(), instance->recurrenceId());
-            if (!reloadedOccurrence) {
-                qCWarning(lcCalDav) << "Unable to find this incidence within in-memory calendar for export:"
-                            << exportableIncidence->uid() << instance->recurrenceId().toString();
-                return QString();
-            }
-            *reloadedOccurrence.staticCast<KCalendarCore::IncidenceBase>() = *IncidenceHandler::incidenceToExport(instance).staticCast<KCalendarCore::IncidenceBase>();
         }
     }
 
