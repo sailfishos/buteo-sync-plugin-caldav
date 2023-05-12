@@ -38,7 +38,7 @@
 #include <QDebug>
 
 
-#define NOTEBOOK_FUNCTION_CALL_TRACE qCDebug(lcCalDavTrace) << Q_FUNC_INFO << (mNotebook ? mNotebook->account() : "")
+#define NOTEBOOK_FUNCTION_CALL_TRACE qCDebug(lcCalDavTrace) << Q_FUNC_INFO << mCalendar->name()
 
 namespace {
     // mKCal deleted custom properties of deleted incidences.
@@ -257,9 +257,7 @@ namespace {
 }
 
 
-NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
-                                     mKCal::ExtendedStorage::Ptr storage,
-                                     QNetworkAccessManager *networkAccessManager,
+NotebookSyncAgent::NotebookSyncAgent(QNetworkAccessManager *networkAccessManager,
                                      Settings *settings,
                                      const QString &encodedRemotePath,
                                      bool readOnlyFlag,
@@ -267,9 +265,8 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     : QObject(parent)
     , mNetworkManager(networkAccessManager)
     , mSettings(settings)
-    , mCalendar(calendar)
-    , mStorage(storage)
-    , mNotebook(0)
+    , mStorage(mKCal::CalendarStorage::systemStorage())
+    , mCalendar(mStorage->calendar().staticCast<KCalendarCore::MemoryCalendar>())
     , mEncodedRemotePath(encodedRemotePath)
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
@@ -284,6 +281,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     if (mSettings->serverAddress().contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
         mRemoteCalendarPath = QUrl::fromPercentEncoding(mRemoteCalendarPath.toUtf8());
     }
+    mCalendar->setUpdateLastModifiedOnChange(false);
 }
 
 NotebookSyncAgent::~NotebookSyncAgent()
@@ -313,7 +311,8 @@ static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
 static const QByteArray EMAIL_PROPERTY = QByteArrayLiteral("userPrincipalEmail");
 static const QByteArray SERVER_COLOR_PROPERTY = QByteArrayLiteral("serverColor");
 
-bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
+bool NotebookSyncAgent::setNotebookFromInfo(const mKCal::Notebook::List &systemNotebooks,
+                                            const QString &notebookName,
                                             const QString &color,
                                             const QString &userEmail,
                                             bool allowEvents, bool allowTodos, bool allowJournals,
@@ -321,49 +320,38 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                                             const QString &pluginName,
                                             const QString &syncProfile)
 {
-    mNotebook = static_cast<mKCal::Notebook::Ptr>(0);
-    // Look for an already existing notebook in storage for this account and path.
-    const mKCal::Notebook::List notebooks = mStorage->notebooks();
-    for (mKCal::Notebook::Ptr notebook : notebooks) {
-        if (notebook->account() == accountId
-            && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
-                || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
+    // Look for an already existing notebook in storage for this path.
+    for (const mKCal::Notebook::Ptr &notebook : systemNotebooks) {
+        if (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
+            || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath))) {
             qCDebug(lcCalDav) << "found notebook:" << notebook->uid() << "for remote calendar:" << mRemoteCalendarPath;
-            mNotebook = notebook;
-            if (!color.isEmpty()
-                && notebook->customProperty(SERVER_COLOR_PROPERTY) != color) {
-                if (!notebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
-                    // Override user-selected notebook color only on each server change
-                    // and not if there was no server color saved.
-                    mNotebook->setColor(color);
-                }
-                mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
-            }
-            mNotebook->setName(notebookName);
-            mNotebook->setSyncProfile(syncProfile);
-            mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-            mNotebook->setPluginName(pluginName);
-            mNotebook->setEventsAllowed(allowEvents);
-            mNotebook->setTodosAllowed(allowTodos);
-            mNotebook->setJournalsAllowed(allowJournals);
-            return true;
+            mCalendar->setId(notebook->uid());
+            break;
         }
     }
-    qCDebug(lcCalDav) << "no notebook exists for" << mRemoteCalendarPath;
-    // or create a new one
-    mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookName, QString()));
-    mNotebook->setAccount(accountId);
-    mNotebook->setPluginName(pluginName);
-    mNotebook->setSyncProfile(syncProfile);
-    mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
-    mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-    if (!color.isEmpty()) {
-        mNotebook->setColor(color);
-        mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
+    if (!mStorage->open()) {
+        return false;
     }
-    mNotebook->setEventsAllowed(allowEvents);
-    mNotebook->setTodosAllowed(allowTodos);
-    mNotebook->setJournalsAllowed(allowJournals);
+    mKCal::Notebook::Ptr notebook = mStorage->notebook();
+    notebook->setName(notebookName);
+    notebook->setIsReadOnly(mReadOnlyFlag);
+    notebook->setAccount(accountId);
+    notebook->setPluginName(pluginName);
+    notebook->setSyncProfile(syncProfile);
+    notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
+    notebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
+    if (!color.isEmpty()
+        && notebook->customProperty(SERVER_COLOR_PROPERTY) != color) {
+        if (!notebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
+            // Override user-selected notebook color only on each server change
+            // and not if there was no server color saved.
+            notebook->setColor(color);
+        }
+        notebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
+    }
+    notebook->setEventsAllowed(allowEvents);
+    notebook->setTodosAllowed(allowTodos);
+    notebook->setJournalsAllowed(allowJournals);
     return true;
 }
 
@@ -373,7 +361,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    if (!mNotebook) {
+    if (!mStorage->notebook()) {
         qCDebug(lcCalDav) << "no notebook to sync.";
         return;
     }
@@ -386,7 +374,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
     mToDateTime = toDateTime;
     mEnableUpsync = withUpsync;
     mEnableDownsync = withDownsync;
-    if (mNotebook->syncDate().isNull()) {
+    if (mStorage->notebook()->syncDate().isNull()) {
 /*
     Slow sync mode:
 
@@ -395,7 +383,7 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 2) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        qCDebug(lcCalDav) << "Start slow sync for notebook:" << mNotebook->name() << "for account" << mNotebook->account()
+        qCDebug(lcCalDav) << "Start slow sync for notebook:" << mCalendar->name()
                   << "between" << fromDateTime << "to" << toDateTime;
         mSyncMode = SlowSync;
 
@@ -415,9 +403,9 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 5) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        qCDebug(lcCalDav) << "Start quick sync for notebook:" << mNotebook->uid()
+        qCDebug(lcCalDav) << "Start quick sync for notebook:" << mCalendar->name()
                   << "between" << fromDateTime << "to" << toDateTime
-                  << ", sync changes since" << mNotebook->syncDate();
+                  << ", sync changes since" << mStorage->notebook()->syncDate();
         mSyncMode = QuickSync;
 
         fetchRemoteChanges();
@@ -547,7 +535,7 @@ void NotebookSyncAgent::processETags(const QString &uri)
         // so we can have local calendars which mirror remotely-removed calendars.
         // In this situation, we need to delete the local calendar.
         mNotebookNeedsDeletion = true;
-        qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, marking for deletion locally:" << mNotebook->name();
+        qCDebug(lcCalDav) << "calendar" << uri << "was deleted remotely, marking for deletion locally:" << mCalendar->name();
     } else {
         setFatal(uri, report->errorData());
         return;
@@ -565,7 +553,7 @@ void NotebookSyncAgent::sendLocalChanges()
     if (!mLocalAdditions.count() && !mLocalModifications.count() && !mLocalDeletions.count()) {
         // no local changes to upsync.
         // we're finished syncing.
-        qCDebug(lcCalDav) << "no local changes to upsync - finished with notebook" << mNotebook->name() << mRemoteCalendarPath;
+        qCDebug(lcCalDav) << "no local changes to upsync - finished with notebook" << mCalendar->name() << mRemoteCalendarPath;
         return;
     } else if (!mEnableUpsync) {
         qCDebug(lcCalDav) << "Not upsyncing local changes, upsync disable in profile.";
@@ -718,7 +706,7 @@ void NotebookSyncAgent::nonReportRequestFinished(const QString &uri)
     requestFinished(request);
 }
 
-static KCalendarCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const KCalendarCore::Incidence::List &incidences)
+static KCalendarCore::Incidence::List loadAll(mKCal::CalendarStorage::Ptr storage, KCalendarCore::Calendar::Ptr calendar, const KCalendarCore::Incidence::List &incidences)
 {
     KCalendarCore::Incidence::List out;
     for (int i = 0; i < incidences.size(); i++){
@@ -736,29 +724,8 @@ bool NotebookSyncAgent::applyRemoteChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    if (!mNotebook) {
-        qCDebug(lcCalDav) << "Missing notebook in apply changes.";
-        return false;
-    }
-    // mNotebook may not exist in mStorage, because it is new, or
-    // database has been modified and notebooks been reloaded.
-    mKCal::Notebook::Ptr notebook(mStorage->notebook(mNotebook->uid()));
-    if (mEnableDownsync && mNotebookNeedsDeletion) {
-        // delete the notebook from local database
-        if (notebook && !mStorage->deleteNotebook(notebook)) {
-            qCWarning(lcCalDav) << "Cannot delete notebook" << notebook->name() << "from storage.";
-            mNotebookNeedsDeletion = false;
-        }
-        return mNotebookNeedsDeletion;
-    }
-
-    // If current notebook is not already in storage, we add it.
-    if (!notebook) {
-        if (!mStorage->addNotebook(mNotebook)) {
-            qCDebug(lcCalDav) << "Unable to (re)create notebook" << mNotebook->name() << "for account" << mNotebook->account() << ":" << mRemoteCalendarPath;
-            return false;
-        }
-        notebook = mNotebook;
+    if (isDeleted()) {
+        return true;
     }
 
     bool success = true;
@@ -769,25 +736,13 @@ bool NotebookSyncAgent::applyRemoteChanges()
     if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
         success = false;
     }
-    // Update storage, before possibly changing readOnly flag for this notebook.
-    if (!mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
+    mStorage->notebook()->setSyncDate(mNotebookSyncedDateTime);
+    if (!mStorage->save(mKCal::CalendarStorage::PurgeDeleted)) {
         success = false;
     }
-    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList,
-                                                                   notebook->uid())) {
+    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList)) {
         // Silently ignore failed purge action in database.
         qCWarning(lcCalDav) << "Cannot purge from database the marked as deleted incidences.";
-    }
-
-    notebook->setIsReadOnly(mReadOnlyFlag);
-    notebook->setSyncDate(mNotebookSyncedDateTime);
-    notebook->setName(mNotebook->name());
-    notebook->setColor(mNotebook->color());
-    notebook->setSyncProfile(mNotebook->syncProfile());
-    notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
-    if (!mStorage->updateNotebook(notebook)) {
-        qCWarning(lcCalDav) << "Cannot update notebook" << notebook->name() << "in storage.";
-        success = false;
     }
 
     return success;
@@ -802,11 +757,11 @@ Buteo::TargetResults NotebookSyncAgent::result() const
                 count += it->incidences.count();
             }
         }
-        return Buteo::TargetResults(mNotebook->name().toHtmlEscaped(),
+        return Buteo::TargetResults(mCalendar->name().toHtmlEscaped(),
                                     Buteo::ItemCounts(count, 0, 0),
                                     Buteo::ItemCounts());
     } else {
-        Buteo::TargetResults results(mNotebook->name().toHtmlEscaped());
+        Buteo::TargetResults results(mCalendar->name().toHtmlEscaped());
 
         summarizeResults(&results, LOCAL, Buteo::TargetResults::ITEM_ADDED,
                          mFailingUpdates, mRemoteAdditions);
@@ -892,6 +847,11 @@ const QString& NotebookSyncAgent::path() const
     return mEncodedRemotePath;
 }
 
+mKCal::Notebook::Ptr NotebookSyncAgent::notebook() const
+{
+    return mStorage->notebook();
+}
+
 // ------------------------------ Utility / implementation functions.
 
 // called in the QuickSync codepath after fetching etags for remote resources.
@@ -910,12 +870,12 @@ bool NotebookSyncAgent::calculateDelta(
     // for a notebook, as it implements the SQL query using an inequality on both modifiedAfter
     // and createdBefore; so instead we have to build a datetime which "should" satisfy
     // the inequality for all possible local modifications detectable since the last sync.
-    QDateTime syncDateTime = mNotebook->syncDate().addSecs(1); // deleted after, created before...
+    QDateTime syncDateTime = mStorage->notebook()->syncDate().addSecs(1); // deleted after, created before...
 
     // load all local incidences
-    KCalendarCore::Incidence::List localIncidences;
-    if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
-        qCWarning(lcCalDav) << "Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mNotebook->uid();
+    mCalendar->close();
+    if (!mStorage->load()) {
+        qCWarning(lcCalDav) << "Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath << ":" << mCalendar->id();
         return false;
     }
 
@@ -923,7 +883,7 @@ bool NotebookSyncAgent::calculateDelta(
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions, modifications and remote modifications, deletions.
     QSet<QString> localUris;
-    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
+    for (const KCalendarCore::Incidence::Ptr incidence : mCalendar->incidences()) {
         bool modified = (incidence->created() < syncDateTime && incidence->lastModified() >= syncDateTime);
         QString remoteUri = storedIncidenceHrefUri(incidence);
         if (remoteUri.isEmpty()) {
@@ -1006,7 +966,7 @@ bool NotebookSyncAgent::calculateDelta(
 
     // List all local deletions reported by mkcal.
     KCalendarCore::Incidence::List deleted;
-    if (!mStorage->deletedIncidences(&deleted, QDateTime(), mNotebook->uid())) {
+    if (!mStorage->deletedIncidences(&deleted)) {
         qCWarning(lcCalDav) << "mKCal::ExtendedStorage::deletedIncidences() failed";
         return false;
     }
@@ -1058,6 +1018,9 @@ bool NotebookSyncAgent::calculateDelta(
     qCDebug(lcCalDav) << "Calculated local  A/M/R:" << localAdditions->size() << "/" << localModifications->size() << "/" << localDeletions->size();
     qCDebug(lcCalDav) << "Calculated remote A/M/R:" << (remoteChanges->size() - nRemoteModifications) << "/" << nRemoteModifications << "/" << remoteDeletions->size();
 
+    // Don't need to keep all incidences in memory.
+    mCalendar->close();
+
     return true;
 }
 
@@ -1066,17 +1029,17 @@ static QString nbUid(const QString &notebookId, const QString &uid)
     return QStringLiteral("NBUID:%1:%2").arg(notebookId).arg(uid);
 }
 
-static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::ExtendedStorage::Ptr storage, mKCal::ExtendedCalendar::Ptr calendar, const QString &notebookId, const QString &uid)
+static KCalendarCore::Incidence::Ptr loadIncidence(mKCal::CalendarStorage::Ptr storage, const QString &uid)
 {
-    const QString &nbuid = nbUid(notebookId, uid);
+    const QString &nbuid = nbUid(storage->calendar()->id(), uid);
 
     // Load from storage any matching incidence by uid or modified uid.
     storage->load(uid);
     storage->load(nbuid);
 
-    KCalendarCore::Incidence::Ptr incidence = calendar->incidence(uid);
+    KCalendarCore::Incidence::Ptr incidence = storage->calendar()->incidence(uid);
     if (!incidence) {
-        incidence = calendar->incidence(nbuid);
+        incidence = storage->calendar()->incidence(nbuid);
     }
     return incidence;
 }
@@ -1123,10 +1086,6 @@ bool NotebookSyncAgent::addIncidence(KCalendarCore::Incidence::Ptr incidence)
     }
 
     // Set-up the default notebook when adding new incidences.
-    mCalendar->addNotebook(mNotebook->uid(), true);
-    if (!mCalendar->setDefaultNotebook(mNotebook->uid())) {
-        qCWarning(lcCalDav) << "Cannot set default notebook to " << mNotebook->uid();
-    }
     return mCalendar->addIncidence(incidence);
 }
 
@@ -1212,8 +1171,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
         }
 
         qCDebug(lcCalDav) << "Saving the added/updated base incidence before saving persistent exceptions:" << uid;
-        KCalendarCore::Incidence::Ptr localBaseIncidence =
-            loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
+        KCalendarCore::Incidence::Ptr localBaseIncidence = loadIncidence(mStorage, uid);
         if (localBaseIncidence) {
             if (parentIndex >= 0) {
                 resource.incidences[parentIndex]->setUid(localBaseIncidence->uid());
@@ -1227,9 +1185,9 @@ bool NotebookSyncAgent::updateIncidences(const QList<Reader::CalendarResource> &
             } else {
                 localBaseIncidence = resource.incidences[parentIndex];
             }
-            localBaseIncidence->setUid(nbUid(mNotebook->uid(), uid));
+            localBaseIncidence->setUid(nbUid(mCalendar->id(), uid));
             if (addIncidence(localBaseIncidence)) {
-                localBaseIncidence = loadIncidence(mStorage, mCalendar, mNotebook->uid(), uid);
+                localBaseIncidence = loadIncidence(mStorage, uid);
             } else {
                 localBaseIncidence = KCalendarCore::Incidence::Ptr();
             }
