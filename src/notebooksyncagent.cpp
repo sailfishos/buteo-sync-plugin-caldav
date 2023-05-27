@@ -69,7 +69,12 @@ namespace {
     }
     QString createIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &remoteCalendarPath)
     {
-        return remoteCalendarPath + incidence->uid() + ".ics";
+        if (incidence->uid().startsWith(QString::fromLatin1("NBUID:"))) {
+            const QString uid = incidence->uid();
+            return remoteCalendarPath + uid.mid(uid.indexOf(':', 6)+1) + ".ics"; // remove NBUID:NotebookUid:
+        } else {
+            return remoteCalendarPath + incidence->uid() + ".ics";
+        }
     }
     void setIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &hrefUri)
     {
