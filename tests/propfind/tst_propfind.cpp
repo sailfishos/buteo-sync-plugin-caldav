@@ -252,6 +252,27 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar 1"),
                     QString::fromLatin1("#FFFF00"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
+
+    PropFind::CalendarInfo todos(QString::fromLatin1("/calendars/0/"),
+                                 QString::fromLatin1("Calendar 0"),
+                                 QString::fromLatin1("#FF0000"),
+                                 QString::fromLatin1("/principals/users/username%40server.tld/"));
+    todos.allowEvents = false;
+    todos.allowTodos = true;
+    todos.allowJournals = false;
+    QTest::newRow("one valid task manager")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege><D:privilege><D:write /></D:privilege></D:current-user-privilege-set><c:supported-calendar-component-set><c:comp name=\"VTODO\" /></c:supported-calendar-component-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
+        << true
+        << (QList<PropFind::CalendarInfo>() << todos);
+
+    QTest::newRow("missing component set")
+        << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><c:supported-calendar-component-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
+        << true
+        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+                QString::fromLatin1("/calendars/0/"),
+                    QString::fromLatin1("Calendar"),
+                    QString::fromLatin1("#FF0000"),
+                    QString::fromLatin1("/principals/users/username%40server.tld/")});
 }
 
 void tst_Propfind::parseCalendarResponse()

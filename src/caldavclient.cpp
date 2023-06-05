@@ -689,6 +689,9 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
                                         email,
+                                        calendarInfo.allowEvents,
+                                        calendarInfo.allowTodos,
+                                        calendarInfo.allowJournals,
                                         QString::number(mAccountId),
                                         getPluginName(),
                                         getProfileName())) {

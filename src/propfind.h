@@ -39,9 +39,12 @@ public:
         QString displayName;
         QString color;
         QString userPrincipal;
-        bool readOnly;
+        bool readOnly = false;
+        bool allowEvents = true;
+        bool allowTodos = true;
+        bool allowJournals = true;
 
-        CalendarInfo() : readOnly(false) {};
+        CalendarInfo() {};
         CalendarInfo(const QString &path, const QString &name, const QString &color,
                      const QString &principal = QString(), bool readOnly = false)
             : remotePath(path), displayName(name), color(color)
@@ -51,7 +54,11 @@ public:
             return (remotePath == other.remotePath
                     && displayName == other.displayName
                     && color == other.color
-                    && userPrincipal == other.userPrincipal);
+                    && userPrincipal == other.userPrincipal
+                    && readOnly == other.readOnly
+                    && allowEvents == other.allowEvents
+                    && allowTodos == other.allowTodos
+                    && allowJournals == other.allowJournals);
         }
     };
 
