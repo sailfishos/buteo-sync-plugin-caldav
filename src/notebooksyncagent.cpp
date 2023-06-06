@@ -316,6 +316,7 @@ static const QByteArray SERVER_COLOR_PROPERTY = QByteArrayLiteral("serverColor")
 bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
                                             const QString &color,
                                             const QString &userEmail,
+                                            bool allowEvents, bool allowTodos, bool allowJournals,
                                             const QString &accountId,
                                             const QString &pluginName,
                                             const QString &syncProfile)
@@ -342,6 +343,9 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
             mNotebook->setSyncProfile(syncProfile);
             mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
             mNotebook->setPluginName(pluginName);
+            mNotebook->setEventsAllowed(allowEvents);
+            mNotebook->setTodosAllowed(allowTodos);
+            mNotebook->setJournalsAllowed(allowJournals);
             return true;
         }
     }
@@ -357,6 +361,9 @@ bool NotebookSyncAgent::setNotebookFromInfo(const QString &notebookName,
         mNotebook->setColor(color);
         mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, color);
     }
+    mNotebook->setEventsAllowed(allowEvents);
+    mNotebook->setTodosAllowed(allowTodos);
+    mNotebook->setJournalsAllowed(allowJournals);
     return true;
 }
 

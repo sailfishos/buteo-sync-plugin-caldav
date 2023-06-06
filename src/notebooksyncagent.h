@@ -58,6 +58,7 @@ public:
     bool setNotebookFromInfo(const QString &notebookName,
                              const QString &color,
                              const QString &userEmail,
+                             bool allowEvents, bool allowTodos, bool allowJournals,
                              const QString &accountId,
                              const QString &pluginName,
                              const QString &syncProfile);

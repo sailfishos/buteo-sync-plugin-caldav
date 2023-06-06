@@ -75,7 +75,37 @@ static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
     return false;
 }
 
-static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal, bool *readOnly)
+static bool readComponentSet(QXmlStreamReader *reader,
+                             bool *allowEvents, bool *allowTodos, bool *allowJournals)
+{
+    /* e.g.:
+         <C:supported-calendar-component-set>
+             <C:comp name="VEVENT" />
+         </C:supported-calendar-component-set>
+    */
+    *allowEvents = false;
+    *allowTodos = false;
+    *allowJournals = false;
+    for (; !reader->atEnd(); reader->readNext()) {
+        if (reader->name() == "comp") {
+            const QStringRef component(reader->attributes().value("name"));
+            if (component == QString::fromLatin1("VEVENT"))
+                *allowEvents = true;
+            if (component == QString::fromLatin1("VTODO"))
+                *allowTodos = true;
+            if (component == QString::fromLatin1("VJOURNAL"))
+                *allowJournals = true;
+        } else if (reader->name() == "supported-calendar-component-set"
+                   && reader->isEndElement()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
+                             QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                             bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
         <D:prop>
@@ -89,6 +119,9 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
     QString currentUserPrincipal;
     bool readOnlyStatus = false;
     *isCalendar = false;
+    *allowEvents = true;
+    *allowTodos = true;
+    *allowJournals = true;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
             displayName = reader->readElementText();
@@ -114,6 +147,10 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
             if (!readPrivilegeSet(reader, &readOnlyStatus)) {
                 return false;
             }
+        } else if (reader->name() == "supported-calendar-component-set" && reader->isStartElement()) {
+            if (!readComponentSet(reader, allowEvents, allowTodos, allowJournals)) {
+                return false;
+            }
         } else if (reader->name() == "prop" && reader->isEndElement()) {
             if (*isCalendar) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
@@ -127,7 +164,9 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar, QString
     return false;
 }
 
-static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QString *label, QString *color, QString *userPrincipal, bool *readOnly)
+static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
+                                 QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                                 bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
         <D:propstat>
@@ -141,7 +180,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar, QSt
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly)) {
+            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly, allowEvents, allowTodos, allowJournals)) {
                 return false;
             }
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
@@ -168,6 +207,9 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
                         <D:privilege><D:bind /></D:privilege>
                         <D:privilege><D:unbind /></D:privilege>
                     </D:current-user-privilege-set>
+                    <CAL:supported-calendar-component-set>
+                        <CAL:comp name="VEVENT" />
+                    </CAL:supported-calendar-component-set>
                 </D:prop>
                 <status xmlns=\"DAV:\">HTTP/1.1 200 OK</status>
             </D:propstat>
@@ -192,19 +234,25 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
             bool propStatIsCalendar = false;
-            PropFind::CalendarInfo tempCalendarInfo;
+            QString displayname, color, userPrincipal;
+            bool readOnly = false;
+            bool allowEvents = true, allowTodos = true, allowJournals = true;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
-                                      &tempCalendarInfo.displayName,
-                                      &tempCalendarInfo.color,
-                                      &tempCalendarInfo.userPrincipal,
-                                      &tempCalendarInfo.readOnly)) {
+                                      &displayname,
+                                      &color,
+                                      &userPrincipal,
+                                      &readOnly,
+                                      &allowEvents, &allowTodos, &allowJournals)) {
                 return false;
             } else if (propStatIsCalendar) {
                 responseIsCalendar = true;
-                calendarInfo.displayName = tempCalendarInfo.displayName;
-                calendarInfo.color = tempCalendarInfo.color;
-                calendarInfo.userPrincipal = tempCalendarInfo.userPrincipal.trimmed();
-                calendarInfo.readOnly = tempCalendarInfo.readOnly;
+                calendarInfo.displayName = displayname;
+                calendarInfo.color = color;
+                calendarInfo.userPrincipal = userPrincipal.trimmed();
+                calendarInfo.readOnly = readOnly;
+                calendarInfo.allowEvents = allowEvents;
+                calendarInfo.allowTodos = allowTodos;
+                calendarInfo.allowJournals = allowJournals;
             }
             hasPropStat = true;
         }
@@ -375,13 +423,14 @@ PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *
 
 void PropFind::listCalendars(const QString &calendarsPath)
 {
-    QByteArray requestData("<d:propfind xmlns:d=\"DAV:\" xmlns:a=\"http://apple.com/ns/ical/\">"   \
+    QByteArray requestData("<d:propfind xmlns:d=\"DAV:\" xmlns:a=\"http://apple.com/ns/ical/\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"   \
                            " <d:prop>"                       \
                            "  <d:resourcetype />"            \
                            "  <d:current-user-principal />"  \
                            "  <d:current-user-privilege-set />"  \
                            "  <d:displayname />"             \
                            "  <a:calendar-color />"         \
+                           "  <c:supported-calendar-component-set />"   \
                            " </d:prop>"                      \
                            "</d:propfind>");
     mCalendars.clear();
