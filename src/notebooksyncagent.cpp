@@ -73,7 +73,11 @@ namespace {
             const QString uid = incidence->uid();
             return remoteCalendarPath + uid.mid(uid.indexOf(':', 6)+1) + ".ics"; // remove NBUID:NotebookUid:
         } else {
-            return remoteCalendarPath + incidence->uid() + ".ics";
+            // In case UID is coming from an importation it can be
+            // whatever. A proper sanitation woud be to use QUrl::toPercentEncoding()
+            // but the percent encoded '/' character is creating issue with
+            // some server in multiget requests.
+            return remoteCalendarPath + incidence->uid().replace('/', '-') + ".ics";
         }
     }
     void setIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &hrefUri)
