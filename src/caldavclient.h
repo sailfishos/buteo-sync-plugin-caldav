@@ -34,8 +34,6 @@
 #include <QSet>
 #include <QScopedPointer>
 
-#include <extendedstorage.h>
-
 #include <ClientPlugin.h>
 #include <SyncResults.h>
 #include <SyncCommonDefs.h>
@@ -147,8 +145,7 @@ private:
     void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
     void clearAgents();
-    bool deleteNotebook(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage, mKCal::Notebook::Ptr notebook);
-    void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
+    void deleteNotebooksForAccount(int accountId);
     bool cleanSyncRequired(int accountId);
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
     Accounts::Account* getAccountForCalendars(Accounts::Service *service) const;
@@ -168,8 +165,6 @@ private:
     QNetworkAccessManager*      mNAManager;
     Accounts::Manager*          mManager;
     AuthHandler*                mAuth;
-    mKCal::ExtendedCalendar::Ptr mCalendar;
-    mKCal::ExtendedStorage::Ptr mStorage;
     Buteo::SyncResults          mResults;
     Sync::SyncStatus            mSyncStatus;
     Buteo::SyncProfile::SyncDirection mSyncDirection;

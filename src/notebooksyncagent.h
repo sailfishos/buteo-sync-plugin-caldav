@@ -25,8 +25,8 @@
 
 #include "reader.h"
 
-#include <extendedcalendar.h>
-#include <extendedstorage.h>
+#include <notebook.h>
+#include <calendarstorage.h>
 
 #include <QDateTime>
 
@@ -46,16 +46,15 @@ public:
         QuickSync   // updates only
     };
 
-    explicit NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
-                               mKCal::ExtendedStorage::Ptr storage,
-                               QNetworkAccessManager *networkAccessManager,
+    explicit NotebookSyncAgent(QNetworkAccessManager *networkAccessManager,
                                Settings *settings,
                                const QString &encodedRemotePath,
                                bool readOnlyFlag = false,
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
-    bool setNotebookFromInfo(const QString &notebookName,
+    bool setNotebookFromInfo(const mKCal::Notebook::List &systemNotebooks,
+                             const QString &notebookName,
                              const QString &color,
                              const QString &userEmail,
                              bool allowEvents, bool allowTodos, bool allowJournals,
@@ -79,6 +78,7 @@ public:
     bool hasUploadErrors() const;
 
     const QString& path() const;
+    mKCal::Notebook::Ptr notebook() const;
 
 signals:
     void finished();
@@ -116,9 +116,8 @@ private:
     QNetworkAccessManager* mNetworkManager;
     Settings *mSettings;
     QSet<Request *> mRequests;
-    mKCal::ExtendedCalendar::Ptr mCalendar;
-    mKCal::ExtendedStorage::Ptr mStorage;
-    mKCal::Notebook::Ptr mNotebook;
+    mKCal::CalendarStorage::Ptr mStorage;
+    KCalendarCore::MemoryCalendar::Ptr mCalendar;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
     QDateTime mNotebookSyncedDateTime;
