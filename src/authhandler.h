@@ -75,7 +75,6 @@ private:
     QString mToken;
     QString mUsername;
     QString mPassword;
-    QString mMethod, mMechanism;
     QString m_accountService;
 };
 

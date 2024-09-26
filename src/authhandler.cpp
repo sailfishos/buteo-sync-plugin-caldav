@@ -51,10 +51,6 @@ const QString AUTH_PATH             ("AuthPath");
 const QString TOKEN_PATH            ("TokenPath");
 const QString REDIRECT_URI          ("RedirectUri");
 const QString HOST                  ("Host");
-const QString SLASH                 ("/");
-const QString AUTH                  ("auth");
-const QString AUTH_METHOD           ("method");
-const QString MECHANISM             ("mechanism");
 
 AuthHandler::AuthHandler(Accounts::Manager *manager, const quint32 accountId, const QString &accountService, QObject *parent)
     : QObject(parent)
@@ -73,39 +69,31 @@ bool AuthHandler::init()
         return false;
     }
 
-    QVariant val = QVariant::String;
-
     Accounts::Service srv = mAccountManager->service(m_accountService);
     if (!srv.isValid()) {
         qCWarning(lcCalDav) << "Cannot select service:" << m_accountService;
         return false;
     }
-    mAccount->selectService(srv);
-    if (!mAccount->enabled()) {
+    Accounts::AccountService accSrv(mAccount, srv);
+    if (!accSrv.isEnabled()) {
         qCWarning(lcCalDav) << "Service:" << m_accountService << "is not enabled for account:" << mAccount->id();
         return false;
     }
-
-    mAccount->value(AUTH + SLASH + AUTH_METHOD, val);
-    mMethod = val.toString();
-    mAccount->value(AUTH + SLASH + MECHANISM, val);
-    mMechanism = val.toString();
-    qint32 cId = mAccount->credentialsId();
-    mAccount->selectService(Accounts::Service());
-
-    if (cId == 0) {
+    const Accounts::AuthData &auth = accSrv.authData();
+    if (auth.credentialsId() == 0) {
         qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:" << m_accountService;
         return false;
     }
-    mIdentity = Identity::existingIdentity(cId);
+
+    mIdentity = Identity::existingIdentity(auth.credentialsId(), this);
     if (!mIdentity) {
-        qCWarning(lcCalDav) << "Cannot get existing identity for credentials:" << cId;
+        qCWarning(lcCalDav) << "Cannot get existing identity for credentials:" << auth.credentialsId();
         return false;
     }
 
-    mSession = mIdentity->createSession(mMethod.toLatin1());
+    mSession = mIdentity->createSession(auth.method().toLatin1());
     if (!mSession) {
-        qCDebug(lcCalDav) << "Signon session could not be created with method" << mMethod;
+        qCDebug(lcCalDav) << "Signon session could not be created with method" << auth.method();
         return false;
     }
 
@@ -122,16 +110,10 @@ void AuthHandler::sessionResponse(const SessionData &sessionData)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    if (mMethod.compare("password", Qt::CaseInsensitive) == 0) {
-        const QStringList propertyList = sessionData.propertyNames();
-        for (const QString &propertyName : propertyList) {
-            if (propertyName.compare("username", Qt::CaseInsensitive) == 0) {
-                mUsername = sessionData.getProperty( propertyName ).toString();
-            } else if (propertyName.compare("secret", Qt::CaseInsensitive) == 0) {
-                mPassword = sessionData.getProperty( propertyName ).toString();
-            }
-        }
-    } else if (mMethod.compare("oauth2", Qt::CaseInsensitive) == 0) {
+    if (mSession->name().compare("password", Qt::CaseInsensitive) == 0) {
+        mUsername = sessionData.UserName();
+        mPassword = sessionData.Secret();
+    } else if (mSession->name().compare("oauth2", Qt::CaseInsensitive) == 0) {
         OAuth2PluginNS::OAuth2PluginTokenData response = sessionData.data<OAuth2PluginNS::OAuth2PluginTokenData>();
         mToken = response.AccessToken();
     } else {
@@ -162,58 +144,29 @@ void AuthHandler::authenticate()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    QByteArray providerName = mAccount->providerName().toLatin1();
-
     Accounts::Service srv = mAccountManager->service(m_accountService);
-    mAccount->selectService(srv);
+    Accounts::AccountService accSrv(mAccount, srv);
+    const Accounts::AuthData &auth = accSrv.authData();
 
-    QVariant val = QVariant::String;
-    mAccount->value(AUTH + SLASH + AUTH_METHOD, val);
-    QString method = val.toString();
-    mAccount->selectService(Accounts::Service());
-
-    if (mMethod.compare("password", Qt::CaseInsensitive) == 0) {
-        Accounts::AccountService as(mAccount, srv);
-        Accounts::AuthData authData(as.authData());
-        QVariantMap parameters = authData.parameters();
-        parameters.insert("UiPolicy", SignOn::NoUserInteractionPolicy);
-
-        SignOn::SessionData data(parameters);
-        mSession->process(data, mMechanism);
-    } else if (mMethod.compare("oauth2", Qt::CaseInsensitive) == 0) {
-        mAccount->selectService(srv);
-
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + HOST, val);
-        QString host = val.toString();
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + AUTH_PATH, val);
-        QString auth_url = val.toString();
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + TOKEN_PATH, val);
-        QString token_url = val.toString();
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + REDIRECT_URI, val);
-        QString redirect_uri = val.toString();
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + RESPONSE_TYPE, val);
-        QString response_type = val.toString();
-
-        QStringList scope;
-        QVariant val1 = QVariant::StringList;
-        mAccount->value(AUTH + SLASH + method + SLASH + mMechanism + SLASH + SCOPE, val1);
-        scope.append(val1.toStringList());
-
-        QString clientId = storedKeyValue(providerName.constData(), "caldav", "client_id");
-        QString clientSecret = storedKeyValue(providerName.constData(), "caldav", "client_secret");
+    if (mSession->name().compare("password", Qt::CaseInsensitive) == 0) {
+        SignOn::SessionData data(auth.parameters());
+        data.setUiPolicy(SignOn::NoUserInteractionPolicy);
+        mSession->process(data, auth.mechanism());
+    } else if (mSession->name().compare("oauth2", Qt::CaseInsensitive) == 0) {
+        const QByteArray providerName = mAccount->providerName().toLatin1();
+        const QString clientId = storedKeyValue(providerName.constData(), "caldav", "client_id");
+        const QString clientSecret = storedKeyValue(providerName.constData(), "caldav", "client_secret");
         OAuth2PluginNS::OAuth2PluginData data;
         data.setClientId(clientId);
         data.setClientSecret(clientSecret);
-        data.setHost(host);
-        data.setAuthPath(auth_url);
-        data.setTokenPath(token_url);
-        data.setRedirectUri(redirect_uri);
-        data.setResponseType(QStringList() << response_type);
-        data.setScope(scope);
+        data.setHost(auth.parameters().value(HOST).toString());
+        data.setAuthPath(auth.parameters().value(AUTH_PATH).toString());
+        data.setTokenPath(auth.parameters().value(TOKEN_PATH).toString());
+        data.setRedirectUri(auth.parameters().value(REDIRECT_URI).toString());
+        data.setResponseType(QStringList() << auth.parameters().value(RESPONSE_TYPE).toString());
+        data.setScope(auth.parameters().value(SCOPE).toStringList());
 
-        mAccount->selectService(Accounts::Service());
-
-        mSession->process(data, mMechanism);
+        mSession->process(data, auth.mechanism());
     } else {
         qCCritical(lcCalDav) << "Unsupported Method requested!";
         emit failed();
