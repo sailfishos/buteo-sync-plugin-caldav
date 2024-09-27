@@ -42,6 +42,7 @@ public slots:
 
 private slots:
     void initConfig();
+    void initConfigWithSettingsInAccount();
     void addInitCalendars();
     void loadAccountCalendars();
     void mergeAccountCalendars();
@@ -65,6 +66,7 @@ tst_CalDavClient::~tst_CalDavClient()
 }
 
 static const QString SERVER_ADDRESS = QLatin1String("https://example.org");
+static const QString WEBDAV_PATH = QLatin1String("/dav/calendar");
 void tst_CalDavClient::initTestCase()
 {
     // Create a fake account
@@ -112,6 +114,42 @@ void tst_CalDavClient::initConfig()
     QCOMPARE(client.mService->account()->id(), mAccount->id());
     QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
     QVERIFY(client.mSettings.ignoreSSLErrors());
+}
+
+void tst_CalDavClient::initConfigWithSettingsInAccount()
+{
+    Accounts::Account* account;
+    Buteo::SyncProfile profile(QLatin1String("test_profile_at_root"));
+
+    // Create a fake account with settings defined in the account.
+    QVERIFY(mManager->provider(QLatin1String("onlinesync")).isValid());
+    account = mManager->createAccount(QLatin1String("onlinesync"));
+    QVERIFY(account);
+    account->setEnabled(true);
+    account->setValue("server_address", SERVER_ADDRESS);
+    account->setValue("webdav_path", WEBDAV_PATH);
+    account->setValue("ignore_ssl_errors", true);
+    QVERIFY(account->supportsService(QLatin1String("caldav")));
+    Accounts::Service srv = account->services(QLatin1String("caldav")).first();
+    account->selectService(srv);
+    account->setValue("caldav-sync/profile_id", profile.name());
+    account->setCredentialsId(1);
+    account->setEnabled(true);
+    QVERIFY(account->syncAndBlock());
+    QVERIFY(account->id() > 0);
+    profile.setKey(Buteo::KEY_ACCOUNT_ID, QString::number(account->id()));
+
+    CalDavClient client(QLatin1String("caldav"), profile, nullptr);
+
+    QVERIFY(client.init());
+    QVERIFY(client.mService);
+    QCOMPARE(client.mService->account()->id(), account->id());
+    QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
+    QCOMPARE(client.mSettings.davRootPath(), WEBDAV_PATH);
+    QVERIFY(client.mSettings.ignoreSSLErrors());
+
+    account->remove();
+    QVERIFY(account->syncAndBlock());
 }
 
 void tst_CalDavClient::addInitCalendars()
