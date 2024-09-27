@@ -33,6 +33,7 @@
 #include <QList>
 #include <QSet>
 #include <QScopedPointer>
+#include <QSharedPointer>
 
 #include <extendedstorage.h>
 
@@ -147,11 +148,9 @@ private:
     void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
     void clearAgents();
-    bool deleteNotebook(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage, mKCal::Notebook::Ptr notebook);
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
-    bool cleanSyncRequired(int accountId);
+    bool cleanSyncRequired();
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
-    Accounts::Account* getAccountForCalendars(Accounts::Service *service) const;
     QList<PropFind::CalendarInfo> loadAccountCalendars() const;
     QList<PropFind::CalendarInfo> mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const;
     void removeAccountCalendars(const QStringList &paths);
@@ -161,12 +160,13 @@ private:
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();
 
-    void setCredentialsNeedUpdate(int accountId);
+    void setCredentialsNeedUpdate();
 
     mutable QScopedPointer<Sailfish::KeyProvider::ProcessMutex> mProcessMutex;
     QList<NotebookSyncAgent *>  mNotebookSyncAgents;
     QNetworkAccessManager*      mNAManager;
     Accounts::Manager*          mManager;
+    QSharedPointer<Accounts::AccountService> mService;
     AuthHandler*                mAuth;
     mKCal::ExtendedCalendar::Ptr mCalendar;
     mKCal::ExtendedStorage::Ptr mStorage;
@@ -175,7 +175,6 @@ private:
     Buteo::SyncProfile::SyncDirection mSyncDirection;
     Buteo::SyncProfile::ConflictResolutionPolicy mConflictResPolicy;
     Settings                    mSettings;
-    int                         mAccountId;
 
     friend class tst_CalDavClient;
 };

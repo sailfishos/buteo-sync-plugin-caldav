@@ -24,6 +24,7 @@
 #include "caldavclient.h"
 
 #include <ProfileEngineDefs.h>
+#include <Accounts/AccountService>
 
 class tst_CalDavClient : public QObject
 {
@@ -107,8 +108,8 @@ void tst_CalDavClient::initConfig()
     CalDavClient client(QLatin1String("caldav"), mProfile, nullptr);
 
     QVERIFY(client.init());
-    QCOMPARE(client.mAccountId, int(mAccount->id()));
-    QCOMPARE(client.mSettings.accountId(), mAccount->id());
+    QVERIFY(client.mService);
+    QCOMPARE(client.mService->account()->id(), mAccount->id());
     QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
     QVERIFY(client.mSettings.ignoreSSLErrors());
 }

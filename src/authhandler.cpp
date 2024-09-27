@@ -52,11 +52,9 @@ const QString TOKEN_PATH            ("TokenPath");
 const QString REDIRECT_URI          ("RedirectUri");
 const QString HOST                  ("Host");
 
-AuthHandler::AuthHandler(Accounts::Manager *manager, const quint32 accountId, const QString &accountService, QObject *parent)
+AuthHandler::AuthHandler(QSharedPointer<Accounts::AccountService> service, QObject *parent)
     : QObject(parent)
-    , mAccountManager(manager)
-    , mAccount(manager->account(accountId))
-    , m_accountService(accountService)
+    , mAccountService(service)
 {
 }
 
@@ -64,24 +62,13 @@ bool AuthHandler::init()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    if (mAccount == NULL) {
-        qCDebug(lcCalDav) << "Invalid account";
+    if (mAccountService == NULL) {
+        qCDebug(lcCalDav) << "Invalid account service";
         return false;
     }
-
-    Accounts::Service srv = mAccountManager->service(m_accountService);
-    if (!srv.isValid()) {
-        qCWarning(lcCalDav) << "Cannot select service:" << m_accountService;
-        return false;
-    }
-    Accounts::AccountService accSrv(mAccount, srv);
-    if (!accSrv.isEnabled()) {
-        qCWarning(lcCalDav) << "Service:" << m_accountService << "is not enabled for account:" << mAccount->id();
-        return false;
-    }
-    const Accounts::AuthData &auth = accSrv.authData();
+    const Accounts::AuthData &auth = mAccountService->authData();
     if (auth.credentialsId() == 0) {
-        qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:" << m_accountService;
+        qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:" << mAccountService->service().name();
         return false;
     }
 
@@ -144,16 +131,14 @@ void AuthHandler::authenticate()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    Accounts::Service srv = mAccountManager->service(m_accountService);
-    Accounts::AccountService accSrv(mAccount, srv);
-    const Accounts::AuthData &auth = accSrv.authData();
+    const Accounts::AuthData &auth = mAccountService->authData();
 
     if (mSession->name().compare("password", Qt::CaseInsensitive) == 0) {
         SignOn::SessionData data(auth.parameters());
         data.setUiPolicy(SignOn::NoUserInteractionPolicy);
         mSession->process(data, auth.mechanism());
     } else if (mSession->name().compare("oauth2", Qt::CaseInsensitive) == 0) {
-        const QByteArray providerName = mAccount->providerName().toLatin1();
+        const QByteArray providerName = mAccountService->account()->providerName().toLatin1();
         const QString clientId = storedKeyValue(providerName.constData(), "caldav", "client_id");
         const QString clientSecret = storedKeyValue(providerName.constData(), "caldav", "client_secret");
         OAuth2PluginNS::OAuth2PluginData data;
