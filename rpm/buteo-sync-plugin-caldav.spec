@@ -1,6 +1,6 @@
 Name:       buteo-sync-plugin-caldav
 Summary:    Syncs calendar data from CalDAV services
-Version:    0.3.7
+Version:    0.3.13
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/buteo-sync-plugin-caldav/
@@ -8,6 +8,7 @@ Source0:    %{name}-%{version}.tar.bz2
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(Qt5Network)
+BuildRequires:  pkgconfig(Qt5Test)
 BuildRequires:  pkgconfig(libsignon-qt5)
 BuildRequires:  pkgconfig(libsailfishkeyprovider)
 BuildRequires:  pkgconfig(libmkcal-qt5) >= 0.7.17
@@ -23,14 +24,22 @@ A Buteo plugin which syncs calendar data from CalDAV services
 
 %package tests
 Summary: Unit tests for buteo-sync-plugin-caldav
-BuildRequires: pkgconfig(Qt5Test)
 Requires: blts-tools
 Requires: %{name} = %{version}-%{release}
 %description tests
 This package contains unit tests for the CalDAV Buteo sync plugin.
 
+%prep
+%setup -q -n %{name}-%{version}
+
+%build
+%qmake5
+%make_build
+
+%install
+%qmake5_install
+
 %files
-%defattr(-,root,root,-)
 %license LICENSE
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
@@ -39,7 +48,6 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %{_libdir}/mkcalplugins/libcaldavinvitationplugin.so
 
 %files tests
-%defattr(-,root,root,-)
 /opt/tests/buteo/plugins/caldav/tests.xml
 /opt/tests/buteo/plugins/caldav/tst_reader
 /opt/tests/buteo/plugins/caldav/tst_notebooksyncagent
@@ -68,14 +76,4 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 /opt/tests/buteo/plugins/caldav/data/reader_cdata.xml
 /opt/tests/buteo/plugins/caldav/data/reader_todo_pending.xml
 /opt/tests/buteo/plugins/caldav/data/reader_unexpected_elements.xml
-
-%prep
-%setup -q -n %{name}-%{version}
-
-%build
-%qmake5
-make %{?_smp_mflags}
-
-%install
-%qmake5_install
 
