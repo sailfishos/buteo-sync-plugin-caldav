@@ -39,7 +39,7 @@
 #include <QStandardPaths>
 
 #include <Accounts/Manager>
-#include <Accounts/Account>
+#include <Accounts/AccountService>
 
 #include <PluginCbInterface.h>
 #include "logging.h"
@@ -73,7 +73,6 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     , mAuth(0)
     , mCalendar(0)
     , mStorage(0)
-    , mAccountId(0)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
@@ -144,7 +143,6 @@ bool CalDavClient::cleanUp()
         return false;
     }
 
-    mAccountId = accountId;
     mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
     if (!storage->open()) {
@@ -180,7 +178,7 @@ void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalen
     }
 }
 
-bool CalDavClient::cleanSyncRequired(int accountId)
+bool CalDavClient::cleanSyncRequired()
 {
     static const QByteArray iniFileDir = cleanSyncMarkersFileDir.toUtf8();
     static const QByteArray iniFile = cleanSyncMarkersFile.toUtf8();
@@ -195,14 +193,14 @@ bool CalDavClient::cleanSyncRequired(int accountId)
     char *cleaned_value = SailfishKeyProvider_ini_read(
             iniFile.constData(),
             "General",
-            QStringLiteral("%1-cleaned").arg(accountId).toLatin1());
+            QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1());
     bool alreadyClean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
     free(cleaned_value);
 
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << accountId << "due to clean sync";
-        deleteNotebooksForAccount(accountId, mCalendar, mStorage);
+        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << mService->account()->id() << "due to clean sync";
+        deleteNotebooksForAccount(mService->account()->id(), mCalendar, mStorage);
         // now delete notebooks for non-existent accounts.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
         // a) find out which accounts are associated with each of our notebooks.
@@ -243,13 +241,13 @@ bool CalDavClient::cleanSyncRequired(int accountId)
                 iniFileDir.constData(),
                 iniFile.constData(),
                 "General",
-                QStringLiteral("%1-cleaned").arg(accountId).toLatin1(),
+                QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1(),
                 "true") != 0) {
             qCWarning(lcCalDav) << "Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!";
         }
 
         // finished; return true because this will be a clean sync.
-        qCWarning(lcCalDav) << "Finished pre-sync cleanup with caldav account" << accountId;
+        qCWarning(lcCalDav) << "Finished pre-sync cleanup with caldav account" << mService->account()->id();
         mProcessMutex->unlock();
         return true;
     }
@@ -268,56 +266,19 @@ void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool a
     }
 }
 
-Accounts::Account* CalDavClient::getAccountForCalendars(Accounts::Service *service) const
-{
-    Accounts::Account *account = mManager->account(mAccountId);
-    if (!account) {
-        qCWarning(lcCalDav) << "cannot find account" << mAccountId;
-        return NULL;
-    }
-    if (!account->enabled()) {
-        qCWarning(lcCalDav) << "Account" << mAccountId << "is disabled!";
-        return NULL;
-    }
-    Accounts::Service calendarService;
-    const Accounts::ServiceList caldavServices = account->services("caldav");
-    for (const Accounts::Service &currService : caldavServices) {
-        account->selectService(currService);
-        if (account->value("caldav-sync/profile_id").toString() == getProfileName()) {
-            calendarService = currService;
-            break;
-        }
-    }
-    if (!calendarService.isValid()) {
-        qCWarning(lcCalDav) << "cannot find a service for account" << mAccountId << "with a valid calendar list";
-        return NULL;
-    }
-
-    account->selectService(calendarService);
-    if (!account->enabled()) {
-        qCWarning(lcCalDav) << "Account" << mAccountId << "service:" << service->name() << "is disabled!";
-        return NULL;
-    }
-
-    if (service) {
-        *service = calendarService;
-    }
-    return account;
-}
-
 struct CalendarSettings
 {
 public:
-    CalendarSettings(Accounts::Account *account)
-        : paths(account->value("calendars").toStringList())
-        , displayNames(account->value("calendar_display_names").toStringList())
-        , colors(account->value("calendar_colors").toStringList())
-        , enabled(account->value("enabled_calendars").toStringList())
+    CalendarSettings(const QSharedPointer<Accounts::AccountService> &service)
+        : paths(service->value("calendars").toStringList())
+        , displayNames(service->value("calendar_display_names").toStringList())
+        , colors(service->value("calendar_colors").toStringList())
+        , enabled(service->value("enabled_calendars").toStringList())
     {
         if (enabled.count() > paths.count()
             || paths.count() != displayNames.count()
             || paths.count() != colors.count()) {
-            qCWarning(lcCalDav) << "Bad calendar data for account" << account->id();
+            qCWarning(lcCalDav) << "Bad calendar data for account" << service->account()->id();
             paths.clear();
             displayNames.clear();
             colors.clear();
@@ -325,7 +286,7 @@ public:
         }
     };
     // Constructs a list of CalendarInfo from value stored in settings.
-    QList<PropFind::CalendarInfo> toCalendars()
+    QList<PropFind::CalendarInfo> toCalendars() const
     {
         QList<PropFind::CalendarInfo> allCalendarInfo;
         for (int i = 0; i < paths.count(); i++) {
@@ -334,7 +295,7 @@ public:
         }
         return allCalendarInfo;
     };
-    QList<PropFind::CalendarInfo> enabledCalendars(const QList<PropFind::CalendarInfo> &calendars)
+    QList<PropFind::CalendarInfo> enabledCalendars(const QList<PropFind::CalendarInfo> &calendars) const
     {
         QList<PropFind::CalendarInfo> filteredCalendarInfo;
         for (const PropFind::CalendarInfo &info : calendars) {
@@ -395,26 +356,13 @@ private:
 
 QList<PropFind::CalendarInfo> CalDavClient::loadAccountCalendars() const
 {
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
-        return QList<PropFind::CalendarInfo>();
-    }
-    struct CalendarSettings calendarSettings(account);
-    account->selectService(Accounts::Service());
-
+    const struct CalendarSettings calendarSettings(mService);
     return calendarSettings.enabledCalendars(calendarSettings.toCalendars());
 }
 
 QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const
 {
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
-        return QList<PropFind::CalendarInfo>();
-    }
-    struct CalendarSettings calendarSettings(account);
-    account->selectService(Accounts::Service());
+    struct CalendarSettings calendarSettings(mService);
 
     bool modified = false;
     for (QList<PropFind::CalendarInfo>::ConstIterator it = calendars.constBegin();
@@ -429,7 +377,7 @@ QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<Pr
     }
     if (modified) {
         qCDebug(lcCalDav) << "Store modifications to calendar settings.";
-        calendarSettings.store(account, srv);
+        calendarSettings.store(mService->account(), mService->service());
     }
 
     return calendarSettings.enabledCalendars(calendars);
@@ -437,13 +385,7 @@ QList<PropFind::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<Pr
 
 void CalDavClient::removeAccountCalendars(const QStringList &paths)
 {
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
-        return;
-    }
-    struct CalendarSettings calendarSettings(account);
-    account->selectService(Accounts::Service());
+    struct CalendarSettings calendarSettings(mService);
 
     bool modified = false;
     for (QStringList::ConstIterator it = paths.constBegin();
@@ -454,7 +396,7 @@ void CalDavClient::removeAccountCalendars(const QStringList &paths)
         }
     }
     if (modified) {
-        calendarSettings.store(account, srv);
+        calendarSettings.store(mService->account(), mService->service());
     }
 }
 
@@ -474,31 +416,46 @@ bool CalDavClient::initConfig()
         qCWarning(lcCalDav) << "no account id specified," << Buteo::KEY_ACCOUNT_ID << "not found in profile";
         return false;
     }
-    mAccountId = accountId;
 
-    Accounts::Service srv;
-    Accounts::Account *account = getAccountForCalendars(&srv);
-    if (!account) {
+    if (!mService) {
+        Accounts::Account *account = mManager->account(accountId);
+        if (!account) {
+            qCWarning(lcCalDav) << "cannot find account" << accountId;
+            return false;
+        }
+        if (!account->isEnabled()) {
+            qCWarning(lcCalDav) << "Account" << accountId << "is disabled!";
+            return false;
+        }
+        for (const Accounts::Service &srv : account->enabledServices()) {
+            if (srv.serviceType().toLower() == QStringLiteral("caldav")) {
+                account->selectService(srv);
+                if (account->value("caldav-sync/profile_id").toString() == getProfileName()) {
+                    mService = QSharedPointer<Accounts::AccountService>(new Accounts::AccountService(account, srv));
+                    break;
+                }
+            }
+        }
+    }
+    if (!mService) {
+        qCWarning(lcCalDav) << "cannot find enabled caldav service in account" << accountId;
         return false;
     }
 
-    mSettings.setServerAddress(account->value("server_address").toString());
+    mSettings.setServerAddress(mService->value("server_address").toString());
     if (mSettings.serverAddress().isEmpty()) {
         qCWarning(lcCalDav) << "remote_address not found in service settings";
         return false;
     }
-    mSettings.setDavRootPath(account->value("webdav_path").toString());
-    mSettings.setIgnoreSSLErrors(account->value("ignore_ssl_errors").toBool());
-    account->selectService(Accounts::Service());
+    mSettings.setDavRootPath(mService->value("webdav_path").toString());
+    mSettings.setIgnoreSSLErrors(mService->value("ignore_ssl_errors").toBool());
 
-    mAuth = new AuthHandler(mManager, accountId, srv.name());
+    mAuth = new AuthHandler(mService, this);
     if (!mAuth->init()) {
         return false;
     }
-    connect(mAuth, SIGNAL(success()), this, SLOT(start()));
-    connect(mAuth, SIGNAL(failed()), this, SLOT(authenticationError()));
-
-    mSettings.setAccountId(accountId);
+    connect(mAuth, &AuthHandler::success, this, &CalDavClient::start);
+    connect(mAuth, &AuthHandler::failed, this, &CalDavClient::authenticationError);
 
     mSyncDirection = iProfile.syncDirection();
     mConflictResPolicy = iProfile.conflictResolutionPolicy();
@@ -535,7 +492,7 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
         mResults.setMinorCode(minorErrorCode);
 
         if (minorErrorCode == Buteo::SyncResults::AUTHENTICATION_FAILURE) {
-            setCredentialsNeedUpdate(mSettings.accountId());
+            setCredentialsNeedUpdate();
         }
 
         emit error(getProfileName(), message, minorErrorCode);
@@ -619,14 +576,7 @@ void CalDavClient::listCalendars(const QString &home)
     QString remoteHome(home);
     if (remoteHome.isEmpty()) {
         qCWarning(lcCalDav) << "Cannot find the calendar root for this user, guess it from account.";
-        Accounts::Service srv;
-        Accounts::Account *account = getAccountForCalendars(&srv);
-        if (!account) {
-            syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                         QLatin1String("unable to find account for calendar detection"));
-            return;
-        }
-        struct CalendarSettings calendarSettings(account);
+        const struct CalendarSettings calendarSettings(mService);
         QList<PropFind::CalendarInfo> allCalendarInfo = calendarSettings.toCalendars();
         if (allCalendarInfo.isEmpty()) {
             syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
@@ -669,7 +619,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
     }
     mCalendar->setUpdateLastModifiedOnChange(false);
 
-    cleanSyncRequired(mAccountId);
+    cleanSyncRequired();
 
     QDateTime fromDateTime;
     QDateTime toDateTime;
@@ -692,7 +642,7 @@ void CalDavClient::syncCalendars(const QList<PropFind::CalendarInfo> &allCalenda
                                         calendarInfo.allowEvents,
                                         calendarInfo.allowTodos,
                                         calendarInfo.allowJournals,
-                                        QString::number(mAccountId),
+                                        QString::number(mService->account()->id()),
                                         getPluginName(),
                                         getProfileName())) {
             syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
@@ -784,20 +734,11 @@ void CalDavClient::notebookSyncFinished()
     }
 }
 
-void CalDavClient::setCredentialsNeedUpdate(int accountId)
+void CalDavClient::setCredentialsNeedUpdate()
 {
-    Accounts::Account *account = mManager->account(accountId);
-    if (account) {
-        const Accounts::ServiceList services = account->services();
-        for (const Accounts::Service &currService : services) {
-            account->selectService(currService);
-            if (!account->value("calendars").toStringList().isEmpty()) {
-                account->setValue(QStringLiteral("CredentialsNeedUpdate"), QVariant::fromValue<bool>(true));
-                account->setValue(QStringLiteral("CredentialsNeedUpdateFrom"), QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
-                account->selectService(Accounts::Service());
-                account->syncAndBlock();
-                break;
-            }
-        }
+    if (mService) {
+        mService->setValue(QStringLiteral("CredentialsNeedUpdate"), QVariant::fromValue<bool>(true));
+        mService->setValue(QStringLiteral("CredentialsNeedUpdateFrom"), QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
+        mService->account()->syncAndBlock();
     }
 }

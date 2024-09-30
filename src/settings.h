@@ -44,9 +44,6 @@ public:
     void setIgnoreSSLErrors(bool ignore);
     bool ignoreSSLErrors() const;
 
-    void setAccountId(quint32 accountId);
-    quint32 accountId() const;
-
     void setServerAddress(const QString &serverAddress);
     QString serverAddress() const;
 
@@ -67,7 +64,6 @@ private:
     QString mOAuthToken;
     QString mUsername;
     QString mPassword;
-    quint32 mAccountId;
     bool mIgnoreSSLErrors;
 };
 

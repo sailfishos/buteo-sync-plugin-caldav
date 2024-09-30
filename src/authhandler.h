@@ -25,6 +25,7 @@
 #define AUTHHANDLER_H
 
 #include <QObject>
+#include <QSharedPointer>
 
 #include <SyncCommonDefs.h>
 #include <SyncProfile.h>
@@ -38,7 +39,7 @@ class AuthHandler : public QObject
 {
     Q_OBJECT
 public:
-    explicit AuthHandler(Accounts::Manager *manager, const quint32 accountId, const QString &accountService, QObject *parent = 0);
+    explicit AuthHandler(QSharedPointer<Accounts::AccountService> service, QObject *parent = 0);
 
     void authenticate();
     const QString token();
@@ -56,11 +57,6 @@ private:
     void deviceAuth();
     void processDeviceCode(const QByteArray &deviceCodeJSON);
 
-    QString	iDeviceCode;
-    QString iUserCode;
-    QString iVerificationURL;
-    QString iToken;
-
     QString storedKeyValue(const char *provider, const char *service, const char *keyName);
 
 private Q_SLOTS:
@@ -70,13 +66,10 @@ private Q_SLOTS:
 private:
     SignOn::Identity    *mIdentity;
     SignOn::AuthSession *mSession;
-    Accounts::Manager   *mAccountManager;
-    Accounts::Account   *mAccount;
+    QSharedPointer<Accounts::AccountService> mAccountService;
     QString mToken;
     QString mUsername;
     QString mPassword;
-    QString mMethod, mMechanism;
-    QString m_accountService;
 };
 
 #endif // AUTHHANDLER_H
