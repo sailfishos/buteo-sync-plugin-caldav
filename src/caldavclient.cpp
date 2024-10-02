@@ -442,13 +442,17 @@ bool CalDavClient::initConfig()
         return false;
     }
 
-    mSettings.setServerAddress(mService->value("server_address").toString());
+    Accounts::AccountService global(mService->account(), Accounts::Service());
+    mSettings.setServerAddress(mService->value("server_address",
+                                               global.value("server_address")).toString());
     if (mSettings.serverAddress().isEmpty()) {
         qCWarning(lcCalDav) << "remote_address not found in service settings";
         return false;
     }
-    mSettings.setDavRootPath(mService->value("webdav_path").toString());
-    mSettings.setIgnoreSSLErrors(mService->value("ignore_ssl_errors").toBool());
+    mSettings.setDavRootPath(mService->value("webdav_path",
+                                             global.value("webdav_path")).toString());
+    mSettings.setIgnoreSSLErrors(mService->value("ignore_ssl_errors",
+                                                 global.value("ignore_ssl_errors")).toBool());
 
     mAuth = new AuthHandler(mService, this);
     if (!mAuth->init()) {
