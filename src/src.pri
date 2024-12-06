@@ -4,7 +4,16 @@ QT += network dbus
 CONFIG += link_pkgconfig console
 
 PKGCONFIG += buteosyncfw5 libsignon-qt5 accounts-qt5 libsailfishkeyprovider
-PKGCONFIG += signon-oauth2plugin KF5CalendarCore libmkcal-qt5
+PKGCONFIG += KF5CalendarCore libmkcal-qt5
+
+# We only need one include file from signon-oauth2plugin... No need
+# to parse the .pc file. The challenge is to build this package against Qt5
+# whereas signond and signon-plugins + signon-oauth2plugin has already been
+# build via Qt6 e.g. in Debian
+#
+# We have to make sure that the include file gets found!!! But the rest from
+# the .pc file can be ignored.
+#PKGCONFIG += signon-oauth2plugin
 
 INCLUDEPATH += $$PWD
 

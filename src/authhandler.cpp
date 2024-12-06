@@ -35,7 +35,7 @@
 #include <Accounts/AccountService>
 #include <SignOn/SessionData>
 
-#include <oauth2data.h>
+#include <signon-plugins/oauth2data.h>
 
 #include <ProfileEngineDefs.h>
 #include "logging.h"
