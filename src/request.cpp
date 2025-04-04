@@ -88,7 +88,9 @@ void Request::finishedWithReplyResult(const QString &uri, QNetworkReply *reply)
         qCWarning(lcCalDav) << "The" << command() << "operation failed with error:" << reply->error();
         const QByteArray data(reply->readAll());
         debugReply(*reply, data);
-        finishedWithError(uri, errorCode, QString("Network request failed with QNetworkReply::NetworkError: %1").arg(reply->error()), data);
+        finishedWithError(uri, errorCode,
+                          QString("Network request failed with QNetworkReply::NetworkError: %1").arg(reply->error()),
+                          data);
     }
 }
 

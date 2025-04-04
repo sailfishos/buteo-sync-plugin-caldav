@@ -76,7 +76,8 @@ QString IncidenceHandler::toIcs(const KCalendarCore::Incidence::Ptr incidence,
     return icalFormat.toString(memoryCalendar, QString(), false);
 }
 
-KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence, const KCalendarCore::Incidence::List &instances)
+KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence,
+                                                                  const KCalendarCore::Incidence::List &instances)
 {
     KCalendarCore::Incidence::Ptr incidence = QSharedPointer<KCalendarCore::Incidence>(sourceIncidence->clone());
 
@@ -96,9 +97,9 @@ KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore:
     incidence->removeCustomProperty("buteo", "etag");
     const QStringList &comments(incidence->comments());
     for (const QString &comment : comments) {
-        if ((comment.startsWith("buteo:caldav:uri:") ||
-             comment.startsWith("buteo:caldav:detached-and-synced") ||
-             comment.startsWith("buteo:caldav:etag:"))
+        if ((comment.startsWith("buteo:caldav:uri:")
+             || comment.startsWith("buteo:caldav:detached-and-synced")
+             || comment.startsWith("buteo:caldav:etag:"))
             && incidence->removeComment(comment)) {
             qCDebug(lcCalDav) << "Discarding buteo-prefixed comment:" << comment;
         }

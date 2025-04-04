@@ -66,8 +66,8 @@ Buteo::ClientPlugin* CalDavClientLoader::createClientPlugin(
 }
 
 CalDavClient::CalDavClient(const QString& aPluginName,
-                            const Buteo::SyncProfile& aProfile,
-                            Buteo::PluginCbInterface *aCbInterface)
+                           const Buteo::SyncProfile& aProfile,
+                           Buteo::PluginCbInterface *aCbInterface)
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
     , mManager(0)
     , mAuth(0)
@@ -157,7 +157,8 @@ bool CalDavClient::cleanUp()
     return true;
 }
 
-void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr, mKCal::ExtendedStorage::Ptr storage)
+void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr,
+                                             mKCal::ExtendedStorage::Ptr storage)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
@@ -199,7 +200,8 @@ bool CalDavClient::cleanSyncRequired()
 
     if (!alreadyClean) {
         // first, delete any data associated with this account, so this sync will be a clean sync.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << mService->account()->id() << "due to clean sync";
+        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << mService->account()->id()
+                            << "due to clean sync";
         deleteNotebooksForAccount(mService->account()->id(), mCalendar, mStorage);
         // now delete notebooks for non-existent accounts.
         qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
@@ -218,9 +220,11 @@ bool CalDavClient::cleanSyncRequired()
                 bool ok = true;
                 int notebookAccountId = nbAccount.toInt(&ok);
                 if (!ok) {
-                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb->account() << "->" << nbAccount << "->" << "not ok";
+                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb->account()
+                                        << "->" << nbAccount << "->" << "not ok";
                 } else {
-                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb->account() << "->" << nbAccount;
+                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb->account()
+                                        << "->" << nbAccount;
                     if (!notebookAccountIds.contains(notebookAccountId)) {
                         notebookAccountIds.append(notebookAccountId);
                     }
@@ -741,8 +745,10 @@ void CalDavClient::notebookSyncFinished()
 void CalDavClient::setCredentialsNeedUpdate()
 {
     if (mService) {
-        mService->setValue(QStringLiteral("CredentialsNeedUpdate"), QVariant::fromValue<bool>(true));
-        mService->setValue(QStringLiteral("CredentialsNeedUpdateFrom"), QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
+        mService->setValue(QStringLiteral("CredentialsNeedUpdate"),
+                           QVariant::fromValue<bool>(true));
+        mService->setValue(QStringLiteral("CredentialsNeedUpdateFrom"),
+                           QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
         mService->account()->syncAndBlock();
     }
 }

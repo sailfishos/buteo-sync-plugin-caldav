@@ -41,8 +41,7 @@ Put::Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
 {
 }
 
-void Put::sendIcalData(const QString &uri, const QString &icalData,
-                       const QString &eTag)
+void Put::sendIcalData(const QString &uri, const QString &icalData, const QString &eTag)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
