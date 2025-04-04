@@ -32,7 +32,7 @@
 
 #define PROP_URI "uri"
 
-static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
+static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar, bool *isSubscription)
 {
     /* e.g.:
         <D:resourcetype><C:calendar xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/><D:collection/></D:resourcetype>
@@ -40,8 +40,10 @@ static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar") {
             *isCalendar = true;
-        }
-        if (reader->name() == "resourcetype" && reader->isEndElement()) {
+        } else if (reader->name() == "subscribed") {
+            // at least used by nextcloud for subcriptions to external calendars
+            *isSubscription = true;
+        } else if (reader->name() == "resourcetype" && reader->isEndElement()) {
             return true;
         }
     }
@@ -118,10 +120,12 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
     QString displayColor;
     QString currentUserPrincipal;
     bool readOnlyStatus = false;
+    bool isSubscription = false;
     *isCalendar = false;
     *allowEvents = true;
     *allowTodos = true;
     *allowJournals = true;
+
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
             displayName = reader->readElementText();
@@ -140,7 +144,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
                 }
             }
         } else if (reader->name() == "resourcetype" && reader->isStartElement()) {
-            if (!readResourceType(reader, isCalendar)) {
+            if (!readResourceType(reader, isCalendar, &isSubscription)) {
                 return false;
             }
         } else if (reader->name() == "current-user-privilege-set" && reader->isStartElement()) {
@@ -152,11 +156,15 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
                 return false;
             }
         } else if (reader->name() == "prop" && reader->isEndElement()) {
-            if (*isCalendar) {
+            if (*isCalendar || isSubscription) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
                 *color = displayColor;
                 *userPrincipal = currentUserPrincipal;
-                *readOnly = readOnlyStatus;
+                *readOnly = isSubscription ? true : readOnlyStatus;
+
+                if (isSubscription) {
+                    *isCalendar = true; // for upper layers subscription is calendar enough
+                }
             }
             return true;
         }
