@@ -233,11 +233,13 @@ void Reader::readResponse()
                 qCWarning(lcCalDav) << "unknown or missing version, trying iCal 2.0";
                 icsData = ensureICalVersion(icsData);
                 if (!iCalFormat.fromString(cal, icsData)) {
-                    qCWarning(lcCalDav) << "unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
+                    qCWarning(lcCalDav) << "unable to parse iCal data, returning"
+                                        << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
                     parsed = false;
                 }
             } else {
-                qCWarning(lcCalDav) << "unable to parse iCal data, returning" << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
+                qCWarning(lcCalDav) << "unable to parse iCal data, returning"
+                                    << (iCalFormat.exception() ? iCalFormat.exception()->code() : -1);
                 parsed = false;
             }
         }

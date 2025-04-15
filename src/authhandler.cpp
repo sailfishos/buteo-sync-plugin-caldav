@@ -68,7 +68,8 @@ bool AuthHandler::init()
     }
     const Accounts::AuthData &auth = mAccountService->authData();
     if (auth.credentialsId() == 0) {
-        qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:" << mAccountService->service().name();
+        qCWarning(lcCalDav) << "Cannot authenticate, no credentials stored for service:"
+                            << mAccountService->service().name();
         return false;
     }
 

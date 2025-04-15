@@ -39,7 +39,8 @@ private:
     IncidenceHandler();
     ~IncidenceHandler();
 
-    static KCalendarCore::Incidence::Ptr incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence, const KCalendarCore::Incidence::List &instances = KCalendarCore::Incidence::List());
+    static KCalendarCore::Incidence::Ptr incidenceToExport(KCalendarCore::Incidence::Ptr sourceIncidence,
+                                                           const KCalendarCore::Incidence::List &instances = KCalendarCore::Incidence::List());
 
     friend class tst_NotebookSyncAgent;
     friend class tst_IncidenceHandler;

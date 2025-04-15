@@ -44,11 +44,13 @@ public:
         bool allowTodos = true;
         bool allowJournals = true;
 
-        CalendarInfo() {};
+        CalendarInfo() {}
         CalendarInfo(const QString &path, const QString &name, const QString &color,
                      const QString &principal = QString(), bool readOnly = false)
             : remotePath(path), displayName(name), color(color)
-            , userPrincipal(principal), readOnly(readOnly) {};
+            , userPrincipal(principal), readOnly(readOnly)
+        {}
+
         bool operator==(const CalendarInfo &other) const
         {
             return (remotePath == other.remotePath
@@ -83,6 +85,7 @@ private:
         UserAddressSet,
         ListCalendars
     };
+
     void sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType);
     bool parseUserPrincipalResponse(const QByteArray &data);
     bool parseUserAddressSetResponse(const QByteArray &data);

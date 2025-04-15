@@ -180,7 +180,8 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly, allowEvents, allowTodos, allowJournals)) {
+            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly,
+                                  allowEvents, allowTodos, allowJournals)) {
                 return false;
             }
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
@@ -388,6 +389,7 @@ bool PropFind::parseUserPrincipalResponse(const QByteArray &data)
     if (data.isNull() || data.isEmpty()) {
         return false;
     }
+
     QXmlStreamReader reader(data);
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
@@ -506,6 +508,7 @@ void PropFind::handleReply(QNetworkReply *reply)
     QByteArray data = reply->readAll();
     debugReply(*reply, data);
     bool success = false;
+
     switch (mPropFindRequestType) {
     case (UserPrincipal):
         success = parseUserPrincipalResponse(data);
@@ -517,6 +520,7 @@ void PropFind::handleReply(QNetworkReply *reply)
         success = parseCalendarResponse(data);
         break;
     }
+
     if (success) {
         finishedWithSuccess(uri);
     } else {
