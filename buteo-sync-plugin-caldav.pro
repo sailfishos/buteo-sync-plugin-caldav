@@ -1,6 +1,7 @@
 TEMPLATE = subdirs
 
-SUBDIRS = src tests mkcal
+SUBDIRS = lib src tests mkcal
+src.depends = lib
 tests.depends = src
 
 OTHER_FILES += rpm/buteo-sync-plugin-caldav.spec \

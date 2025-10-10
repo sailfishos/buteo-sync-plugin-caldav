@@ -56,9 +56,13 @@ public:
     void setUserMailtoHref(const QString &href);
     QString userMailtoHref() const;
 
+    void setUserHomeHref(const QString &href);
+    QString userHomeHref() const;
+
 private:
     QString mUserPrincipal;
     QString mUserMailtoHref;
+    QString mUserHomeHref;
     QString mServerAddress;
     QString mDavRootPath;
     QString mOAuthToken;

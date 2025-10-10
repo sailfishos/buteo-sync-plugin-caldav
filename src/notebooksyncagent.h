@@ -23,7 +23,7 @@
 #ifndef NOTEBOOKSYNCAGENT_P_H
 #define NOTEBOOKSYNCAGENT_P_H
 
-#include "reader.h"
+#include <davclient.h>
 
 #include <extendedcalendar.h>
 #include <extendedstorage.h>
@@ -31,10 +31,6 @@
 #include <QDateTime>
 
 #include <SyncResults.h>
-
-class QNetworkAccessManager;
-class Request;
-class Settings;
 
 class NotebookSyncAgent : public QObject
 {
@@ -48,8 +44,7 @@ public:
 
     explicit NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
                                mKCal::ExtendedStorage::Ptr storage,
-                               QNetworkAccessManager *networkAccessManager,
-                               Settings *settings,
+                               Buteo::Dav::Client *davClient,
                                const QString &encodedRemotePath,
                                bool readOnlyFlag = false,
                                QObject *parent = 0);
@@ -83,17 +78,31 @@ public:
 signals:
     void finished();
 
-private slots:
-    void reportRequestFinished(const QString &uri);
-    void nonReportRequestFinished(const QString &uri);
-    void processETags(const QString &uri);
 private:
+    struct CalendarResource {
+        QString href;
+        QString etag;
+        KCalendarCore::Incidence::List incidences;
+
+        CalendarResource(const Buteo::Dav::Resource &dav);
+        CalendarResource(const QString &uri, const QString &tag,
+                         const KCalendarCore::Incidence::List &list)
+            : href(uri), etag(tag), incidences(list) {}
+    };
+    
+    void reportRequestFinished(const Buteo::Dav::Client::Reply &reply,
+                               const QList<Buteo::Dav::Resource> &resources);
+    void resourceSent(const Buteo::Dav::Client::Reply &reply, const QString &etag);
+    void resourceDeleted(const Buteo::Dav::Client::Reply &reply);
+    void processETags(const Buteo::Dav::Client::Reply &reply,
+                      const QHash<QString, QString> &etags);
+
     void sendReportRequest(const QStringList &remoteUris = QStringList());
-    void requestFinished(Request *request);
+    void requestFinished();
     void setFatal(const QString &uri, const QByteArray &errorData);
 
     void fetchRemoteChanges();
-    bool updateIncidences(const QList<Reader::CalendarResource> &resources);
+    bool updateIncidences(const QList<CalendarResource> &resources);
     bool deleteIncidences(const KCalendarCore::Incidence::List deletedIncidences);
     void updateIncidence(KCalendarCore::Incidence::Ptr incidence,
                          KCalendarCore::Incidence::Ptr storedIncidence);
@@ -113,9 +122,10 @@ private:
                         QSet<QString> *remoteChanges,
                         KCalendarCore::Incidence::List *remoteDeletions);
 
-    QNetworkAccessManager* mNetworkManager;
-    Settings *mSettings;
-    QSet<Request *> mRequests;
+    
+
+    Buteo::Dav::Client *mDAV;
+    int mPendingActions;
     mKCal::ExtendedCalendar::Ptr mCalendar;
     mKCal::ExtendedStorage::Ptr mStorage;
     mKCal::Notebook::Ptr mNotebook;
@@ -148,9 +158,10 @@ private:
     QString mFatalUri; // A key from mFailingUpdates that prevents the sync to complete.
 
     // received remote incidence resource data
-    QList<Reader::CalendarResource> mReceivedCalendarResources;
+    QList<CalendarResource> mReceivedCalendarResources;
 
     friend class tst_NotebookSyncAgent;
+    friend class tst_Reader;
 };
 
 #endif // NOTEBOOKSYNCAGENT_P_H

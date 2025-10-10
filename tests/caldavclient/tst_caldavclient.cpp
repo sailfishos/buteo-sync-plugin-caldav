@@ -112,8 +112,8 @@ void tst_CalDavClient::initConfig()
     QVERIFY(client.init());
     QVERIFY(client.mService);
     QCOMPARE(client.mService->account()->id(), mAccount->id());
-    QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
-    QVERIFY(client.mSettings.ignoreSSLErrors());
+    QCOMPARE(client.mDAV->serverAddress(), SERVER_ADDRESS);
+    QVERIFY(client.mDAV->ignoreSSLErrors());
 }
 
 void tst_CalDavClient::initConfigWithSettingsInAccount()
@@ -144,9 +144,8 @@ void tst_CalDavClient::initConfigWithSettingsInAccount()
     QVERIFY(client.init());
     QVERIFY(client.mService);
     QCOMPARE(client.mService->account()->id(), account->id());
-    QCOMPARE(client.mSettings.serverAddress(), SERVER_ADDRESS);
-    QCOMPARE(client.mSettings.davRootPath(), WEBDAV_PATH);
-    QVERIFY(client.mSettings.ignoreSSLErrors());
+    QCOMPARE(client.mDAV->serverAddress(), SERVER_ADDRESS);
+    QVERIFY(client.mDAV->ignoreSSLErrors());
 
     account->remove();
     QVERIFY(account->syncAndBlock());
@@ -166,7 +165,7 @@ void tst_CalDavClient::loadAccountCalendars()
     CalDavClient client(QLatin1String("caldav"), mProfile, nullptr);
     QVERIFY(client.init());
 
-    const QList<PropFind::CalendarInfo> &calendars = client.loadAccountCalendars();
+    const QList<Buteo::Dav::CalendarInfo> &calendars = client.loadAccountCalendars();
 
     QCOMPARE(calendars.count(), 1);
     QCOMPARE(calendars.first().remotePath, QLatin1String("/bar%40plop/"));
@@ -181,15 +180,15 @@ void tst_CalDavClient::mergeAccountCalendars()
     client.mManager = mManager; // So we can share the same Account pointers.
     QVERIFY(client.init());
 
-    QList<PropFind::CalendarInfo> remoteCalendars;
-    remoteCalendars << PropFind::CalendarInfo{QLatin1String("/bar%40plop/"),
+    QList<Buteo::Dav::CalendarInfo> remoteCalendars;
+    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/bar%40plop/"),
             QLatin1String("Bar"), QLatin1String("#0000FF"), QLatin1String("/principals/2")};
-    remoteCalendars << PropFind::CalendarInfo{QLatin1String("/foo/"),
+    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/foo/"),
             QLatin1String("New foo"), QLatin1String("#FF0000"), QString()};
-    remoteCalendars << PropFind::CalendarInfo{QLatin1String("/toto%40tutu/"),
+    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/toto%40tutu/"),
             QLatin1String("Toto"), QLatin1String("#FF00FF"), QString()};
 
-    const QList<PropFind::CalendarInfo> &calendars = client.mergeAccountCalendars(remoteCalendars);
+    const QList<Buteo::Dav::CalendarInfo> &calendars = client.mergeAccountCalendars(remoteCalendars);
 
     QCOMPARE(calendars.count(), 2);
     QCOMPARE(calendars[0].remotePath, QLatin1String("/bar%40plop/"));

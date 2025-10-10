@@ -24,7 +24,7 @@
 #ifndef PUT_H
 #define PUT_H
 
-#include "request.h"
+#include "request_p.h"
 
 #include <QObject>
 #include <QNetworkReply>

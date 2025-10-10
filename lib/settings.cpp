@@ -21,7 +21,7 @@
  *
  */
 
-#include "settings.h"
+#include "settings_p.h"
 
 Settings::Settings()
     : mIgnoreSSLErrors(false)
@@ -106,4 +106,14 @@ void Settings::setUserMailtoHref(const QString &href)
 QString Settings::userMailtoHref() const
 {
     return mUserMailtoHref;
+}
+
+void Settings::setUserHomeHref(const QString &href)
+{
+    mUserHomeHref = href;
+}
+
+QString Settings::userHomeHref() const
+{
+    return mUserHomeHref;
 }

@@ -26,14 +26,15 @@
 
 #include "buteo-caldav-plugin.h"
 #include "authhandler.h"
-#include "settings.h"
-#include "propfind.h"
 #include "notebooksyncagent.h"
 
 #include <QList>
 #include <QSet>
 #include <QScopedPointer>
 #include <QSharedPointer>
+
+#include <davclient.h>
+#include <davtypes.h>
 
 #include <extendedstorage.h>
 
@@ -151,11 +152,11 @@ private:
     void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
     bool cleanSyncRequired();
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
-    QList<PropFind::CalendarInfo> loadAccountCalendars() const;
-    QList<PropFind::CalendarInfo> mergeAccountCalendars(const QList<PropFind::CalendarInfo> &calendars) const;
+    QList<Buteo::Dav::CalendarInfo> loadAccountCalendars() const;
+    QList<Buteo::Dav::CalendarInfo> mergeAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &calendars) const;
     void removeAccountCalendars(const QStringList &paths);
     void listCalendars(const QString &home = QString());
-    void syncCalendars(const QList<PropFind::CalendarInfo> &allCalendarInfo);
+    void syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalendarInfo);
 
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();
@@ -163,18 +164,17 @@ private:
     void setCredentialsNeedUpdate();
 
     mutable QScopedPointer<Sailfish::KeyProvider::ProcessMutex> mProcessMutex;
-    QList<NotebookSyncAgent *>  mNotebookSyncAgents;
-    QNetworkAccessManager*      mNAManager;
-    Accounts::Manager*          mManager;
+    QList<NotebookSyncAgent *> mNotebookSyncAgents;
+    Accounts::Manager* mManager;
     QSharedPointer<Accounts::AccountService> mService;
-    AuthHandler*                mAuth;
+    AuthHandler* mAuth;
     mKCal::ExtendedCalendar::Ptr mCalendar;
     mKCal::ExtendedStorage::Ptr mStorage;
-    Buteo::SyncResults          mResults;
-    Sync::SyncStatus            mSyncStatus;
+    Buteo::SyncResults mResults;
+    Sync::SyncStatus mSyncStatus;
     Buteo::SyncProfile::SyncDirection mSyncDirection;
     Buteo::SyncProfile::ConflictResolutionPolicy mConflictResPolicy;
-    Settings                    mSettings;
+    Buteo::Dav::Client* mDAV;
 
     friend class tst_CalDavClient;
 };

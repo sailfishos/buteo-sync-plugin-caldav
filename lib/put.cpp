@@ -21,9 +21,8 @@
  *
  */
 
-#include "put.h"
-#include "report.h"
-#include "settings.h"
+#include "put_p.h"
+#include "settings_p.h"
 
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
@@ -31,8 +30,6 @@
 #include <QDebug>
 #include <QStringList>
 #include <QUrl>
-
-#include "logging.h"
 
 #define PROP_INCIDENCE_URI "uri"
 
@@ -43,8 +40,6 @@ Put::Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
 
 void Put::sendIcalData(const QString &uri, const QString &icalData, const QString &eTag)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     if (uri.isEmpty()) {
         finishedWithInternalError("no uri provided");
         return;
@@ -81,8 +76,6 @@ void Put::sendIcalData(const QString &uri, const QString &icalData, const QStrin
 
 void Put::handleReply(QNetworkReply *reply)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     // If the put was denied by server (e.g. read-only calendar), the etag
     // is not updated, so NotebookSyncAgent::finalizeSendingLocalChanges()
     // will emit a rollback report for this incidence.

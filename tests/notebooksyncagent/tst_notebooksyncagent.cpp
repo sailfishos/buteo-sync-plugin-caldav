@@ -20,22 +20,20 @@
 
 #include <QtTest>
 #include <QObject>
+#include <QNetworkAccessManager>
+#include <QFile>
+#include <QtGlobal>
 
 #include "incidencehandler.h"
-#include "report.h"
-#include "put.h"
 #include "logging.h"
 
 #include <KCalendarCore/MemoryCalendar>
 #include <KCalendarCore/ICalFormat>
 #include <KCalendarCore/Incidence>
 #include <KCalendarCore/Event>
+
 #include <notebooksyncagent.h>
 #include <extendedcalendar.h>
-#include <settings.h>
-#include <QNetworkAccessManager>
-#include <QFile>
-#include <QtGlobal>
 
 class tst_NotebookSyncAgent : public QObject
 {
@@ -71,12 +69,10 @@ private slots:
     void updateIncidence_data();
     void updateIncidence();
 
-    void requestFinished();
-
     void result();
 
 private:
-    Settings m_settings;
+    Buteo::Dav::Client *m_dav = nullptr;
     NotebookSyncAgent *m_agent;
 
     typedef QMap<QString, QString> IncidenceDescr;
@@ -110,8 +106,8 @@ void tst_NotebookSyncAgent::init()
 
     store->open();
 
-    QNetworkAccessManager *mNAManager = new QNetworkAccessManager();
-    m_agent = new NotebookSyncAgent(cal, store, mNAManager, &m_settings, QLatin1String("/testCal/"));
+    m_dav = new Buteo::Dav::Client(QString());
+    m_agent = new NotebookSyncAgent(cal, store, m_dav, QLatin1String("/testCal/"));
     mKCal::Notebook *notebook = new mKCal::Notebook("123456789", "test1", "test 1", "red", true, false, false, false, false);
 
     m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
@@ -127,8 +123,10 @@ void tst_NotebookSyncAgent::cleanup()
 
     m_agent->mStorage->close();
 
-    delete m_agent->mNetworkManager;
     delete m_agent;
+    m_agent = nullptr;
+    delete m_dav;
+    m_dav = nullptr;
 }
 
 void tst_NotebookSyncAgent::insertEvent_data()
@@ -178,10 +176,10 @@ void tst_NotebookSyncAgent::insertEvent()
         QFAIL("Data file does not exist or cannot be opened for reading!");
     }
 
-    Reader rd;
-    rd.read(f.readAll());
-
-    QVERIFY(m_agent->updateIncidences(rd.results()));
+    QList<NotebookSyncAgent::CalendarResource> results;
+    for (const Buteo::Dav::Resource &resource : Buteo::Dav::Resource::fromData(f.readAll()))
+        results << NotebookSyncAgent::CalendarResource(resource);
+    QVERIFY(m_agent->updateIncidences(results));
 
     KCalendarCore::Incidence::Ptr ev;
     if (expectedRecurrenceID.isEmpty())
@@ -234,10 +232,11 @@ void tst_NotebookSyncAgent::insertMultipleEvents()
         QFAIL("Data file does not exist or cannot be opened for reading!");
     }
 
-    Reader rd;
-    rd.read(f.readAll());
+    QList<NotebookSyncAgent::CalendarResource> results;
+    for (const Buteo::Dav::Resource &resource : Buteo::Dav::Resource::fromData(f.readAll()))
+        results << NotebookSyncAgent::CalendarResource(resource);
 
-    QVERIFY(m_agent->updateIncidences(rd.results()));
+    QVERIFY(m_agent->updateIncidences(results));
     KCalendarCore::Incidence::List incidences = m_agent->mCalendar->incidences();
     for (int i = 0; i < expectedUIDs.size(); ++i) {
         KCalendarCore::Incidence::Ptr ev;
@@ -658,13 +657,13 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
     remoteUriEtags.insert(uri, etag);
 
     // Populate the database with the initial import, like in a slow sync.
-    Reader reader;
-    reader.read(response.toUtf8());
-    QVERIFY(!reader.hasError());
-    QCOMPARE(reader.results().count(), 1);
-    QCOMPARE(reader.results()[0].incidences.count(), events.count());
+    QList<NotebookSyncAgent::CalendarResource> results;
+    for (const Buteo::Dav::Resource &resource : Buteo::Dav::Resource::fromData(response.toUtf8()))
+        results << NotebookSyncAgent::CalendarResource(resource);
+    QCOMPARE(results.count(), 1);
+    QCOMPARE(results[0].incidences.count(), events.count());
 
-    QVERIFY(m_agent->updateIncidences(QList<Reader::CalendarResource>() << reader.results()));
+    QVERIFY(m_agent->updateIncidences(results));
     m_agent->mStorage->save();
     m_agent->mNotebook->setSyncDate(m_agent->mNotebookSyncedDateTime);
 
@@ -853,11 +852,8 @@ void tst_NotebookSyncAgent::updateIncidence()
     }
     m_agent->mNotebook = notebook;
 
-    Reader::CalendarResource resource;
-    resource.href = QStringLiteral("uri.ics");
-    resource.etag = QStringLiteral("etag");
-    resource.incidences << incidence;
-    QVERIFY(m_agent->updateIncidences(QList<Reader::CalendarResource>() << resource));
+    NotebookSyncAgent::CalendarResource resource{QStringLiteral("uri.ics"), QStringLiteral("etag"), KCalendarCore::Incidence::List() << incidence};
+    QVERIFY(m_agent->updateIncidences(QList<NotebookSyncAgent::CalendarResource>() << resource));
 
     KCalendarCore::Incidence::Ptr fetched =
         m_agent->mCalendar->incidence(incidence->uid(), incidence->recurrenceId());
@@ -869,37 +865,6 @@ void tst_NotebookSyncAgent::updateIncidence()
         incidence.staticCast<KCalendarCore::Event>()->setDtEnd(fetched.staticCast<KCalendarCore::Event>()->dtEnd());
     }
     QCOMPARE(*incidence, *fetched);
-}
-
-void tst_NotebookSyncAgent::requestFinished()
-{
-    QSignalSpy finished(m_agent, &NotebookSyncAgent::finished);
-
-    Report *report = new Report(m_agent->mNetworkManager, m_agent->mSettings);
-    m_agent->mRequests.insert(report);
-    QCOMPARE(m_agent->mRequests.count(), 1);
-
-    m_agent->requestFinished(report);
-    QCOMPARE(m_agent->mRequests.count(), 0);
-    QCOMPARE(finished.count(), 1);
-    finished.clear();
-
-    Put *put1 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
-    m_agent->mRequests.insert(put1);
-    QCOMPARE(m_agent->mRequests.count(), 1);
-
-    Put *put2 = new Put(m_agent->mNetworkManager, m_agent->mSettings);
-    m_agent->mRequests.insert(put2);
-    QCOMPARE(m_agent->mRequests.count(), 2);
-
-    m_agent->requestFinished(put2);
-    QCOMPARE(m_agent->mRequests.count(), 1);
-    QCOMPARE(finished.count(), 0);
-    QVERIFY(m_agent->mRequests.contains(put1));
-
-    m_agent->requestFinished(put1);
-    QCOMPARE(m_agent->mRequests.count(), 0);
-    QCOMPARE(finished.count(), 1);
 }
 
 void tst_NotebookSyncAgent::result()
@@ -980,13 +945,9 @@ void tst_NotebookSyncAgent::result()
 
     m_agent->mSyncMode = NotebookSyncAgent::SlowSync;
 
-    Reader::CalendarResource r1;
-    r1.href = "/path/event1";
-    r1.incidences << KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
-    Reader::CalendarResource r2;
-    r2.href = "/path/event2";
-    r2.incidences << KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
-    m_agent->mReceivedCalendarResources = QList<Reader::CalendarResource>() << r1 << r2;
+    NotebookSyncAgent::CalendarResource r1("/path/event1", "", KCalendarCore::Incidence::List() << KCalendarCore::Incidence::Ptr(new KCalendarCore::Event));
+    NotebookSyncAgent::CalendarResource r2("/path/event2", "", KCalendarCore::Incidence::List() << KCalendarCore::Incidence::Ptr(new KCalendarCore::Event));
+    m_agent->mReceivedCalendarResources = QList<NotebookSyncAgent::CalendarResource>() << r1 << r2;
 
     results = m_agent->result();
     QCOMPARE(results.targetName(), QLatin1String("test1"));

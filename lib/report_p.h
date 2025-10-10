@@ -24,8 +24,8 @@
 #ifndef REPORT_H
 #define REPORT_H
 
-#include "request.h"
-#include "reader.h"
+#include "davtypes.h"
+#include "request_p.h"
 
 #include <QObject>
 #include <QMultiHash>
@@ -48,8 +48,7 @@ public:
                      const QDateTime &toDateTime = QDateTime());
     void multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList);
 
-    const QList<Reader::CalendarResource>& receivedCalendarResources() const;
-    const QStringList& fetchedUris() const;
+    const QList<Buteo::Dav::Resource>& response() const;
 
 protected:
     virtual void handleReply(QNetworkReply *reply);
@@ -61,8 +60,7 @@ private:
                            const QDateTime &toDateTime,
                            bool getCalendarData);
     QString mRemoteCalendarPath;
-    QStringList mFetchedUris;
-    QList<Reader::CalendarResource> mReceivedResources;
+    QList<Buteo::Dav::Resource> mResponse;
 };
 
 #endif // REPORT_H

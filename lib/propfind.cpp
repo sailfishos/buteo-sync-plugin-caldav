@@ -21,14 +21,12 @@
  *
  */
 
-#include "propfind.h"
-#include "settings.h"
+#include "propfind_p.h"
+#include "settings_p.h"
 
 #include <QNetworkAccessManager>
 #include <QBuffer>
 #include <QXmlStreamReader>
-
-#include "logging.h"
 
 #define PROP_URI "uri"
 
@@ -191,7 +189,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     return false;
 }
 
-static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::CalendarInfo> *calendars)
+static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::CalendarInfo> *calendars)
 {
     /* e.g.:
         <D:response>
@@ -225,7 +223,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
 
     bool responseIsCalendar = false;
     bool hasPropStat = false;
-    PropFind::CalendarInfo calendarInfo;
+    Buteo::Dav::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
             // The account stores this with the encoding, so we're converting from
@@ -420,7 +418,6 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
 PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "PROPFIND", parent)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void PropFind::listCalendars(const QString &calendarsPath)
@@ -471,8 +468,6 @@ void PropFind::listCurrentUserPrincipal()
 
 void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     mPropFindRequestType = reqType;
 
     QNetworkRequest request;
@@ -497,8 +492,6 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
 
 void PropFind::handleReply(QNetworkReply *reply)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
         finishedWithReplyResult(uri, reply);
@@ -524,12 +517,11 @@ void PropFind::handleReply(QNetworkReply *reply)
     if (success) {
         finishedWithSuccess(uri);
     } else {
-        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                          QString("Cannot parse response body for PROPFIND"), data);
+        finishedWithError(uri, QString("Cannot parse response body for PROPFIND"), data);
     }
 }
 
-const QList<PropFind::CalendarInfo>& PropFind::calendars() const
+const QList<Buteo::Dav::CalendarInfo>& PropFind::calendars() const
 {
     return mCalendars;
 }
