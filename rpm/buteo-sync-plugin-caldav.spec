@@ -30,6 +30,12 @@ Requires: %{name} = %{version}-%{release}
 %description devel
 This package contains development files to link with the DAV library.
 
+%package tools
+Summary: command line interface to perform DAV operations
+Requires: %{name} = %{version}-%{release}
+%description tools
+This package contains a command-line tool to perform DAV queries.
+
 %package tests
 Summary: Unit tests for buteo-sync-plugin-caldav
 Requires: blts-tools
@@ -59,6 +65,9 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %{_libdir}/buteo-plugins-qt5/oopp/libcaldav-client.so
 #mkcal invitation plugin
 %{_libdir}/mkcalplugins/libcaldavinvitationplugin.so
+
+%files tools
+%{_bindir}/dav-client
 
 %files devel
 %{_libdir}/libbuteodav.so
