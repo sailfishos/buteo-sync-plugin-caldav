@@ -1448,15 +1448,15 @@ void NotebookSyncAgent::updateHrefETag(const QString &uid, const QString &href, 
 
     KCalendarCore::Incidence::Ptr localBaseIncidence = mCalendar->incidence(uid);
     if (localBaseIncidence) {
-        localBaseIncidence->update();
+        localBaseIncidence->startUpdates();
         updateIncidenceHrefEtag(localBaseIncidence, href, etag);
-        localBaseIncidence->updated();
+        localBaseIncidence->endUpdates();
         if (localBaseIncidence->recurs()) {
             const KCalendarCore::Incidence::List instances = mCalendar->instances(localBaseIncidence);
             for (const KCalendarCore::Incidence::Ptr &instance : instances) {
-                instance->update();
+                instance->startUpdates();
                 updateIncidenceHrefEtag(instance, href, etag);
-                instance->updated();
+                instance->endUpdates();
             }
         }
     } else {
