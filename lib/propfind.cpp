@@ -319,7 +319,9 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
         } else if (reader->name() == "calendar-home-set") {
             canReadHomeHref = reader->isStartElement();
         } else if (canReadMailtoHref
-                   && reader->name() == "href" && reader->isStartElement()) {
+                   && reader->name() == "href" && reader->isStartElement()
+                   && (mailtoHref->isEmpty()
+                       || reader->attributes().value(QStringLiteral("preferred")) == "1")) {
             valid = true;
             QString href = reader->readElementText();
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
