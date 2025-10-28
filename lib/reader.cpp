@@ -133,6 +133,8 @@ void Reader::readResponse()
             resource.href = QUrl::fromPercentEncoding(mReader->readElementText().toLatin1());
         } else if (mReader->name() == "propstat") {
             readPropStat(&resource);
+        } else if (mReader->name() == "status") {
+            resource.status = mReader->readElementText();
         } else {
             mReader->skipCurrentElement();
         }
