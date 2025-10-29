@@ -67,10 +67,12 @@ public:
     void setAuthLogin(const QString &username, const QString &password);
     void setAuthToken(const QString &token);
 
-    void requestUserPrincipalData(const QString &davPath = QString());
+    void requestUserPrincipalAndServiceData(const QString &service = QString(),
+                                            const QString &davPath = QString());
     QString userPrincipal() const;
-    QString userPrincipalMailto() const;
-    QString userPrincipalHome() const;
+    QStringList services() const;
+    QString serviceMailto(const QString &service) const;
+    QString servicePath(const QString &service) const;
 
     // Calendar specific API (CalDAV protocol).
     void requestCalendarList(const QString &path = QString());

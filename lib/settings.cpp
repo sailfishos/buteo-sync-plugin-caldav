@@ -77,23 +77,3 @@ QString Settings::serverAddress() const
 {
     return mServerAddress;
 }
-
-void Settings::setUserMailtoHref(const QString &href)
-{
-    mUserMailtoHref = href;
-}
-
-QString Settings::userMailtoHref() const
-{
-    return mUserMailtoHref;
-}
-
-void Settings::setUserHomeHref(const QString &href)
-{
-    mUserHomeHref = href;
-}
-
-QString Settings::userHomeHref() const
-{
-    return mUserHomeHref;
-}

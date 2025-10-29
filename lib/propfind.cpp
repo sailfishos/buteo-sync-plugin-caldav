@@ -287,7 +287,8 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
     return false;
 }
 
-static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailtoHref, QString *homeHref)
+static bool readUserAddressSetResponse(QXmlStreamReader *reader,
+                                       QMap<QString, PropFind::UserAddressSet> *userAddressSets)
 {
     /* expect a response like:
         <?xml version='1.0' encoding='utf-8'?>
@@ -312,25 +313,28 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
 
     bool canReadMailtoHref = false;
     bool canReadHomeHref = false;
+    PropFind::UserAddressSet *set = nullptr;
     bool valid = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar-user-address-set") {
             canReadMailtoHref = reader->isStartElement();
+            set = canReadMailtoHref ? &(*userAddressSets)[QStringLiteral("caldav")] : nullptr;
         } else if (reader->name() == "calendar-home-set") {
             canReadHomeHref = reader->isStartElement();
+            set = canReadHomeHref ? &(*userAddressSets)[QStringLiteral("caldav")] : nullptr;
         } else if (canReadMailtoHref
                    && reader->name() == "href" && reader->isStartElement()
-                   && (mailtoHref->isEmpty()
+                   && (set->mailto.isEmpty()
                        || reader->attributes().value(QStringLiteral("preferred")) == "1")) {
             valid = true;
             QString href = reader->readElementText();
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
-                *mailtoHref = href.mid(7); // chop off "mailto:"
+                set->mailto = href.mid(7); // chop off "mailto:"
             }
         } else if (canReadHomeHref
                    && reader->name() == "href" && reader->isStartElement()) {
             valid = true;
-            *homeHref = reader->readElementText();
+            set->path = reader->readElementText();
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
             return valid;
         }
@@ -424,7 +428,7 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
         if (reader.name() == "response" && reader.isStartElement()
-                && !readUserAddressSetResponse(&reader, &mUserMailtoHref, &mUserHomeHref)) {
+                && !readUserAddressSetResponse(&reader, &mUserAddressSets)) {
             return false;
         }
     }
@@ -452,19 +456,21 @@ void PropFind::listCalendars(const QString &calendarsPath)
     sendRequest(calendarsPath, requestData, ListCalendars);
 }
 
-void PropFind::listUserAddressSet(const QString &userPrincipal)
+void PropFind::listUserAddressSet(const QString &userPrincipal, const QString &service)
 {
-    const QByteArray requestData(QByteArrayLiteral(
+    QByteArray requestData(QByteArrayLiteral(
             "<d:propfind xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
-            "  <d:prop>"
+            "  <d:prop>"));
+    if (service.isEmpty() || service == QStringLiteral("caldav")) {
+        requestData += QByteArrayLiteral(
             "    <c:calendar-user-address-set />"
-            "    <c:calendar-home-set />"
+            "    <c:calendar-home-set />");
+    }
+    requestData += QByteArrayLiteral(
             "  </d:prop>"
-            "</d:propfind>"
-    ));
-    mUserMailtoHref.clear();
-    mUserHomeHref.clear();
-    sendRequest(userPrincipal, requestData, UserAddressSet);
+            "</d:propfind>");
+    mUserAddressSets.clear();
+    sendRequest(userPrincipal, requestData, UserAddresses);
 }
 
 void PropFind::listCurrentUserPrincipal(const QString &rootPath)
@@ -520,7 +526,7 @@ void PropFind::handleReply(QNetworkReply *reply)
     case (UserPrincipal):
         success = parseUserPrincipalResponse(data);
         break;
-    case (UserAddressSet):
+    case (UserAddresses):
         success = parseUserAddressSetResponse(data);
         break;
     case (ListCalendars):
@@ -545,12 +551,7 @@ QString PropFind::userPrincipal() const
     return mUserPrincipal;
 }
 
-QString PropFind::userMailtoHref() const
+const QMap<QString, PropFind::UserAddressSet>& PropFind::userAddressSets() const
 {
-    return mUserMailtoHref;
-}
-
-QString PropFind::userHomeHref() const
-{
-    return mUserHomeHref;
+    return mUserAddressSets;
 }

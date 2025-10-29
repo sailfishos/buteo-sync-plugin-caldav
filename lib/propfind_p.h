@@ -35,14 +35,20 @@ class PropFind : public Request
     Q_OBJECT
 
 public:
+    struct UserAddressSet
+    {
+        QString mailto;
+        QString path;
+    };
+
     explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void listCurrentUserPrincipal(const QString &rootPath = QString());
     QString userPrincipal() const;
 
-    void listUserAddressSet(const QString &userPrincipal);
-    QString userMailtoHref() const;
-    QString userHomeHref() const;
+    void listUserAddressSet(const QString &userPrincipal,
+                            const QString &service = QString());
+    const QMap<QString, UserAddressSet>& userAddressSets() const;
 
     void listCalendars(const QString &calendarsPath);
     const QList<Buteo::Dav::CalendarInfo>& calendars() const;
@@ -53,7 +59,7 @@ protected:
 private:
     enum PropFindRequestType {
         UserPrincipal,
-        UserAddressSet,
+        UserAddresses,
         ListCalendars
     };
 
@@ -64,8 +70,7 @@ private:
 
     QList<Buteo::Dav::CalendarInfo> mCalendars;
     QString mUserPrincipal;
-    QString mUserMailtoHref;
-    QString mUserHomeHref;
+    QMap<QString, UserAddressSet> mUserAddressSets;
     PropFindRequestType mPropFindRequestType = UserPrincipal;
 
     friend class tst_Propfind;

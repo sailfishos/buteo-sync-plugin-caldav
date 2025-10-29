@@ -65,6 +65,7 @@ public:
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
     QString m_userPrincipal;
+    QMap<QString, PropFind::UserAddressSet> m_serviceData;
     QList<Buteo::Dav::CalendarInfo> m_calendars;
 };
 
@@ -132,14 +133,27 @@ void Buteo::Dav::Client::setAuthToken(const QString &token)
     d->m_settings.setAuthToken(token);
 }
 
-void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
+/*!
+  Inquire the server about the logged-in user and the main information
+  about the various DAV services the server provide. When \param service
+  is not empty, it restrict the inquiry to the specified service.
+
+  The list of inquired services can be obtained with services().
+
+  If the DAV services are not available on the root '/' of the server,
+  it is possible to give the \param davPath where the services are
+  avaialable at.
+
+  \sa userPrincipal(), services(), servicePath() and serviceMailto().
+*/
+void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &service,
+                                                            const QString &davPath)
 {
     d->m_userPrincipal.clear();
-    d->m_settings.setUserMailtoHref(QString());
-    d->m_settings.setUserHomeHref(QString());
+    d->m_serviceData.clear();
     PropFind *userRequest = new PropFind(d->m_networkManager, &d->m_settings, this);
     connect(userRequest, &Request::finished, this,
-            [this, userRequest] (const QString &uri) {
+            [this, userRequest, service] (const QString &uri) {
         userRequest->deleteLater();
 
         const QString userPrincipal = userRequest->userPrincipal();
@@ -152,12 +166,11 @@ void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
                 hrefsRequest->deleteLater();
 
                 if (!hrefsRequest->hasError()) {
-                    d->m_settings.setUserMailtoHref(hrefsRequest->userMailtoHref());
-                    d->m_settings.setUserHomeHref(hrefsRequest->userHomeHref());
+                    d->m_serviceData = hrefsRequest->userAddressSets();
                 }
                 emit userPrincipalDataFinished(reply(*hrefsRequest, uri));
             });
-            hrefsRequest->listUserAddressSet(userPrincipal);
+            hrefsRequest->listUserAddressSet(userPrincipal, service);
         } else {
             emit userPrincipalDataFinished(reply(*userRequest, uri));
         }
@@ -165,21 +178,58 @@ void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
     userRequest->listCurrentUserPrincipal(ensureRoot(davPath));
 }
 
+/*!
+  Returns the path used to identify the logged-in user. It is available
+  after userPrincipalDataFinished() signal has been triggered.
+
+  \sa requestUserPrincipalAndServiceData()
+*/
 QString Buteo::Dav::Client::userPrincipal() const
 {
     return d->m_userPrincipal;
 }
 
-QString Buteo::Dav::Client::userPrincipalMailto() const
+/*!
+  Returns the list of discovered (and supported) services on the DAV server.
+  It is available after userPrincipalDataFinished() signal has been triggered
+  and only if the logged-in user has been identified.
+
+  \sa requestUserPrincipalAndServiceData()
+*/
+QStringList Buteo::Dav::Client::services() const
 {
-    return d->m_settings.userMailtoHref();
+    return d->m_serviceData.keys();
 }
 
-QString Buteo::Dav::Client::userPrincipalHome() const
+/*!
+  Returns the email address declared by the user for \param service.
+  It is available after userPrincipalDataFinished() signal has been triggered
+  and only if the logged-in user has been identified.
+
+  \sa requestUserPrincipalAndServiceData()
+*/
+QString Buteo::Dav::Client::serviceMailto(const QString &service) const
 {
-    return d->m_settings.userHomeHref();
+    return d->m_serviceData[service].mailto;
 }
 
+/*!
+  Returns the path at which \param service is running on the server.
+
+  \sa requestUserPrincipalAndServiceData()
+*/
+QString Buteo::Dav::Client::servicePath(const QString &service) const
+{
+    return d->m_serviceData[service].path;
+}
+
+/*!
+  Request the list of VCALENDAR available at \param path on the server.
+  If \param path is empty, the path registered for "caldav" service is
+  used (when properly discovered).
+
+  \sa services() and calendars()
+*/
 void Buteo::Dav::Client::requestCalendarList(const QString &path)
 {
     d->m_calendars.clear();
@@ -195,7 +245,7 @@ void Buteo::Dav::Client::requestCalendarList(const QString &path)
         }
         emit calendarListFinished(reply(*calendarRequest, uri));
     });
-    calendarRequest->listCalendars(path.isEmpty() ? d->m_settings.userHomeHref() : path);
+    calendarRequest->listCalendars(path.isEmpty() ? servicePath(QStringLiteral("caldav")) : path);
 }
 
 /*!

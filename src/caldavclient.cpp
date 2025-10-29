@@ -553,15 +553,16 @@ void CalDavClient::start()
     }
     mDAV->setAuthToken(mAuth->token());
 
+    const QString service(QStringLiteral("caldav"));
     connect(mDAV, &Buteo::Dav::Client::userPrincipalDataFinished,
-            [this] () {
+            [this, service] () {
                 // Ignore user principal errors, continue anyhow.
-                listCalendars(mDAV->userPrincipalHome());
+                listCalendars(mDAV->servicePath(service));
             });
     Accounts::AccountService global(mService->account(), Accounts::Service());
     const QString davPath = mService->value("webdav_path",
                                             global.value("webdav_path")).toString();
-    mDAV->requestUserPrincipalData(davPath);
+    mDAV->requestUserPrincipalAndServiceData(service, davPath);
 }
 
 void CalDavClient::listCalendars(const QString &home)
@@ -627,7 +628,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
              calendarInfo.remotePath, readOnly, this);
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
-            ? mDAV->userPrincipalMailto() : QString();
+            ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
         if (!agent->setNotebookFromInfo(calendarInfo.displayName,
                                         calendarInfo.color,
                                         email,

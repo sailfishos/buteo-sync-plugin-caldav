@@ -47,15 +47,7 @@ public:
     void setServerAddress(const QString &serverAddress);
     QString serverAddress() const;
 
-    void setUserMailtoHref(const QString &href);
-    QString userMailtoHref() const;
-
-    void setUserHomeHref(const QString &href);
-    QString userHomeHref() const;
-
 private:
-    QString mUserMailtoHref;
-    QString mUserHomeHref;
     QString mServerAddress;
     QString mOAuthToken;
     QString mUsername;

@@ -164,7 +164,7 @@ void tst_Propfind::parseUserAddressSetResponse()
     QFETCH(QString, userMailtoHref);
 
     QCOMPARE(mRequest->parseUserAddressSetResponse(data), success);
-    QCOMPARE(mRequest->userMailtoHref(), userMailtoHref);
+    QCOMPARE(mRequest->userAddressSets()[QStringLiteral("caldav")].mailto, userMailtoHref);
 }
 
 Q_DECLARE_METATYPE(Buteo::Dav::CalendarInfo)

@@ -81,6 +81,8 @@ public:
                                             "DAV root path.", "path"));
         mParser.addOption(QCommandLineOption(QStringList() << "ignore-ssl-errors",
                                             "ignore SSL errors and continue."));
+        mParser.addOption(QCommandLineOption(QStringList() << "S" << "service",
+                                            "DAV specific service.", "service"));
         mParser.addOption(QCommandLineOption(QStringList() << "u" << "user",
                                             "authenticate by username.", "login"));
         mParser.addOption(QCommandLineOption(QStringList() << "P" << "password",
@@ -130,8 +132,10 @@ public:
         if (mParser.isSet("t"))
             mTo = QDateTime::fromString(mParser.value("t"), Qt::ISODate);
 
-        connect(mDAV, &Buteo::Dav::Client::userPrincipalDataFinished, this, &DavCli::onUserPrincipalDataFinisdhed);
-        mDAV->requestUserPrincipalData(mParser.value("R"));
+        connect(mDAV, &Buteo::Dav::Client::userPrincipalDataFinished,
+                this, &DavCli::onUserPrincipalDataFinisdhed);
+        mDAV->requestUserPrincipalAndServiceData(mParser.value("S"),
+                                                 mParser.value("R"));
     }
 
     void execute(const QString &except = QString())
@@ -183,8 +187,12 @@ public:
             qInfo() << "DAV resources:";
             qInfo() << "  server:" << mDAV->serverAddress();
             qInfo() << "  user principal:" << mDAV->userPrincipal();
-            qInfo() << "  user email:" << mDAV->userPrincipalMailto();
-            qInfo() << "  user home:" << mDAV->userPrincipalHome();
+            qInfo() << "  services:";
+            for (const QString &service : mDAV->services()) {
+                qInfo().noquote() << QString::fromLatin1("  - %1:").arg(service);
+                qInfo() << "      email:" << mDAV->serviceMailto(service);
+                qInfo() << "      path:" << mDAV->servicePath(service);
+            }
         }
 
         execute();
