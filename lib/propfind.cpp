@@ -467,7 +467,7 @@ void PropFind::listUserAddressSet(const QString &userPrincipal)
     sendRequest(userPrincipal, requestData, UserAddressSet);
 }
 
-void PropFind::listCurrentUserPrincipal()
+void PropFind::listCurrentUserPrincipal(const QString &rootPath)
 {
     const QByteArray requestData(QByteArrayLiteral(
             "<d:propfind xmlns:d=\"DAV:\">"
@@ -477,7 +477,6 @@ void PropFind::listCurrentUserPrincipal()
             "</d:propfind>"
     ));
     mUserPrincipal.clear();
-    const QString &rootPath = mSettings->davRootPath();
     sendRequest(rootPath.isEmpty() ? QStringLiteral("/") : rootPath,
                 requestData, UserPrincipal);
 }

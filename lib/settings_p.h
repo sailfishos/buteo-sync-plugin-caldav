@@ -47,9 +47,6 @@ public:
     void setServerAddress(const QString &serverAddress);
     QString serverAddress() const;
 
-    void setDavRootPath(const QString &path);
-    QString davRootPath() const;
-
     void setUserPrincipal(const QString &href);
     QString userPrincipal() const;
 
@@ -64,7 +61,6 @@ private:
     QString mUserMailtoHref;
     QString mUserHomeHref;
     QString mServerAddress;
-    QString mDavRootPath;
     QString mOAuthToken;
     QString mUsername;
     QString mPassword;

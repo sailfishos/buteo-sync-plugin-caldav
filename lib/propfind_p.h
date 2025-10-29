@@ -37,7 +37,7 @@ class PropFind : public Request
 public:
     explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
-    void listCurrentUserPrincipal();
+    void listCurrentUserPrincipal(const QString &rootPath = QString());
     QString userPrincipal() const;
 
     void listUserAddressSet(const QString &userPrincipal);

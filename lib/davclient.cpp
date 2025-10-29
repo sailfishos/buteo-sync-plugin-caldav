@@ -37,6 +37,14 @@ namespace {
                                          request.errorMessage(),
                                          request.errorData());
     }
+
+    QString ensureRoot(const QString &path)
+    {
+        if (path.startsWith(QChar('/')))
+            return path;
+        else
+            return QString::fromLatin1("/%1").arg(path);
+    }
 }
 
 class Buteo::Dav::ClientPrivate
@@ -153,8 +161,7 @@ void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
             emit userPrincipalDataFinished(reply(*userRequest, uri));
         }
     });
-    d->m_settings.setDavRootPath(davPath);
-    userRequest->listCurrentUserPrincipal();
+    userRequest->listCurrentUserPrincipal(ensureRoot(davPath));
 }
 
 QString Buteo::Dav::Client::userPrincipal() const
