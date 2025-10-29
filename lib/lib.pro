@@ -5,6 +5,7 @@ QT += network
 CONFIG += qt hide_symbols create_prl create_pc no_install_prl
 
 SOURCES += report.cpp \
+        head.cpp \
         put.cpp \
         delete.cpp \
         propfind.cpp \
@@ -20,6 +21,7 @@ PUBLIC_HEADERS += davtypes.h \
 
 HEADERS += $$PUBLIC_HEADERS \
         report_p.h \
+        head_p.h \
         put_p.h \
         delete_p.h \
         propfind_p.h \

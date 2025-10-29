@@ -26,6 +26,7 @@
 #include "request_p.h"
 #include "propfind_p.h"
 #include "report_p.h"
+#include "head_p.h"
 #include "put_p.h"
 #include "delete_p.h"
 #include "logging_p.h"
@@ -64,6 +65,7 @@ public:
 
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
+    bool m_wellKnowRetryInProgress = false;
     QString m_userPrincipal;
     QMap<QString, PropFind::UserAddressSet> m_serviceData;
     QList<Buteo::Dav::CalendarInfo> m_calendars;
@@ -140,9 +142,16 @@ void Buteo::Dav::Client::setAuthToken(const QString &token)
 
   The list of inquired services can be obtained with services().
 
+  In case the information from the logged-in user is not available,
+  a fallback strategy is to only get \param service path, using the
+  .well-known/service mechanism. This is only possible when \param
+  service is not empty.
+
   If the DAV services are not available on the root '/' of the server,
   it is possible to give the \param davPath where the services are
-  avaialable at.
+  available at. If the DAV path is not known, it can be guessed using
+  the .well-known/service mechanism, but only if \param service is
+  provided.
 
   \sa userPrincipal(), services(), servicePath() and serviceMailto().
 */
@@ -168,10 +177,31 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
                 if (!hrefsRequest->hasError()) {
                     d->m_serviceData = hrefsRequest->userAddressSets();
                 }
+                d->m_wellKnowRetryInProgress = false;
                 emit userPrincipalDataFinished(reply(*hrefsRequest, uri));
             });
             hrefsRequest->listUserAddressSet(userPrincipal, service);
+        } else if (!service.isEmpty() && !d->m_wellKnowRetryInProgress) {
+            // Can't find a user principal, try with a .well-known redirection.
+            Head *serviceRequest = new Head(d->m_networkManager, &d->m_settings, this);
+            connect(serviceRequest, &Request::finished, this,
+                    [this, serviceRequest, service] (const QString &uri) {
+                serviceRequest->deleteLater();
+
+                if (!serviceRequest->hasError()) {
+                    const QUrl url = serviceRequest->serviceUrl(service);
+                    // Redirection may point to a different [sub]domain.
+                    d->m_settings.setServerAddress(QString::fromLatin1("%1://%2").arg(url.scheme()).arg(url.host()));
+                    // Retry to get a user principal using the provided redirect.
+                    d->m_wellKnowRetryInProgress = true;
+                    requestUserPrincipalAndServiceData(service, url.path());
+                } else {
+                    emit userPrincipalDataFinished(reply(*serviceRequest, uri));
+                }
+            });
+            serviceRequest->getServiceUrl(service);
         } else {
+            d->m_wellKnowRetryInProgress = false;
             emit userPrincipalDataFinished(reply(*userRequest, uri));
         }
     });
