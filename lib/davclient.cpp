@@ -64,6 +64,7 @@ public:
 
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
+    QString m_userPrincipal;
     QList<Buteo::Dav::CalendarInfo> m_calendars;
 };
 
@@ -133,7 +134,7 @@ void Buteo::Dav::Client::setAuthToken(const QString &token)
 
 void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
 {
-    d->m_settings.setUserPrincipal(QString());
+    d->m_userPrincipal.clear();
     d->m_settings.setUserMailtoHref(QString());
     d->m_settings.setUserHomeHref(QString());
     PropFind *userRequest = new PropFind(d->m_networkManager, &d->m_settings, this);
@@ -143,7 +144,7 @@ void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
 
         const QString userPrincipal = userRequest->userPrincipal();
         if (!userRequest->hasError() && !userPrincipal.isEmpty()) {
-            d->m_settings.setUserPrincipal(userPrincipal);
+            d->m_userPrincipal = userPrincipal;
             // determine the mailto href for this user.
             PropFind *hrefsRequest = new PropFind(d->m_networkManager, &d->m_settings, this);
             connect(hrefsRequest, &Request::finished, this,
@@ -166,7 +167,7 @@ void Buteo::Dav::Client::requestUserPrincipalData(const QString &davPath)
 
 QString Buteo::Dav::Client::userPrincipal() const
 {
-    return d->m_settings.userPrincipal();
+    return d->m_userPrincipal;
 }
 
 QString Buteo::Dav::Client::userPrincipalMailto() const

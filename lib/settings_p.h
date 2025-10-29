@@ -47,9 +47,6 @@ public:
     void setServerAddress(const QString &serverAddress);
     QString serverAddress() const;
 
-    void setUserPrincipal(const QString &href);
-    QString userPrincipal() const;
-
     void setUserMailtoHref(const QString &href);
     QString userMailtoHref() const;
 
@@ -57,7 +54,6 @@ public:
     QString userHomeHref() const;
 
 private:
-    QString mUserPrincipal;
     QString mUserMailtoHref;
     QString mUserHomeHref;
     QString mServerAddress;
