@@ -116,8 +116,8 @@ static bool readComponentSet(QXmlStreamReader *reader,
 }
 
 static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
-                             QString *label, QString *color, QString *userPrincipal,
-                             Buteo::Dav::Privileges *privileges,
+                             QString *label, QString *description, QString *color,
+                             QString *userPrincipal, Buteo::Dav::Privileges *privileges,
                              bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -128,6 +128,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
         </D:prop>
     */
     QString displayName;
+    QString displayDescription;
     QString displayColor;
     QString currentUserPrincipal;
     *isCalendar = false;
@@ -137,6 +138,8 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
             displayName = reader->readElementText();
+        } else if (reader->name() == "calendar-description" && reader->isStartElement()) {
+            displayDescription = reader->readElementText();
         } else if (reader->name() == "calendar-color" && reader->isStartElement()) {
             displayColor = reader->readElementText();
             if (displayColor.startsWith("#") && displayColor.length() == 9) {
@@ -166,6 +169,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
         } else if (reader->name() == "prop" && reader->isEndElement()) {
             if (*isCalendar) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
+                *description = displayDescription;
                 *color = displayColor;
                 *userPrincipal = currentUserPrincipal;
             }
@@ -176,8 +180,8 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
 }
 
 static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
-                                 QString *label, QString *color, QString *userPrincipal,
-                                 Buteo::Dav::Privileges *privileges,
+                                 QString *label, QString *description, QString *color,
+                                 QString *userPrincipal, Buteo::Dav::Privileges *privileges,
                                  bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -192,7 +196,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, privileges,
+            if (!readCalendarProp(reader, isCalendar, label, description, color, userPrincipal, privileges,
                                   allowEvents, allowTodos, allowJournals)) {
                 return false;
             }
@@ -247,11 +251,12 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
             bool propStatIsCalendar = false;
-            QString displayname, color, userPrincipal;
+            QString displayname, color, userPrincipal, description;
             Buteo::Dav::Privileges privileges = Buteo::Dav::READ | Buteo::Dav::WRITE;
             bool allowEvents = true, allowTodos = true, allowJournals = true;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &displayname,
+                                      &description,
                                       &color,
                                       &userPrincipal,
                                       &privileges,
@@ -260,6 +265,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
             } else if (propStatIsCalendar) {
                 responseIsCalendar = true;
                 calendarInfo.displayName = displayname;
+                calendarInfo.description = description;
                 calendarInfo.color = color;
                 calendarInfo.userPrincipal = userPrincipal.trimmed();
                 calendarInfo.privileges = privileges;
@@ -449,6 +455,7 @@ void PropFind::listCalendars(const QString &calendarsPath)
                            "  <d:current-user-privilege-set />"  \
                            "  <d:displayname />"             \
                            "  <a:calendar-color />"         \
+                           "  <c:calendar-description />"   \
                            "  <c:supported-calendar-component-set />"   \
                            " </d:prop>"                      \
                            "</d:propfind>");

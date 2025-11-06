@@ -292,8 +292,8 @@ public:
     {
         QList<Buteo::Dav::CalendarInfo> allCalendarInfo;
         for (int i = 0; i < paths.count(); i++) {
-            allCalendarInfo << Buteo::Dav::CalendarInfo(paths[i],
-                    displayNames[i], colors[i]);
+            allCalendarInfo << Buteo::Dav::CalendarInfo(paths[i], displayNames[i],
+                                                        QString(), colors[i]);
         }
         return allCalendarInfo;
     };
@@ -629,12 +629,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
-        if (!agent->setNotebookFromInfo(calendarInfo.displayName,
-                                        calendarInfo.color,
-                                        email,
-                                        calendarInfo.allowEvents,
-                                        calendarInfo.allowTodos,
-                                        calendarInfo.allowJournals,
+        if (!agent->setNotebookFromInfo(calendarInfo, email,
                                         QString::number(mService->account()->id()),
                                         getPluginName(),
                                         getProfileName())) {

@@ -182,11 +182,11 @@ void tst_CalDavClient::mergeAccountCalendars()
 
     QList<Buteo::Dav::CalendarInfo> remoteCalendars;
     remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/bar%40plop/"),
-            QLatin1String("Bar"), QLatin1String("#0000FF"), QLatin1String("/principals/2")};
+            QLatin1String("Bar"), QString(), QLatin1String("#0000FF"), QLatin1String("/principals/2")};
     remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/foo/"),
-            QLatin1String("New foo"), QLatin1String("#FF0000"), QString()};
+            QLatin1String("New foo"), QString(), QLatin1String("#FF0000"), QString()};
     remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/toto%40tutu/"),
-            QLatin1String("Toto"), QLatin1String("#FF00FF"), QString()};
+            QLatin1String("Toto"), QString(), QLatin1String("#FF00FF"), QString()};
 
     const QList<Buteo::Dav::CalendarInfo> &calendars = client.mergeAccountCalendars(remoteCalendars);
 

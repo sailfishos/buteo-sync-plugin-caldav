@@ -207,6 +207,7 @@ public:
             qInfo() << "  calendars:";
             for (const Buteo::Dav::CalendarInfo &cal : mDAV->calendars()) {
                 qInfo() << "  - label:" << cal.displayName;
+                qInfo() << "    description:" << cal.description;
                 qInfo() << "    path:" << cal.remotePath;
                 qInfo() << "    color:" << cal.color;
                 qInfo() << "    user:" << cal.userPrincipal;

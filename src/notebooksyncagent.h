@@ -24,6 +24,7 @@
 #define NOTEBOOKSYNCAGENT_P_H
 
 #include <davclient.h>
+#include <davtypes.h>
 
 #include <extendedcalendar.h>
 #include <extendedstorage.h>
@@ -50,10 +51,8 @@ public:
                                QObject *parent = 0);
     ~NotebookSyncAgent();
 
-    bool setNotebookFromInfo(const QString &notebookName,
-                             const QString &color,
+    bool setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
                              const QString &userEmail,
-                             bool allowEvents, bool allowTodos, bool allowJournals,
                              const QString &accountId,
                              const QString &pluginName,
                              const QString &syncProfile);

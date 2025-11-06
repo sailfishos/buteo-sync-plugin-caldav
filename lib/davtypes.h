@@ -49,6 +49,7 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(Privileges)
 struct DAV_EXPORT CalendarInfo {
     QString remotePath;
     QString displayName;
+    QString description;
     QString color;
     QString userPrincipal;
     Privileges privileges = READ | WRITE;
@@ -57,16 +58,18 @@ struct DAV_EXPORT CalendarInfo {
     bool allowJournals = true;
 
     CalendarInfo() {}
-    CalendarInfo(const QString &path, const QString &name, const QString &color,
+    CalendarInfo(const QString &path, const QString &name,
+                 const QString &description, const QString &color,
                  const QString &principal = QString(),
                  Privileges privileges = READ | WRITE)
-        : remotePath(path), displayName(name), color(color)
-        , userPrincipal(principal), privileges(privileges) {}
+        : remotePath(path), displayName(name), description(description)
+        , color(color), userPrincipal(principal), privileges(privileges) {}
 
     bool operator==(const CalendarInfo &other) const
     {
         return remotePath == other.remotePath
             && displayName == other.displayName
+            && description == other.description
             && color == other.color
             && userPrincipal == other.userPrincipal
             && privileges == other.privileges

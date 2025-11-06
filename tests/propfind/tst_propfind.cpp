@@ -200,6 +200,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
@@ -209,6 +210,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/"),
                     Buteo::Dav::READ});
@@ -219,6 +221,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString()});
 
@@ -228,6 +231,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
@@ -237,6 +241,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
@@ -246,18 +251,21 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")}
             << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/1/"),
                     QString::fromLatin1("Calendar 1"),
+                    QString(),
                     QString::fromLatin1("#FFFF00"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
     Buteo::Dav::CalendarInfo todos(QString::fromLatin1("/calendars/0/"),
-                            QString::fromLatin1("Calendar 0"),
-                            QString::fromLatin1("#FF0000"),
-                            QString::fromLatin1("/principals/users/username%40server.tld/"));
+                                   QString::fromLatin1("Calendar 0"),
+                                   QString(),
+                                   QString::fromLatin1("#FF0000"),
+                                   QString::fromLatin1("/principals/users/username%40server.tld/"));
     todos.allowEvents = false;
     todos.allowTodos = true;
     todos.allowJournals = false;
@@ -272,6 +280,7 @@ void tst_Propfind::parseCalendarResponse_data()
         << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 }
