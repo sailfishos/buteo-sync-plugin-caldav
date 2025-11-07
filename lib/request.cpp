@@ -151,6 +151,10 @@ void Request::prepareRequest(QNetworkRequest *request, const QString &requestPat
     if (!mSettings->authToken().isEmpty()) {
         request->setRawHeader(QString("Authorization").toLatin1(),
                               QString("Bearer " + mSettings->authToken()).toLatin1());
+    } else if (mSettings->serverAddress().endsWith(QStringLiteral(".yahoo.com"))
+               || mSettings->serverAddress().endsWith(QStringLiteral(".icloud.com"))) {
+        request->setRawHeader(QString("Authorization").toLatin1(),
+                              QByteArray("Basic ") + QString::fromLatin1("%1:%2").arg(mSettings->username()).arg(mSettings->password()).toLatin1().toBase64());
     } else {
         url.setUserName(mSettings->username());
         url.setPassword(mSettings->password());
@@ -202,7 +206,12 @@ QString Request::debuggingString(const QNetworkRequest &request, const QByteArra
     text += "---------------------------------------------------------------------";
     const QList<QByteArray> &rawHeaderList = request.rawHeaderList();
     for (const QByteArray &rawHeader : rawHeaderList) {
-        text += rawHeader + " : " + request.rawHeader(rawHeader);
+        const QByteArray &rawHeaderData = request.rawHeader(rawHeader);
+        if (rawHeader == "Authorization" && rawHeaderData.startsWith("Basic")) {
+            text += rawHeader + " : " + "Basic user:password";
+        } else {
+            text += rawHeader + " : " + rawHeaderData;
+        }
     }
     QUrl censoredUrl = request.url();
     censoredUrl.setUserName(QStringLiteral("user"));
