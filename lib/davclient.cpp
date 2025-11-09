@@ -63,6 +63,30 @@ public:
     {
     }
 
+    void setCalendarList(const QList<Buteo::Dav::CalendarInfo> &serverList)
+    {
+        if (m_settings.serverAddress().endsWith(QStringLiteral(".memotoo.com"))) {
+            // Memotoo has a single calendar, and is using categories
+            // to sort events. It's possible to list events on categories
+            // using a specific path for the request. But it's not possible
+            // to send events in a specific category without mentioning
+            // this category in the ICS data. While the server is exposing the
+            // categories as a list of calendars in a PROPFIND request, we
+            // should report a single calendar, valid for all categories,
+            // so the user can view all the events.
+            m_calendars.clear();
+            for (const Buteo::Dav::CalendarInfo &info : serverList) {
+                if (info.remotePath.endsWith(QStringLiteral("/category0/"))) {
+                    m_calendars << info;
+                    m_calendars[0].remotePath.chop(10);
+                    break;
+                }
+            }
+        } else {
+            m_calendars = serverList;
+        }
+    }
+
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
     bool m_wellKnowRetryInProgress = false;
@@ -271,7 +295,7 @@ void Buteo::Dav::Client::requestCalendarList(const QString &path)
         if (!calendarRequest->hasError()
             // Request silently ignores this QNetworkReply::NetworkError
             && calendarRequest->networkError() != QNetworkReply::ContentOperationNotPermittedError) {
-            d->m_calendars = calendarRequest->calendars();
+            d->setCalendarList(calendarRequest->calendars());
         }
         emit calendarListFinished(reply(*calendarRequest, uri));
     });
