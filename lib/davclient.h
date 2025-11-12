@@ -57,6 +57,7 @@ public:
     };
     
     Client(const QString &serverAddress, QObject *parent = nullptr);
+    Client(const QString &domain, const QString &service, QObject *parent = nullptr);
     ~Client();
 
     QString serverAddress() const;
@@ -88,6 +89,7 @@ public:
     void deleteResource(const QString &path);
 
 signals:
+    void dnsLookupFinished(const Reply &reply);
     void userPrincipalDataFinished(const Reply &reply);
     void calendarListFinished(const Reply &reply);
     void calendarEtagsFinished(const Reply &reply, const QHash<QString, QString> &etags);

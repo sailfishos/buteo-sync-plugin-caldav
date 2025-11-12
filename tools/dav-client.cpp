@@ -77,6 +77,8 @@ public:
 
         mParser.addOption(QCommandLineOption(QStringList() << "s" << "server",
                                             "server address (like https://dav.example.org/).", "server"));
+        mParser.addOption(QCommandLineOption(QStringList() << "D" << "domain",
+                                            "domain name (like example.org).", "domain"));
         mParser.addOption(QCommandLineOption(QStringList() << "R" << "root",
                                             "DAV root path.", "path"));
         mParser.addOption(QCommandLineOption(QStringList() << "ignore-ssl-errors",
@@ -116,7 +118,19 @@ public:
 
         mParser.process(*this);
 
-        mDAV = new Buteo::Dav::Client(mParser.value("s"), this);
+        if (mParser.isSet("s")) {
+            mDAV = new Buteo::Dav::Client(mParser.value("s"), this);
+        } else if (mParser.isSet("D")) {
+            if (mParser.isSet("S")) {
+                mDAV = new Buteo::Dav::Client(mParser.value("D"), mParser.value("S"), this);
+            } else {
+                qWarning() << "provide a service with option -S when giving a domain name.";
+                exit(1);
+            }
+        } else {
+            qWarning() << "provide a server name with option -s or a domain name with option -D.";
+            exit(1);
+        }
 
         if (mParser.isSet("u") && mParser.isSet("P")) {
             mDAV->setAuthLogin(mParser.value("u"), mParser.value("P"));
@@ -132,10 +146,22 @@ public:
         if (mParser.isSet("t"))
             mTo = QDateTime::fromString(mParser.value("t"), Qt::ISODate);
 
-        connect(mDAV, &Buteo::Dav::Client::userPrincipalDataFinished,
-                this, &DavCli::onUserPrincipalDataFinisdhed);
-        mDAV->requestUserPrincipalAndServiceData(mParser.value("S"),
-                                                 mParser.value("R"));
+        connect(mDAV, &Buteo::Dav::Client::userPrincipalDataFinished, this, &DavCli::onUserPrincipalDataFinisdhed);
+        if (mParser.isSet("s")) {
+            mDAV->requestUserPrincipalAndServiceData(mParser.value("S"),
+                                                     mParser.value("R"));
+        } else {
+            connect(mDAV, &Buteo::Dav::Client::dnsLookupFinished, this,
+                    [this] (const Buteo::Dav::Client::Reply &reply) {
+                        if (reply.hasError()) {
+                            qWarning() << reply.errorMessage;
+                            exit(1);
+                        } else {
+                            mDAV->requestUserPrincipalAndServiceData(mParser.value("S"),
+                                                                     mParser.value("R"));
+                        }
+                    });
+        }
     }
 
     void execute(const QString &except = QString())

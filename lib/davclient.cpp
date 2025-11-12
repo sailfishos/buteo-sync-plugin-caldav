@@ -21,6 +21,8 @@
 #include "davclient.h"
 
 #include <QNetworkAccessManager>
+#include <QDnsLookup>
+#include <QTimer>
 
 #include "settings_p.h"
 #include "request_p.h"
@@ -51,6 +53,10 @@ namespace {
 class Buteo::Dav::ClientPrivate
 {
 public:
+    ClientPrivate()
+    {
+    }
+
     ClientPrivate(const QString &serverAddress)
     {
         // Todo: use .chopped(1) here from Qt5.10.
@@ -114,12 +120,55 @@ Buteo::Dav::Client::Client(const QString &serverAddress, QObject *parent)
     d->m_networkManager = new QNetworkAccessManager(this);
 }
 
+/*!
+  Create a new client for \param service on the server at \param domain.
+  The domain should be of the form example.org. A DNS lookup is done on
+  the domain name to find if \param service is used and at which address.
+
+  Connect to the &Client::dnsLookupFinished signal to know when the
+  DNS lookup finished.
+*/
+Buteo::Dav::Client::Client(const QString &domain, const QString &service, QObject *parent)
+    : QObject(parent), d(new ClientPrivate)
+{
+    d->m_networkManager = new QNetworkAccessManager(this);
+
+    const QString dnsService = QString::fromLatin1("_%1s._tcp.%2").arg(service).arg(domain);
+    QDnsLookup *dnsLookup = new QDnsLookup(QDnsLookup::SRV, dnsService, this);
+    connect(dnsLookup, &QDnsLookup::finished, this,
+            [this, dnsLookup, dnsService] () {
+                dnsLookup->deleteLater();
+
+                qCDebug(lcDav) << "Got DNS response" << dnsLookup->error();
+                if (dnsLookup->error() == QDnsLookup::NoError) {
+                    for (const QDnsServiceRecord &record : dnsLookup->serviceRecords()) {
+                        if (record.name() == dnsService) {
+                            d->m_settings.setServerAddress(QString::fromLatin1("https://%1").arg(record.target()));
+                            qCDebug(lcDav) << "Server address is" << d->m_settings.serverAddress();
+                            break;
+                        }
+                    }
+                } else {
+                    qCWarning(lcDav) << "DNS lookup failure:" << dnsLookup->errorString();
+                }
+                Reply reply(dnsService,
+                            d->m_settings.serverAddress().isEmpty() ? QNetworkReply::ContentNotFoundError : QNetworkReply::NoError,
+                            dnsLookup->errorString(),
+                            QByteArray());
+                emit dnsLookupFinished(reply);
+            });
+    // Give time for the caller to connect to the serverAddressChanged signal.
+    qCDebug(lcDav) << "Will starting a DNS look-up on" << dnsService;
+    QTimer::singleShot(0, dnsLookup, [dnsLookup] () {dnsLookup->lookup();});
+}
+
 Buteo::Dav::Client::~Client()
 {
 }
 
 /*!
-  Returns the server address as defined on construction.
+  Returns the server address as defined on construction or obtained by
+  DNS lookup.
 */
 QString Buteo::Dav::Client::serverAddress() const
 {
