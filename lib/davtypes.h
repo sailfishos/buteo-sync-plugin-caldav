@@ -23,26 +23,45 @@
 
 #include <QString>
 #include <QList>
+#include <QFlags>
 
 #include "davexport.h"
 
 namespace Buteo {
 namespace Dav {
+enum Privilege {
+    NO_PRIVILEGE = 0,
+    READ = 1,
+    WRITE = 2,
+    WRITE_PROPERTIES = 4,
+    WRITE_CONTENT = 8,
+    UNLOCK = 16,
+    READ_ACL = 32,
+    READ_CURRENT_USER_SET = 64,
+    WRITE_ACL = 128,
+    BIND = 256,
+    UNBIND = 512,
+    ALL_PRIVILEGES = 1023
+};
+Q_DECLARE_FLAGS(Privileges, Privilege)
+Q_DECLARE_OPERATORS_FOR_FLAGS(Privileges)
+
 struct DAV_EXPORT CalendarInfo {
     QString remotePath;
     QString displayName;
     QString color;
     QString userPrincipal;
-    bool readOnly = false;
+    Privileges privileges = READ | WRITE;
     bool allowEvents = true;
     bool allowTodos = true;
     bool allowJournals = true;
 
     CalendarInfo() {}
     CalendarInfo(const QString &path, const QString &name, const QString &color,
-                 const QString &principal = QString(), bool readOnly = false)
+                 const QString &principal = QString(),
+                 Privileges privileges = READ | WRITE)
         : remotePath(path), displayName(name), color(color)
-        , userPrincipal(principal), readOnly(readOnly) {}
+        , userPrincipal(principal), privileges(privileges) {}
 
     bool operator==(const CalendarInfo &other) const
     {
@@ -50,7 +69,7 @@ struct DAV_EXPORT CalendarInfo {
             && displayName == other.displayName
             && color == other.color
             && userPrincipal == other.userPrincipal
-            && readOnly == other.readOnly
+            && privileges == other.privileges
             && allowEvents == other.allowEvents
             && allowTodos == other.allowTodos
             && allowJournals == other.allowJournals;

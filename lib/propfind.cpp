@@ -46,7 +46,7 @@ static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
     return false;
 }
 
-static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
+static bool readPrivilegeSet(QXmlStreamReader *reader, Buteo::Dav::Privileges *privileges)
 {
     /* e.g.:
                     <D:current-user-privilege-set>
@@ -57,16 +57,30 @@ static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
                         <D:privilege><D:unbind /></D:privilege>
                     </D:current-user-privilege-set>
     */
-    bool readPriv = false;
-    bool writePriv = false;
+    *privileges = Buteo::Dav::NO_PRIVILEGE;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "read") {
-            readPriv = true;
+            *privileges |= Buteo::Dav::READ;
         } else if (reader->name() == "write") {
-            writePriv = true;
+            *privileges |= Buteo::Dav::WRITE;
+        } else if (reader->name() == "write-properties") {
+            *privileges |= Buteo::Dav::WRITE_PROPERTIES;
+        } else if (reader->name() == "unlock") {
+            *privileges |= Buteo::Dav::UNLOCK;
+        } else if (reader->name() == "read-acl") {
+            *privileges |= Buteo::Dav::READ_ACL;
+        } else if (reader->name() == "read-current-user-privilege-set") {
+            *privileges |= Buteo::Dav::READ_CURRENT_USER_SET;
+        } else if (reader->name() == "write-acl") {
+            *privileges |= Buteo::Dav::WRITE_ACL;
+        } else if (reader->name() == "bind") {
+            *privileges |= Buteo::Dav::BIND;
+        } else if (reader->name() == "unbind") {
+            *privileges |= Buteo::Dav::UNBIND;
+        } else if (reader->name() == "all") {
+            *privileges |= Buteo::Dav::ALL_PRIVILEGES;
         } else if (reader->name() == "current-user-privilege-set"
                    && reader->isEndElement()) {
-            *readOnly = readPriv && !writePriv;
             return true;
         }
     }
@@ -102,7 +116,8 @@ static bool readComponentSet(QXmlStreamReader *reader,
 }
 
 static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
-                             QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                             QString *label, QString *color, QString *userPrincipal,
+                             Buteo::Dav::Privileges *privileges,
                              bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -115,7 +130,6 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
     QString displayName;
     QString displayColor;
     QString currentUserPrincipal;
-    bool readOnlyStatus = false;
     *isCalendar = false;
     *allowEvents = true;
     *allowTodos = true;
@@ -142,7 +156,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
                 return false;
             }
         } else if (reader->name() == "current-user-privilege-set" && reader->isStartElement()) {
-            if (!readPrivilegeSet(reader, &readOnlyStatus)) {
+            if (!readPrivilegeSet(reader, privileges)) {
                 return false;
             }
         } else if (reader->name() == "supported-calendar-component-set" && reader->isStartElement()) {
@@ -154,7 +168,6 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
                 *color = displayColor;
                 *userPrincipal = currentUserPrincipal;
-                *readOnly = readOnlyStatus;
             }
             return true;
         }
@@ -163,7 +176,8 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
 }
 
 static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
-                                 QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                                 QString *label, QString *color, QString *userPrincipal,
+                                 Buteo::Dav::Privileges *privileges,
                                  bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -178,7 +192,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly,
+            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, privileges,
                                   allowEvents, allowTodos, allowJournals)) {
                 return false;
             }
@@ -234,13 +248,13 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
         if (reader->name() == "propstat" && reader->isStartElement()) {
             bool propStatIsCalendar = false;
             QString displayname, color, userPrincipal;
-            bool readOnly = false;
+            Buteo::Dav::Privileges privileges = Buteo::Dav::READ | Buteo::Dav::WRITE;
             bool allowEvents = true, allowTodos = true, allowJournals = true;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &displayname,
                                       &color,
                                       &userPrincipal,
-                                      &readOnly,
+                                      &privileges,
                                       &allowEvents, &allowTodos, &allowJournals)) {
                 return false;
             } else if (propStatIsCalendar) {
@@ -248,7 +262,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
                 calendarInfo.displayName = displayname;
                 calendarInfo.color = color;
                 calendarInfo.userPrincipal = userPrincipal.trimmed();
-                calendarInfo.readOnly = readOnly;
+                calendarInfo.privileges = privileges;
                 calendarInfo.allowEvents = allowEvents;
                 calendarInfo.allowTodos = allowTodos;
                 calendarInfo.allowJournals = allowJournals;

@@ -619,10 +619,12 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
     for (const Buteo::Dav::CalendarInfo &calendarInfo : allCalendarInfo) {
+        bool readOnly = (calendarInfo.privileges & Buteo::Dav::READ)
+            && !(calendarInfo.privileges & Buteo::Dav::WRITE);
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
             (mCalendar, mStorage, mDAV,
-             calendarInfo.remotePath, calendarInfo.readOnly, this);
+             calendarInfo.remotePath, readOnly, this);
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->userPrincipalMailto() : QString();

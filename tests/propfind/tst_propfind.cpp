@@ -210,7 +210,8 @@ void tst_Propfind::parseCalendarResponse_data()
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/"), true});
+                    QString::fromLatin1("/principals/users/username%40server.tld/"),
+                    Buteo::Dav::READ});
 
     QTest::newRow("missing current-user-principal")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-principal /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
