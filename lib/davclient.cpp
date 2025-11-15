@@ -341,9 +341,7 @@ void Buteo::Dav::Client::requestCalendarList(const QString &path)
             [this, calendarRequest] (const QString &uri) {
         calendarRequest->deleteLater();
 
-        if (!calendarRequest->hasError()
-            // Request silently ignores this QNetworkReply::NetworkError
-            && calendarRequest->networkError() != QNetworkReply::ContentOperationNotPermittedError) {
+        if (!calendarRequest->hasError()) {
             d->setCalendarList(calendarRequest->calendars());
         }
         emit calendarListFinished(reply(*calendarRequest, uri));

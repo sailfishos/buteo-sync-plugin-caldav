@@ -68,12 +68,6 @@ void Request::finishedWithReplyResult(const QString &uri, QNetworkReply *reply)
     if (reply->error() == QNetworkReply::NoError) {
         debugReplyAndReadAll(reply);
         finishedWithSuccess(uri);
-    } else if (reply->error() == QNetworkReply::ContentOperationNotPermittedError) {
-        // Gracefully continue when the operation fails for permission
-        // reasons (like pushing to a read-only resource).
-        qCDebug(lcDav) << "The" << command() << "operation requested on the remote content is not permitted";
-        debugReplyAndReadAll(reply);
-        finishedWithSuccess(uri);
     } else {
         int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         qCWarning(lcDav) << "The" << command()

@@ -21,6 +21,7 @@
 #include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QFile>
+#include <QTimer>
 
 #include <davclient.h>
 
@@ -117,7 +118,10 @@ public:
 
 
         mParser.process(*this);
+    }
 
+    void start()
+    {
         if (mParser.isSet("s")) {
             mDAV = new Buteo::Dav::Client(mParser.value("s"), this);
         } else if (mParser.isSet("D")) {
@@ -126,10 +130,12 @@ public:
             } else {
                 qWarning() << "provide a service with option -S when giving a domain name.";
                 exit(1);
+                return;
             }
         } else {
             qWarning() << "provide a server name with option -s or a domain name with option -D.";
             exit(1);
+            return;
         }
 
         if (mParser.isSet("u") && mParser.isSet("P")) {
@@ -200,7 +206,7 @@ public:
             connect(mDAV, &Buteo::Dav::Client::deleteFinished, this, &DavCli::onDeleteFinished);
             mDAV->deleteResource(mParser.value("d"));
         } else {
-            exit(0);
+            quit();
         }
     }
 
@@ -312,7 +318,7 @@ public:
     }
 
     QCommandLineParser mParser;
-    Buteo::Dav::Client *mDAV;
+    Buteo::Dav::Client *mDAV = nullptr;
     QDateTime mFrom, mTo;
 };
 
@@ -320,5 +326,6 @@ int main(int argc, char *argv[])
 {
     DavCli app(argc, argv);
 
+    QTimer::singleShot(0, Qt::VeryCoarseTimer, &app, &DavCli::start);
     return app.exec();
 }
