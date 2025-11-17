@@ -501,9 +501,8 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remotePath);
     debugRequest(request, buffer->buffer());
-    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
-    connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(slotSslErrors(QList<QSslError>)));
+    connect(reply, &QNetworkReply::finished, this, &PropFind::requestFinished);
+    connect(reply, &QNetworkReply::sslErrors, this, &PropFind::slotSslErrors);
 }
 
 void PropFind::handleReply(QNetworkReply *reply)
