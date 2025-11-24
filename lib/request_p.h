@@ -27,7 +27,6 @@
 #include "settings_p.h"
 
 #include <QObject>
-#include <QPointer>
 #include <QNetworkReply>
 #include <QSslError>
 #include <QNetworkRequest>
@@ -76,7 +75,6 @@ protected:
     QNetworkAccessManager *mNAManager;
     const QString REQUEST_TYPE;
     Settings* mSettings;
-    QPointer<Request> mSelfPointer;
     QNetworkReply::NetworkError mNetworkError;
     bool mErrorOccurred;
     QString mErrorMessage;

@@ -34,7 +34,6 @@ Request::Request(QNetworkAccessManager *manager,
     , mSettings(settings)
     , mNetworkError(QNetworkReply::NoError)
 {
-    mSelfPointer = this;
 }
 
 bool Request::hasError() const
@@ -99,11 +98,6 @@ void Request::slotSslErrors(QList<QSslError> errors)
 
 void Request::requestFinished()
 {
-    if (wasDeleted()) {
-        qCDebug(lcDav) << command() << "request was aborted";
-        return;
-    }
-
     QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
     if (!reply) {
         finishedWithInternalError(QString());
@@ -155,11 +149,6 @@ void Request::prepareRequest(QNetworkRequest *request, const QString &requestPat
     }
     url.setPath(requestPath);
     request->setUrl(url);
-}
-
-bool Request::wasDeleted() const
-{
-    return mSelfPointer == 0;
 }
 
 void Request::debugRequest(const QNetworkRequest &request, const QByteArray &data)
