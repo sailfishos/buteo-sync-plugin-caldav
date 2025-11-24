@@ -24,7 +24,8 @@
 #ifndef PROPFIND_H
 #define PROPFIND_H
 
-#include "request.h"
+#include "request_p.h"
+#include "davtypes.h"
 
 class QNetworkAccessManager;
 class Settings;
@@ -34,47 +35,23 @@ class PropFind : public Request
     Q_OBJECT
 
 public:
-    struct CalendarInfo {
-        QString remotePath;
-        QString displayName;
-        QString color;
-        QString userPrincipal;
-        bool readOnly = false;
-        bool allowEvents = true;
-        bool allowTodos = true;
-        bool allowJournals = true;
-
-        CalendarInfo() {}
-        CalendarInfo(const QString &path, const QString &name, const QString &color,
-                     const QString &principal = QString(), bool readOnly = false)
-            : remotePath(path), displayName(name), color(color)
-            , userPrincipal(principal), readOnly(readOnly)
-        {}
-
-        bool operator==(const CalendarInfo &other) const
-        {
-            return (remotePath == other.remotePath
-                    && displayName == other.displayName
-                    && color == other.color
-                    && userPrincipal == other.userPrincipal
-                    && readOnly == other.readOnly
-                    && allowEvents == other.allowEvents
-                    && allowTodos == other.allowTodos
-                    && allowJournals == other.allowJournals);
-        }
+    struct UserAddressSet
+    {
+        QString mailto;
+        QString path;
     };
 
     explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
-    void listCurrentUserPrincipal();
+    void listCurrentUserPrincipal(const QString &rootPath = QString());
     QString userPrincipal() const;
 
-    void listUserAddressSet(const QString &userPrincipal);
-    QString userMailtoHref() const;
-    QString userHomeHref() const;
+    void listUserAddressSet(const QString &userPrincipal,
+                            const QString &service = QString());
+    const QMap<QString, UserAddressSet>& userAddressSets() const;
 
     void listCalendars(const QString &calendarsPath);
-    const QList<CalendarInfo>& calendars() const;
+    const QList<Buteo::Dav::CalendarInfo>& calendars() const;
 
 protected:
     virtual void handleReply(QNetworkReply *reply);
@@ -82,7 +59,7 @@ protected:
 private:
     enum PropFindRequestType {
         UserPrincipal,
-        UserAddressSet,
+        UserAddresses,
         ListCalendars
     };
 
@@ -91,10 +68,9 @@ private:
     bool parseUserAddressSetResponse(const QByteArray &data);
     bool parseCalendarResponse(const QByteArray &data);
 
-    QList<CalendarInfo> mCalendars;
+    QList<Buteo::Dav::CalendarInfo> mCalendars;
     QString mUserPrincipal;
-    QString mUserMailtoHref;
-    QString mUserHomeHref;
+    QMap<QString, UserAddressSet> mUserAddressSets;
     PropFindRequestType mPropFindRequestType = UserPrincipal;
 
     friend class tst_Propfind;

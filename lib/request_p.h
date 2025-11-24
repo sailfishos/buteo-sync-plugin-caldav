@@ -24,13 +24,9 @@
 #ifndef REQUEST_H
 #define REQUEST_H
 
-#include "settings.h"
-
-#include <SyncCommonDefs.h>
-#include <SyncResults.h>
+#include "settings_p.h"
 
 #include <QObject>
-#include <QPointer>
 #include <QNetworkReply>
 #include <QSslError>
 #include <QNetworkRequest>
@@ -45,7 +41,7 @@ public:
                      QObject *parent = 0);
 
     QString command() const;
-    Buteo::SyncResults::MinorCode errorCode() const;
+    bool hasError() const;
     QString errorMessage() const;
     QByteArray errorData() const;
     QNetworkReply::NetworkError networkError() const;
@@ -64,8 +60,7 @@ protected:
     bool wasDeleted() const;
 
     void finishedWithSuccess(const QString &uri);
-    void finishedWithError(const QString &uri, Buteo::SyncResults::MinorCode minorCode,
-                           const QString &errorMessage, const QByteArray &errorData);
+    void finishedWithError(const QString &uri, const QString &errorMessage, const QByteArray &errorData);
     void finishedWithInternalError(const QString &uri, const QString &errorString = QString());
     void finishedWithReplyResult(const QString &uri, QNetworkReply *reply);
 
@@ -80,9 +75,8 @@ protected:
     QNetworkAccessManager *mNAManager;
     const QString REQUEST_TYPE;
     Settings* mSettings;
-    QPointer<Request> mSelfPointer;
     QNetworkReply::NetworkError mNetworkError;
-    Buteo::SyncResults::MinorCode mMinorCode;
+    bool mErrorOccurred;
     QString mErrorMessage;
     QByteArray mErrorData;
 };

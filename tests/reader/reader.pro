@@ -6,6 +6,9 @@ QT -= gui
 
 CONFIG += debug
 
+INCLUDEPATH += ../../lib
+LIBS += -L../../lib -lbuteodav
+
 include($$PWD/../../src/src.pri)
 
 SOURCES += tst_reader.cpp

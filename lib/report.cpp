@@ -22,16 +22,14 @@
  *
  */
 
-#include "report.h"
-#include "reader.h"
-#include "settings.h"
+#include "report_p.h"
+#include "settings_p.h"
+#include "reader_p.h"
 
 #include <QNetworkAccessManager>
 #include <QBuffer>
 #include <QDebug>
 #include <QStringList>
-
-#include "logging.h"
 
 #define PROP_URI "uri"
 
@@ -67,18 +65,15 @@ static QByteArray timeRangeFilterXml(const QDateTime &fromDateTime, const QDateT
 Report::Report(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "REPORT", parent)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void Report::getAllEvents(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, true);
 }
 
 void Report::getAllETags(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, false);
 }
 
@@ -87,7 +82,6 @@ void Report::sendCalendarQuery(const QString &remoteCalendarPath,
                                const QDateTime &toDateTime,
                                bool getCalendarData)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
     QByteArray requestData = \
             "<c:calendar-query xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">" \
                 "<d:prop>" \
@@ -112,7 +106,6 @@ void Report::sendCalendarQuery(const QString &remoteCalendarPath,
 
 void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList &eventHrefList)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
     if (eventHrefList.isEmpty()) {
         return;
     }
@@ -127,13 +120,10 @@ void Report::multiGetEvents(const QString &remoteCalendarPath, const QStringList
     requestData.append("</c:calendar-multiget>");
 
     sendRequest(remoteCalendarPath, requestData);
-
-    mFetchedUris = eventHrefList;
 }
 
 void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &requestData)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
     mRemoteCalendarPath = remoteCalendarPath;
 
     QNetworkRequest request;
@@ -148,15 +138,12 @@ void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &re
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remoteCalendarPath);
     debugRequest(request, buffer->buffer());
-    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
-    connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(slotSslErrors(QList<QSslError>)));
+    connect(reply, &QNetworkReply::finished, this, &Report::requestFinished);
+    connect(reply, &QNetworkReply::sslErrors, this, &Report::slotSslErrors);
 }
 
 void Report::handleReply(QNetworkReply *reply)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
         finishedWithReplyResult(uri, reply);
@@ -170,25 +157,19 @@ void Report::handleReply(QNetworkReply *reply)
         Reader reader;
         reader.read(data);
         if (reader.hasError()) {
-            finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                              QString("Malformed response body for REPORT"), data);
+            finishedWithError(uri, QString("Malformed response body for REPORT"),
+                              QByteArray());
         } else {
-            mReceivedResources = reader.results();
+            mResponse = reader.results();
             finishedWithSuccess(uri);
         }
     } else {
-        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                          QString("Empty response body for REPORT"),
+        finishedWithError(uri, QString("Empty response body for REPORT"),
                           QByteArray());
     }
 }
 
-const QList<Reader::CalendarResource>& Report::receivedCalendarResources() const
+const QList<Buteo::Dav::Resource>& Report::response() const
 {
-    return mReceivedResources;
-}
-
-const QStringList& Report::fetchedUris() const
-{
-    return mFetchedUris;
+    return mResponse;
 }

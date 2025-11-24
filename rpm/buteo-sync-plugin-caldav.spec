@@ -1,10 +1,12 @@
 Name:       buteo-sync-plugin-caldav
 Summary:    Syncs calendar data from CalDAV services
-Version:    0.3.13
+Version:    0.4.0
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/buteo-sync-plugin-caldav/
 Source0:    %{name}-%{version}.tar.bz2
+Requires(post): /sbin/ldconfig
+Requires(postun): /sbin/ldconfig
 BuildRequires:  pkgconfig(Qt5Core)
 BuildRequires:  pkgconfig(Qt5DBus)
 BuildRequires:  pkgconfig(Qt5Network)
@@ -21,6 +23,18 @@ Requires: buteo-syncfw-qt5-msyncd
 
 %description
 A Buteo plugin which syncs calendar data from CalDAV services
+
+%package devel
+Summary: development files for the DAV library
+Requires: %{name} = %{version}-%{release}
+%description devel
+This package contains development files to link with the DAV library.
+
+%package tools
+Summary: command line interface to perform DAV operations
+Requires: %{name} = %{version}-%{release}
+%description tools
+This package contains a command-line tool to perform DAV queries.
 
 %package tests
 Summary: Unit tests for buteo-sync-plugin-caldav
@@ -39,13 +53,26 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 %install
 %qmake5_install
 
+%post -p /sbin/ldconfig
+
+%postun -p /sbin/ldconfig
+
 %files
 %license LICENSE
 %config %{_sysconfdir}/buteo/profiles/client/caldav.xml
 %config %{_sysconfdir}/buteo/profiles/sync/caldav-sync.xml
+%{_libdir}/libbuteodav.so.*
 %{_libdir}/buteo-plugins-qt5/oopp/libcaldav-client.so
 #mkcal invitation plugin
 %{_libdir}/mkcalplugins/libcaldavinvitationplugin.so
+
+%files tools
+%{_bindir}/dav-client
+
+%files devel
+%{_libdir}/libbuteodav.so
+%{_includedir}/buteodav/*.h
+%{_libdir}/pkgconfig/libbuteodav.pc
 
 %files tests
 /opt/tests/buteo/plugins/caldav/tests.xml

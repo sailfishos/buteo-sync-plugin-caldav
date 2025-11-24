@@ -22,7 +22,7 @@
 #include <QObject>
 #include <QFile>
 
-#include <propfind.h>
+#include <propfind_p.h>
 
 class tst_Propfind : public QObject
 {
@@ -164,113 +164,123 @@ void tst_Propfind::parseUserAddressSetResponse()
     QFETCH(QString, userMailtoHref);
 
     QCOMPARE(mRequest->parseUserAddressSetResponse(data), success);
-    QCOMPARE(mRequest->userMailtoHref(), userMailtoHref);
+    QCOMPARE(mRequest->userAddressSets()[QStringLiteral("caldav")].mailto, userMailtoHref);
 }
 
-Q_DECLARE_METATYPE(PropFind::CalendarInfo)
+Q_DECLARE_METATYPE(Buteo::Dav::CalendarInfo)
 void tst_Propfind::parseCalendarResponse_data()
 {
     QTest::addColumn<QByteArray>("data");
     QTest::addColumn<bool>("success");
-    QTest::addColumn<QList<PropFind::CalendarInfo>>("calendars");
+    QTest::addColumn<QList<Buteo::Dav::CalendarInfo>>("calendars");
 
     QTest::newRow("empty response")
         << QByteArray()
         << false
-        << QList<PropFind::CalendarInfo>();
+        << QList<Buteo::Dav::CalendarInfo>();
 
     QTest::newRow("invalid response")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:'><D:response><D:href>/calendars/0/</D:href></D:response></D:multistatus>")
         << false
-        << QList<PropFind::CalendarInfo>();
+        << QList<Buteo::Dav::CalendarInfo>();
 
     QTest::newRow("forbidden access")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname /><calendar-color xmlns=\"http://apple.com/ns/ical/\" /><D:resourcetype /><D:current-user-principal /></D:prop><D:status>HTTP/1.1 403</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << QList<PropFind::CalendarInfo>();
+        << QList<Buteo::Dav::CalendarInfo>();
 
     QTest::newRow("not a calendar")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/</D:href><D:propstat><D:prop><D:resourcetype><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << QList<PropFind::CalendarInfo>();
+        << QList<Buteo::Dav::CalendarInfo>();
 
     QTest::newRow("one valid calendar")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege><D:privilege><D:write /></D:privilege></D:current-user-privilege-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
     QTest::newRow("one read-only calendar")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege></D:current-user-privilege-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/"), true});
+                    QString::fromLatin1("/principals/users/username%40server.tld/"),
+                    Buteo::Dav::READ});
 
     QTest::newRow("missing current-user-principal")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-principal /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString()});
 
     QTest::newRow("missing displayname")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:displayname /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
     QTest::newRow("missing privileges")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-privilege-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
     QTest::newRow("two valid calendars")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response><D:response><D:href>/calendars/1/</D:href><D:propstat><D:prop><D:displayname>Calendar 1</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FFFF00</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar 0"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")}
-            << PropFind::CalendarInfo{
+            << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/1/"),
                     QString::fromLatin1("Calendar 1"),
+                    QString(),
                     QString::fromLatin1("#FFFF00"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 
-    PropFind::CalendarInfo todos(QString::fromLatin1("/calendars/0/"),
-                                 QString::fromLatin1("Calendar 0"),
-                                 QString::fromLatin1("#FF0000"),
-                                 QString::fromLatin1("/principals/users/username%40server.tld/"));
+    Buteo::Dav::CalendarInfo todos(QString::fromLatin1("/calendars/0/"),
+                                   QString::fromLatin1("Calendar 0"),
+                                   QString(),
+                                   QString::fromLatin1("#FF0000"),
+                                   QString::fromLatin1("/principals/users/username%40server.tld/"));
     todos.allowEvents = false;
     todos.allowTodos = true;
     todos.allowJournals = false;
     QTest::newRow("one valid task manager")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege><D:privilege><D:write /></D:privilege></D:current-user-privilege-set><c:supported-calendar-component-set><c:comp name=\"VTODO\" /></c:supported-calendar-component-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << todos);
+        << (QList<Buteo::Dav::CalendarInfo>() << todos);
 
     QTest::newRow("missing component set")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><c:supported-calendar-component-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << (QList<PropFind::CalendarInfo>() << PropFind::CalendarInfo{
+        << (QList<Buteo::Dav::CalendarInfo>() << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/0/"),
                     QString::fromLatin1("Calendar"),
+                    QString(),
                     QString::fromLatin1("#FF0000"),
                     QString::fromLatin1("/principals/users/username%40server.tld/")});
 }
@@ -279,10 +289,10 @@ void tst_Propfind::parseCalendarResponse()
 {
     QFETCH(QByteArray, data);
     QFETCH(bool, success);
-    QFETCH(QList<PropFind::CalendarInfo>, calendars);
+    QFETCH(QList<Buteo::Dav::CalendarInfo>, calendars);
 
     QCOMPARE(mRequest->parseCalendarResponse(data), success);
-    const QList<PropFind::CalendarInfo> response = mRequest->calendars();
+    const QList<Buteo::Dav::CalendarInfo> response = mRequest->calendars();
     QCOMPARE(response, calendars);
 }
 

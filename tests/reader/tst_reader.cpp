@@ -22,7 +22,8 @@
 #include <QObject>
 #include <QFile>
 
-#include <reader.h>
+#include <davtypes.h>
+#include <notebooksyncagent.h>
 #include <KCalendarCore/Event>
 
 class tst_Reader : public QObject
@@ -265,20 +266,18 @@ void tst_Reader::readICal()
         QFAIL("Data file does not exist or cannot be opened for reading!");
     }
 
-    Reader rd;
-    rd.read(f.readAll());
-
-    QCOMPARE(rd.hasError(), !expectedNoError);
+    bool isOk;
+    QList<Buteo::Dav::Resource> resources = Buteo::Dav::Resource::fromData(f.readAll(), &isOk);
+    QCOMPARE(isOk, expectedNoError);
     if (!expectedNoError)
         return;
 
-    QCOMPARE(rd.results().size(), expectedNResponses);
-    if (!rd.results().isEmpty())
-        QCOMPARE(rd.results().first().incidences.length(), expectedNIncidences);
+    QCOMPARE(resources.size(), expectedNResponses);
 
     if (!expectedNIncidences)
         return;
-    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(rd.results().first().incidences[0]);
+    NotebookSyncAgent::CalendarResource resource(resources.first());
+    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(resource.incidences[0]);
     
     QCOMPARE(ev->uid(), expectedUID);
     QCOMPARE(ev->summary(), expectedSummary);
@@ -327,20 +326,18 @@ void tst_Reader::readDate()
         QFAIL("Data file does not exist or cannot be opened for reading!");
     }
 
-    Reader rd;
-    rd.read(f.readAll());
-
-    QCOMPARE(rd.hasError(), !expectedNoError);
+    bool isOk;
+    QList<Buteo::Dav::Resource> resources = Buteo::Dav::Resource::fromData(f.readAll(), &isOk);
+    QCOMPARE(isOk, expectedNoError);
     if (!expectedNoError)
         return;
 
-    QCOMPARE(rd.results().size(), expectedNResponses);
-    if (!rd.results().isEmpty())
-        QCOMPARE(rd.results().first().incidences.length(), expectedNIncidences);
+    QCOMPARE(resources.size(), expectedNResponses);
 
     if (!expectedNIncidences)
         return;
-    KCalendarCore::Event::Ptr ev = rd.results().first().incidences[0].staticCast<KCalendarCore::Event>();
+    NotebookSyncAgent::CalendarResource resource(resources.first());
+    KCalendarCore::Event::Ptr ev = resource.incidences[0].staticCast<KCalendarCore::Event>();
 
     QCOMPARE(ev->dtStart().date(), expectedStartDate);
     QCOMPARE(ev->dtEnd().date(), expectedEndDate);
@@ -372,15 +369,12 @@ void tst_Reader::readAlarm()
         QFAIL("Data file does not exist or cannot be opened for reading!");
     }
 
-    Reader rd;
-    rd.read(f.readAll());
+    QList<Buteo::Dav::Resource> resources = Buteo::Dav::Resource::fromData(f.readAll());
+    QCOMPARE(resources.size(), 1);
+    NotebookSyncAgent::CalendarResource resource(resources.first());
+    QCOMPARE(resource.incidences.length(), 1);
 
-    QVERIFY(!rd.hasError());
-
-    QCOMPARE(rd.results().size(), 1);
-    QCOMPARE(rd.results().first().incidences.length(), 1);
-
-    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(rd.results().first().incidences[0]);
+    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(resource.incidences[0]);
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
     KCalendarCore::Alarm::Ptr alarm(ev->alarms().at(0));

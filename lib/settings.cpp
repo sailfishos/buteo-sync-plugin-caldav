@@ -21,7 +21,7 @@
  *
  */
 
-#include "settings.h"
+#include "settings_p.h"
 
 Settings::Settings()
     : mIgnoreSSLErrors(false)
@@ -76,34 +76,4 @@ void Settings::setServerAddress(const QString &serverAddress)
 QString Settings::serverAddress() const
 {
     return mServerAddress;
-}
-
-void Settings::setDavRootPath(const QString &path)
-{
-    mDavRootPath = path;
-}
-
-QString Settings::davRootPath() const
-{
-    return mDavRootPath;
-}
-
-void Settings::setUserPrincipal(const QString &href)
-{
-    mUserPrincipal = href;
-}
-
-QString Settings::userPrincipal() const
-{
-    return mUserPrincipal;
-}
-
-void Settings::setUserMailtoHref(const QString &href)
-{
-    mUserMailtoHref = href;
-}
-
-QString Settings::userMailtoHref() const
-{
-    return mUserMailtoHref;
 }

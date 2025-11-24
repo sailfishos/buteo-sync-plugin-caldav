@@ -21,13 +21,11 @@
  *
  */
 
-#include "delete.h"
-#include "settings.h"
+#include "delete_p.h"
+#include "settings_p.h"
 
 #include <QNetworkAccessManager>
 #include <QDebug>
-
-#include "logging.h"
 
 #define PROP_INCIDENCE_URI "uri"
 
@@ -36,27 +34,21 @@ static const QString VCalExtension = QStringLiteral(".ics");
 Delete::Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "DELETE", parent)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void Delete::deleteEvent(const QString &href)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     QNetworkRequest request;
     prepareRequest(&request, href);
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1());
     reply->setProperty(PROP_INCIDENCE_URI, href);
     debugRequest(request, QStringLiteral(""));
-    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
-    connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(slotSslErrors(QList<QSslError>)));
+    connect(reply, &QNetworkReply::finished, this, &Delete::requestFinished);
+    connect(reply, &QNetworkReply::sslErrors, this, &Delete::slotSslErrors);
 }
 
 void Delete::handleReply(QNetworkReply *reply)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     const QString &uri = reply->property(PROP_INCIDENCE_URI).toString();
     if (reply->error() == QNetworkReply::ContentNotFoundError) {
         // Consider a success if the content does not exist on server.

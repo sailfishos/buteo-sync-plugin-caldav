@@ -1,9 +1,7 @@
 /*
  * This file is part of buteo-sync-plugin-caldav package
  *
- * Copyright (C) 2013 Jolla Ltd. and/or its subsidiary(-ies).
- *
- * Contributors: Mani Chandrasekar <maninc@gmail.com>
+ * Copyright (C) 2025 Damien Caliste <dcaliste@free.fr>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public License
@@ -21,29 +19,11 @@
  *
  */
 
-#ifndef DELETE_H
-#define DELETE_H
+#ifndef LOGGING_P_H
+#define LOGGING_P_H
 
-#include "request.h"
+#include <QLoggingCategory>
 
-#include <QObject>
-#include <QNetworkReply>
-#include <QSslError>
+Q_DECLARE_LOGGING_CATEGORY(lcDav)
 
-class QNetworkAccessManager;
-class Settings;
-
-class Delete : public Request
-{
-    Q_OBJECT
-
-public:
-    explicit Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
-
-    void deleteEvent(const QString &href);
-
-protected:
-    virtual void handleReply(QNetworkReply *reply);
-};
-
-#endif // DELETE_H
+#endif

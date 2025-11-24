@@ -21,14 +21,12 @@
  *
  */
 
-#include "propfind.h"
-#include "settings.h"
+#include "propfind_p.h"
+#include "settings_p.h"
 
 #include <QNetworkAccessManager>
 #include <QBuffer>
 #include <QXmlStreamReader>
-
-#include "logging.h"
 
 #define PROP_URI "uri"
 
@@ -48,7 +46,7 @@ static bool readResourceType(QXmlStreamReader *reader, bool *isCalendar)
     return false;
 }
 
-static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
+static bool readPrivilegeSet(QXmlStreamReader *reader, Buteo::Dav::Privileges *privileges)
 {
     /* e.g.:
                     <D:current-user-privilege-set>
@@ -59,16 +57,30 @@ static bool readPrivilegeSet(QXmlStreamReader *reader, bool *readOnly)
                         <D:privilege><D:unbind /></D:privilege>
                     </D:current-user-privilege-set>
     */
-    bool readPriv = false;
-    bool writePriv = false;
+    *privileges = Buteo::Dav::NO_PRIVILEGE;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "read") {
-            readPriv = true;
+            *privileges |= Buteo::Dav::READ;
         } else if (reader->name() == "write") {
-            writePriv = true;
+            *privileges |= Buteo::Dav::WRITE;
+        } else if (reader->name() == "write-properties") {
+            *privileges |= Buteo::Dav::WRITE_PROPERTIES;
+        } else if (reader->name() == "unlock") {
+            *privileges |= Buteo::Dav::UNLOCK;
+        } else if (reader->name() == "read-acl") {
+            *privileges |= Buteo::Dav::READ_ACL;
+        } else if (reader->name() == "read-current-user-privilege-set") {
+            *privileges |= Buteo::Dav::READ_CURRENT_USER_SET;
+        } else if (reader->name() == "write-acl") {
+            *privileges |= Buteo::Dav::WRITE_ACL;
+        } else if (reader->name() == "bind") {
+            *privileges |= Buteo::Dav::BIND;
+        } else if (reader->name() == "unbind") {
+            *privileges |= Buteo::Dav::UNBIND;
+        } else if (reader->name() == "all") {
+            *privileges |= Buteo::Dav::ALL_PRIVILEGES;
         } else if (reader->name() == "current-user-privilege-set"
                    && reader->isEndElement()) {
-            *readOnly = readPriv && !writePriv;
             return true;
         }
     }
@@ -104,7 +116,8 @@ static bool readComponentSet(QXmlStreamReader *reader,
 }
 
 static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
-                             QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                             QString *label, QString *description, QString *color,
+                             QString *userPrincipal, Buteo::Dav::Privileges *privileges,
                              bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -115,9 +128,9 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
         </D:prop>
     */
     QString displayName;
+    QString displayDescription;
     QString displayColor;
     QString currentUserPrincipal;
-    bool readOnlyStatus = false;
     *isCalendar = false;
     *allowEvents = true;
     *allowTodos = true;
@@ -125,6 +138,8 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "displayname" && reader->isStartElement()) {
             displayName = reader->readElementText();
+        } else if (reader->name() == "calendar-description" && reader->isStartElement()) {
+            displayDescription = reader->readElementText();
         } else if (reader->name() == "calendar-color" && reader->isStartElement()) {
             displayColor = reader->readElementText();
             if (displayColor.startsWith("#") && displayColor.length() == 9) {
@@ -144,7 +159,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
                 return false;
             }
         } else if (reader->name() == "current-user-privilege-set" && reader->isStartElement()) {
-            if (!readPrivilegeSet(reader, &readOnlyStatus)) {
+            if (!readPrivilegeSet(reader, privileges)) {
                 return false;
             }
         } else if (reader->name() == "supported-calendar-component-set" && reader->isStartElement()) {
@@ -154,9 +169,9 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
         } else if (reader->name() == "prop" && reader->isEndElement()) {
             if (*isCalendar) {
                 *label = displayName.isEmpty() ? QStringLiteral("Calendar") : displayName;
+                *description = displayDescription;
                 *color = displayColor;
                 *userPrincipal = currentUserPrincipal;
-                *readOnly = readOnlyStatus;
             }
             return true;
         }
@@ -165,7 +180,8 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
 }
 
 static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
-                                 QString *label, QString *color, QString *userPrincipal, bool *readOnly,
+                                 QString *label, QString *description, QString *color,
+                                 QString *userPrincipal, Buteo::Dav::Privileges *privileges,
                                  bool *allowEvents, bool *allowTodos, bool *allowJournals)
 {
     /* e.g.:
@@ -180,7 +196,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     */
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "prop" && reader->isStartElement()) {
-            if (!readCalendarProp(reader, isCalendar, label, color, userPrincipal, readOnly,
+            if (!readCalendarProp(reader, isCalendar, label, description, color, userPrincipal, privileges,
                                   allowEvents, allowTodos, allowJournals)) {
                 return false;
             }
@@ -191,7 +207,7 @@ static bool readCalendarPropStat(QXmlStreamReader *reader, bool *isCalendar,
     return false;
 }
 
-static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::CalendarInfo> *calendars)
+static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::CalendarInfo> *calendars)
 {
     /* e.g.:
         <D:response>
@@ -225,7 +241,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
 
     bool responseIsCalendar = false;
     bool hasPropStat = false;
-    PropFind::CalendarInfo calendarInfo;
+    Buteo::Dav::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
             // The account stores this with the encoding, so we're converting from
@@ -235,22 +251,24 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
             bool propStatIsCalendar = false;
-            QString displayname, color, userPrincipal;
-            bool readOnly = false;
+            QString displayname, color, userPrincipal, description;
+            Buteo::Dav::Privileges privileges = Buteo::Dav::READ | Buteo::Dav::WRITE;
             bool allowEvents = true, allowTodos = true, allowJournals = true;
             if (!readCalendarPropStat(reader, &propStatIsCalendar,
                                       &displayname,
+                                      &description,
                                       &color,
                                       &userPrincipal,
-                                      &readOnly,
+                                      &privileges,
                                       &allowEvents, &allowTodos, &allowJournals)) {
                 return false;
             } else if (propStatIsCalendar) {
                 responseIsCalendar = true;
                 calendarInfo.displayName = displayname;
+                calendarInfo.description = description;
                 calendarInfo.color = color;
                 calendarInfo.userPrincipal = userPrincipal.trimmed();
-                calendarInfo.readOnly = readOnly;
+                calendarInfo.privileges = privileges;
                 calendarInfo.allowEvents = allowEvents;
                 calendarInfo.allowTodos = allowTodos;
                 calendarInfo.allowJournals = allowJournals;
@@ -275,7 +293,8 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<PropFind::Cale
     return false;
 }
 
-static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailtoHref, QString *homeHref)
+static bool readUserAddressSetResponse(QXmlStreamReader *reader,
+                                       QMap<QString, PropFind::UserAddressSet> *userAddressSets)
 {
     /* expect a response like:
         <?xml version='1.0' encoding='utf-8'?>
@@ -300,23 +319,28 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader, QString *mailto
 
     bool canReadMailtoHref = false;
     bool canReadHomeHref = false;
+    PropFind::UserAddressSet *set = nullptr;
     bool valid = false;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "calendar-user-address-set") {
             canReadMailtoHref = reader->isStartElement();
+            set = canReadMailtoHref ? &(*userAddressSets)[QStringLiteral("caldav")] : nullptr;
         } else if (reader->name() == "calendar-home-set") {
             canReadHomeHref = reader->isStartElement();
+            set = canReadHomeHref ? &(*userAddressSets)[QStringLiteral("caldav")] : nullptr;
         } else if (canReadMailtoHref
-                   && reader->name() == "href" && reader->isStartElement()) {
+                   && reader->name() == "href" && reader->isStartElement()
+                   && (set->mailto.isEmpty()
+                       || reader->attributes().value(QStringLiteral("preferred")) == "1")) {
             valid = true;
             QString href = reader->readElementText();
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
-                *mailtoHref = href.mid(7); // chop off "mailto:"
+                set->mailto = href.mid(7); // chop off "mailto:"
             }
         } else if (canReadHomeHref
                    && reader->name() == "href" && reader->isStartElement()) {
             valid = true;
-            *homeHref = reader->readElementText();
+            set->path = reader->readElementText();
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
             return valid;
         }
@@ -410,7 +434,7 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
     reader.setNamespaceProcessing(true);
     for (; !reader.atEnd(); reader.readNext()) {
         if (reader.name() == "response" && reader.isStartElement()
-                && !readUserAddressSetResponse(&reader, &mUserMailtoHref, &mUserHomeHref)) {
+                && !readUserAddressSetResponse(&reader, &mUserAddressSets)) {
             return false;
         }
     }
@@ -420,7 +444,6 @@ bool PropFind::parseUserAddressSetResponse(const QByteArray &data)
 PropFind::PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent)
     : Request(manager, settings, "PROPFIND", parent)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
 }
 
 void PropFind::listCalendars(const QString &calendarsPath)
@@ -432,6 +455,7 @@ void PropFind::listCalendars(const QString &calendarsPath)
                            "  <d:current-user-privilege-set />"  \
                            "  <d:displayname />"             \
                            "  <a:calendar-color />"         \
+                           "  <c:calendar-description />"   \
                            "  <c:supported-calendar-component-set />"   \
                            " </d:prop>"                      \
                            "</d:propfind>");
@@ -439,22 +463,24 @@ void PropFind::listCalendars(const QString &calendarsPath)
     sendRequest(calendarsPath, requestData, ListCalendars);
 }
 
-void PropFind::listUserAddressSet(const QString &userPrincipal)
+void PropFind::listUserAddressSet(const QString &userPrincipal, const QString &service)
 {
-    const QByteArray requestData(QByteArrayLiteral(
+    QByteArray requestData(QByteArrayLiteral(
             "<d:propfind xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\">"
-            "  <d:prop>"
+            "  <d:prop>"));
+    if (service.isEmpty() || service == QStringLiteral("caldav")) {
+        requestData += QByteArrayLiteral(
             "    <c:calendar-user-address-set />"
-            "    <c:calendar-home-set />"
+            "    <c:calendar-home-set />");
+    }
+    requestData += QByteArrayLiteral(
             "  </d:prop>"
-            "</d:propfind>"
-    ));
-    mUserMailtoHref.clear();
-    mUserHomeHref.clear();
-    sendRequest(userPrincipal, requestData, UserAddressSet);
+            "</d:propfind>");
+    mUserAddressSets.clear();
+    sendRequest(userPrincipal, requestData, UserAddresses);
 }
 
-void PropFind::listCurrentUserPrincipal()
+void PropFind::listCurrentUserPrincipal(const QString &rootPath)
 {
     const QByteArray requestData(QByteArrayLiteral(
             "<d:propfind xmlns:d=\"DAV:\">"
@@ -464,15 +490,12 @@ void PropFind::listCurrentUserPrincipal()
             "</d:propfind>"
     ));
     mUserPrincipal.clear();
-    const QString &rootPath = mSettings->davRootPath();
     sendRequest(rootPath.isEmpty() ? QStringLiteral("/") : rootPath,
                 requestData, UserPrincipal);
 }
 
 void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestData, PropFindRequestType reqType)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     mPropFindRequestType = reqType;
 
     QNetworkRequest request;
@@ -490,15 +513,12 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remotePath);
     debugRequest(request, buffer->buffer());
-    connect(reply, SIGNAL(finished()), this, SLOT(requestFinished()));
-    connect(reply, SIGNAL(sslErrors(QList<QSslError>)),
-            this, SLOT(slotSslErrors(QList<QSslError>)));
+    connect(reply, &QNetworkReply::finished, this, &PropFind::requestFinished);
+    connect(reply, &QNetworkReply::sslErrors, this, &PropFind::slotSslErrors);
 }
 
 void PropFind::handleReply(QNetworkReply *reply)
 {
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError) {
         finishedWithReplyResult(uri, reply);
@@ -513,7 +533,7 @@ void PropFind::handleReply(QNetworkReply *reply)
     case (UserPrincipal):
         success = parseUserPrincipalResponse(data);
         break;
-    case (UserAddressSet):
+    case (UserAddresses):
         success = parseUserAddressSetResponse(data);
         break;
     case (ListCalendars):
@@ -524,12 +544,11 @@ void PropFind::handleReply(QNetworkReply *reply)
     if (success) {
         finishedWithSuccess(uri);
     } else {
-        finishedWithError(uri, Buteo::SyncResults::INTERNAL_ERROR,
-                          QString("Cannot parse response body for PROPFIND"), data);
+        finishedWithError(uri, QString("Cannot parse response body for PROPFIND"), data);
     }
 }
 
-const QList<PropFind::CalendarInfo>& PropFind::calendars() const
+const QList<Buteo::Dav::CalendarInfo>& PropFind::calendars() const
 {
     return mCalendars;
 }
@@ -539,12 +558,7 @@ QString PropFind::userPrincipal() const
     return mUserPrincipal;
 }
 
-QString PropFind::userMailtoHref() const
+const QMap<QString, PropFind::UserAddressSet>& PropFind::userAddressSets() const
 {
-    return mUserMailtoHref;
-}
-
-QString PropFind::userHomeHref() const
-{
-    return mUserHomeHref;
+    return mUserAddressSets;
 }

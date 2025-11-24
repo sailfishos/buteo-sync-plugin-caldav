@@ -26,7 +26,7 @@
 
 #include <QObject>
 
-#include <KCalendarCore/Incidence>
+#include "davtypes.h"
 
 class QXmlStreamReader;
 
@@ -34,31 +34,23 @@ class Reader : public QObject
 {
     Q_OBJECT
 public:
-    struct CalendarResource {
-        QString href;
-        QString etag;
-        QString status;
-        QString iCalData;
-        KCalendarCore::Incidence::List incidences;
-    };
-
-    explicit Reader(QObject *parent = 0);
+    explicit Reader(QObject *parent = nullptr);
     ~Reader();
 
     void read(const QByteArray &data);
     bool hasError() const;
-    const QList<CalendarResource>& results() const;
+    const QList<Buteo::Dav::Resource>& results() const;
 
 private:
     void readMultiStatus();
     void readResponse();
-    void readPropStat(CalendarResource &resource);
-    void readProp(CalendarResource &resource);
+    void readPropStat(Buteo::Dav::Resource *resource);
+    void readProp(Buteo::Dav::Resource *resource);
 
 private:
-    QXmlStreamReader *mReader;
-    bool mValidResponse;
-    QList<CalendarResource> mResults;
+    QXmlStreamReader *mReader = nullptr;
+    bool mValidResponse = false;
+    QList<Buteo::Dav::Resource> mResults;
 };
 
 #endif // READER_H
