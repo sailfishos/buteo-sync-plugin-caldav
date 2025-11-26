@@ -71,7 +71,7 @@ This package contains unit tests for the CalDAV Buteo sync plugin.
 
 %files devel
 %{_libdir}/libbuteodav.so
-%{_includedir}/buteodav/*.h
+%{_includedir}/buteodav
 %{_libdir}/pkgconfig/libbuteodav.pc
 
 %files tests
