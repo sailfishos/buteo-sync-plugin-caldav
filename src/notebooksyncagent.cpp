@@ -803,15 +803,17 @@ void NotebookSyncAgent::resourceSent(const Buteo::Dav::Client::Reply &reply, con
 
 void NotebookSyncAgent::resourceDeleted(const Buteo::Dav::Client::Reply &reply)
 {
-    if (reply.uri.startsWith(mRemoteCalendarPath) && reply.hasError()) {
-        mFailingUploads.insert(reply.uri, reply.errorData);
-        // Don't purge yet the locally deleted incidence.
-        KCalendarCore::Incidence::List::Iterator it = mPurgeList.begin();
-        while (it != mPurgeList.end()) {
-            if (storedIncidenceHrefUri(*it) == reply.uri) {
-                it = mPurgeList.erase(it);
-            } else {
-                ++it;
+    if (reply.uri.startsWith(mRemoteCalendarPath)) {
+        if (reply.hasError()) {
+            mFailingUploads.insert(reply.uri, reply.errorData);
+            // Don't purge yet the locally deleted incidence.
+            KCalendarCore::Incidence::List::Iterator it = mPurgeList.begin();
+            while (it != mPurgeList.end()) {
+                if (storedIncidenceHrefUri(*it) == reply.uri) {
+                    it = mPurgeList.erase(it);
+                } else {
+                    ++it;
+                }
             }
         }
 
