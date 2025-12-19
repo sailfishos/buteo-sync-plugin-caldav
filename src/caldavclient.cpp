@@ -286,7 +286,16 @@ public:
             colors.clear();
             enabled.clear();
         }
-    };
+        // Paths in settings are always saved encoded (for backward compatibility reasons).
+        QStringList decoded;
+        for (const QString &path : paths)
+            decoded << QUrl::fromPercentEncoding(path.toUtf8());
+        paths = decoded;
+        decoded.clear();
+        for (const QString &path : enabled)
+            decoded << QUrl::fromPercentEncoding(path.toUtf8());
+        enabled = decoded;
+    }
     // Constructs a list of CalendarInfo from value stored in settings.
     QList<Buteo::Dav::CalendarInfo> toCalendars() const
     {
@@ -296,7 +305,7 @@ public:
                                                         QString(), colors[i]);
         }
         return allCalendarInfo;
-    };
+    }
     QList<Buteo::Dav::CalendarInfo> enabledCalendars(const QList<Buteo::Dav::CalendarInfo> &calendars) const
     {
         QList<Buteo::Dav::CalendarInfo> filteredCalendarInfo;
@@ -307,14 +316,14 @@ public:
             filteredCalendarInfo << info;
         }
         return filteredCalendarInfo;
-    };
+    }
     void add(const Buteo::Dav::CalendarInfo &infos)
     {
         paths.append(infos.remotePath);
         enabled.append(infos.remotePath);
         displayNames.append(infos.displayName);
         colors.append(infos.color);
-    };
+    }
     bool update(const Buteo::Dav::CalendarInfo &infos, bool &modified)
     {
         int i = paths.indexOf(infos.remotePath);
@@ -327,7 +336,7 @@ public:
             modified = true;
         }
         return true;
-    };
+    }
     bool remove(const QString &path)
     {
         int at = paths.indexOf(path);
@@ -341,14 +350,22 @@ public:
     }
     void store(Accounts::Account *account, const Accounts::Service &srv)
     {
+        // For backward compatibility reasons, remote paths are always saved
+        // encoded. Previously, they were decoded in the NotebookSyncAgent constructor.
+        QStringList encoded;
         account->selectService(srv);
-        account->setValue("calendars", paths);
+        for (const QString &path : paths)
+            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path));
+        account->setValue("calendars", encoded);
+        encoded.clear();
+        for (const QString &path : enabled)
+            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path));
         account->setValue("enabled_calendars", enabled);
         account->setValue("calendar_display_names", displayNames);
         account->setValue("calendar_colors", colors);
         account->selectService(Accounts::Service());
         account->syncAndBlock();
-    };
+    }
 private:
     QStringList paths;
     QStringList displayNames;
