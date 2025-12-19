@@ -286,6 +286,17 @@ public:
             colors.clear();
             enabled.clear();
         }
+        // Paths may have been saved percent encoded before this commit,
+        // but Buteo::Dav::CalendarInfo uses always decoded paths.
+        // For backward compatibility, decoded paths and enabled.
+        QStringList decoded;
+        for (const QString &path : paths)
+            decoded << QUrl::fromPercentEncoding(path.toUtf8());
+        paths = decoded;
+        decoded.clear();
+        for (const QString &path : enabled)
+            decoded << QUrl::fromPercentEncoding(path.toUtf8());
+        enabled = decoded;
     };
     // Constructs a list of CalendarInfo from value stored in settings.
     QList<Buteo::Dav::CalendarInfo> toCalendars() const

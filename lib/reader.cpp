@@ -130,7 +130,7 @@ void Reader::readResponse()
     Buteo::Dav::Resource resource;
     while (mReader->readNextStartElement()) {
         if (mReader->name() == "href") {
-            resource.href = QUrl::fromPercentEncoding(mReader->readElementText().toLatin1());
+            resource.href = QUrl::fromPercentEncoding(mReader->readElementText().toUtf8());
         } else if (mReader->name() == "propstat") {
             readPropStat(&resource);
         } else if (mReader->name() == "status") {
