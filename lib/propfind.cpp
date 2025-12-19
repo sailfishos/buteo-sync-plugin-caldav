@@ -27,6 +27,7 @@
 #include <QNetworkAccessManager>
 #include <QBuffer>
 #include <QXmlStreamReader>
+#include <QUrl>
 
 #define PROP_URI "uri"
 
@@ -148,7 +149,7 @@ static bool readCalendarProp(QXmlStreamReader *reader, bool *isCalendar,
         } else if (reader->name() == "current-user-principal" && reader->isStartElement()) {
             for (;!reader->atEnd(); reader->readNext()) {
                 if (reader->name() == "href" && reader->isStartElement()) {
-                    currentUserPrincipal = reader->readElementText();
+                    currentUserPrincipal = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
                     break;
                 } else if (reader->name() == "current-user-principal" && reader->isEndElement()) {
                     break;
@@ -244,9 +245,7 @@ static bool readCalendarsResponse(QXmlStreamReader *reader, QList<Buteo::Dav::Ca
     Buteo::Dav::CalendarInfo calendarInfo;
     for (; !reader->atEnd(); reader->readNext()) {
         if (reader->name() == "href" && reader->isStartElement() && calendarInfo.remotePath.isEmpty()) {
-            // The account stores this with the encoding, so we're converting from
-            // percent encoding later.
-            calendarInfo.remotePath = reader->readElementText();
+            calendarInfo.remotePath = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
         }
 
         if (reader->name() == "propstat" && reader->isStartElement()) {
@@ -333,14 +332,14 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader,
                    && (set->mailto.isEmpty()
                        || reader->attributes().value(QStringLiteral("preferred")) == "1")) {
             valid = true;
-            QString href = reader->readElementText();
+            QString href = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
             if (href.startsWith(QStringLiteral("mailto:"), Qt::CaseInsensitive)) {
                 set->mailto = href.mid(7); // chop off "mailto:"
             }
         } else if (canReadHomeHref
                    && reader->name() == "href" && reader->isStartElement()) {
             valid = true;
-            set->path = reader->readElementText();
+            set->path = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
             return valid;
         }
@@ -385,7 +384,7 @@ static bool readUserPrincipalResponse(QXmlStreamReader *reader, QString *userPri
         } else if (reader->name() == "href"
                 && reader->isStartElement()
                 && canReadUserPrincipalHref) {
-            href = reader->readElementText();
+            href = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
         }
     }
 

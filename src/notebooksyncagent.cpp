@@ -390,7 +390,7 @@ namespace {
 NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
                                      mKCal::ExtendedStorage::Ptr storage,
                                      Buteo::Dav::Client *davClient,
-                                     const QString &encodedRemotePath,
+                                     const QString &remotePath,
                                      bool readOnlyFlag,
                                      QObject *parent)
     : QObject(parent)
@@ -398,7 +398,7 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mCalendar(calendar)
     , mStorage(storage)
     , mNotebook(0)
-    , mEncodedRemotePath(encodedRemotePath)
+    , mRemoteCalendarPath(remotePath)
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
     , mNotebookNeedsDeletion(false)
@@ -406,8 +406,6 @@ NotebookSyncAgent::NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
     , mEnableDownsync(true)
     , mReadOnlyFlag(readOnlyFlag)
 {
-    // the calendar path may be percent-encoded.  Return UTF-8 QString.
-    mRemoteCalendarPath = QUrl::fromPercentEncoding(mEncodedRemotePath.toUtf8());
     // Yahoo! seems to double-percent-encode for some reason
     if (mDAV->serverAddress().contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
         mRemoteCalendarPath = QUrl::fromPercentEncoding(mRemoteCalendarPath.toUtf8());
@@ -994,7 +992,7 @@ bool NotebookSyncAgent::hasUploadErrors() const
 
 const QString& NotebookSyncAgent::path() const
 {
-    return mEncodedRemotePath;
+    return mRemoteCalendarPath;
 }
 
 // ------------------------------ Utility / implementation functions.
