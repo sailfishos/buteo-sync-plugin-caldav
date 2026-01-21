@@ -168,7 +168,7 @@ void tst_CalDavClient::loadAccountCalendars()
     const QList<Buteo::Dav::CalendarInfo> &calendars = client.loadAccountCalendars();
 
     QCOMPARE(calendars.count(), 1);
-    QCOMPARE(calendars.first().remotePath, QLatin1String("/bar%40plop/"));
+    QCOMPARE(calendars.first().remotePath, QLatin1String("/bar@plop/"));
     QCOMPARE(calendars.first().displayName, QLatin1String("Bar"));
     QCOMPARE(calendars.first().color, QLatin1String("#00FF00"));
     QVERIFY(calendars.first().userPrincipal.isEmpty());
@@ -181,21 +181,21 @@ void tst_CalDavClient::mergeAccountCalendars()
     QVERIFY(client.init());
 
     QList<Buteo::Dav::CalendarInfo> remoteCalendars;
-    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/bar%40plop/"),
+    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/bar@plop/"),
             QLatin1String("Bar"), QString(), QLatin1String("#0000FF"), QLatin1String("/principals/2")};
     remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/foo/"),
             QLatin1String("New foo"), QString(), QLatin1String("#FF0000"), QString()};
-    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/toto%40tutu/"),
+    remoteCalendars << Buteo::Dav::CalendarInfo{QLatin1String("/toto@tutu/"),
             QLatin1String("Toto"), QString(), QLatin1String("#FF00FF"), QString()};
 
     const QList<Buteo::Dav::CalendarInfo> &calendars = client.mergeAccountCalendars(remoteCalendars);
 
     QCOMPARE(calendars.count(), 2);
-    QCOMPARE(calendars[0].remotePath, QLatin1String("/bar%40plop/"));
+    QCOMPARE(calendars[0].remotePath, QLatin1String("/bar@plop/"));
     QCOMPARE(calendars[0].displayName, QLatin1String("Bar"));
     QCOMPARE(calendars[0].color, QLatin1String("#0000FF"));
     QCOMPARE(calendars[0].userPrincipal, QLatin1String("/principals/2"));
-    QCOMPARE(calendars[1].remotePath, QLatin1String("/toto%40tutu/"));
+    QCOMPARE(calendars[1].remotePath, QLatin1String("/toto@tutu/"));
     QCOMPARE(calendars[1].displayName, QLatin1String("Toto"));
     QCOMPARE(calendars[1].color, QLatin1String("#FF00FF"));
     QVERIFY(calendars[1].userPrincipal.isEmpty());
@@ -218,13 +218,13 @@ void tst_CalDavClient::removeAccountCalendar()
     client.mManager = mManager; // So we can share the same Account pointers.
     QVERIFY(client.init());
 
-    client.removeAccountCalendars(QStringList() << QLatin1String("/bar%40plop/") << QLatin1String("/notStoredOne/"));
+    client.removeAccountCalendars(QStringList() << QLatin1String("/bar@plop/") << QLatin1String("/notStoredOne/"));
 
     Accounts::Service srv = mAccount->services(QLatin1String("caldav")).first();
     mAccount->selectService(srv);
     const QStringList &allCalendars = mAccount->value("calendars").toStringList();
     QCOMPARE(allCalendars.count(), 2);
-    QVERIFY(!allCalendars.contains(QLatin1String("/bar%40plop/")));
+    QVERIFY(!allCalendars.contains(QLatin1String("/bar@plop/")));
     const QStringList &names = mAccount->value("calendar_display_names").toStringList();
     QCOMPARE(names.count(), 2);
     QVERIFY(!names.contains(QLatin1String("Bar")));

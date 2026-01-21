@@ -355,11 +355,11 @@ public:
         QStringList encoded;
         account->selectService(srv);
         for (const QString &path : paths)
-            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path));
+            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path, "/"));
         account->setValue("calendars", encoded);
         encoded.clear();
         for (const QString &path : enabled)
-            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path));
+            encoded << QString::fromUtf8(QUrl::toPercentEncoding(path, "/"));
         account->setValue("enabled_calendars", enabled);
         account->setValue("calendar_display_names", displayNames);
         account->setValue("calendar_colors", colors);
