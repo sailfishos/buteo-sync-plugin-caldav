@@ -106,7 +106,7 @@ void tst_Propfind::parseUserPrincipalResponse_data()
     QTest::newRow("valid response")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:'><D:response><D:href>/</D:href><D:propstat><D:prop><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
         << true
-        << QString::fromLatin1("/principals/users/username%40server.tld/");
+        << QString::fromLatin1("/principals/users/username@server.tld/");
 }
 
 void tst_Propfind::parseUserPrincipalResponse()
@@ -202,7 +202,7 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar 0"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+                    QString::fromLatin1("/principals/users/username@server.tld/")});
 
     QTest::newRow("one read-only calendar")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal><D:current-user-privilege-set><D:privilege><D:read /></D:privilege></D:current-user-privilege-set></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
@@ -212,7 +212,7 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar 0"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/"),
+                    QString::fromLatin1("/principals/users/username@server.tld/"),
                     Buteo::Dav::READ});
 
     QTest::newRow("missing current-user-principal")
@@ -233,7 +233,7 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+                    QString::fromLatin1("/principals/users/username@server.tld/")});
 
     QTest::newRow("missing privileges")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat><D:propstat><D:prop><D:current-user-privilege-set /></D:prop><D:status>HTTP/1.1 404</D:status></D:propstat></D:response></D:multistatus>")
@@ -243,7 +243,7 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar 0"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+                    QString::fromLatin1("/principals/users/username@server.tld/")});
 
     QTest::newRow("two valid calendars")
         << QByteArray("<?xml version='1.0' encoding='utf-8'?><D:multistatus xmlns:D='DAV:' xmlns:c='urn:ietf:params:xml:ns:caldav'><D:response><D:href>/calendars/0/</D:href><D:propstat><D:prop><D:displayname>Calendar 0</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FF0000</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response><D:response><D:href>/calendars/1/</D:href><D:propstat><D:prop><D:displayname>Calendar 1</D:displayname><calendar-color xmlns=\"http://apple.com/ns/ical/\">#FFFF00</calendar-color><D:resourcetype><c:calendar /><D:collection /></D:resourcetype><D:current-user-principal><D:href>/principals/users/username%40server.tld/</D:href></D:current-user-principal></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>")
@@ -253,19 +253,19 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar 0"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")}
+                    QString::fromLatin1("/principals/users/username@server.tld/")}
             << Buteo::Dav::CalendarInfo{
                 QString::fromLatin1("/calendars/1/"),
                     QString::fromLatin1("Calendar 1"),
                     QString(),
                     QString::fromLatin1("#FFFF00"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+                    QString::fromLatin1("/principals/users/username@server.tld/")});
 
     Buteo::Dav::CalendarInfo todos(QString::fromLatin1("/calendars/0/"),
                                    QString::fromLatin1("Calendar 0"),
                                    QString(),
                                    QString::fromLatin1("#FF0000"),
-                                   QString::fromLatin1("/principals/users/username%40server.tld/"));
+                                   QString::fromLatin1("/principals/users/username@server.tld/"));
     todos.allowEvents = false;
     todos.allowTodos = true;
     todos.allowJournals = false;
@@ -282,7 +282,7 @@ void tst_Propfind::parseCalendarResponse_data()
                     QString::fromLatin1("Calendar"),
                     QString(),
                     QString::fromLatin1("#FF0000"),
-                    QString::fromLatin1("/principals/users/username%40server.tld/")});
+                    QString::fromLatin1("/principals/users/username@server.tld/")});
 }
 
 void tst_Propfind::parseCalendarResponse()
