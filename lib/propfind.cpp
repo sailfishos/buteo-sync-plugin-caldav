@@ -23,6 +23,7 @@
 
 #include "propfind_p.h"
 #include "settings_p.h"
+#include "logging_p.h"
 
 #include <QNetworkAccessManager>
 #include <QBuffer>
@@ -519,7 +520,9 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
 void PropFind::handleReply(QNetworkReply *reply)
 {
     const QString &uri = reply->property(PROP_URI).toString();
-    if (reply->error() != QNetworkReply::NoError) {
+    if (reply->error() != QNetworkReply::NoError
+        && (mPropFindRequestType != UserPrincipal
+            || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute) != 301)) {
         finishedWithReplyResult(uri, reply);
         return;
     }
@@ -529,9 +532,24 @@ void PropFind::handleReply(QNetworkReply *reply)
     bool success = false;
 
     switch (mPropFindRequestType) {
-    case (UserPrincipal):
-        success = parseUserPrincipalResponse(data);
+    case (UserPrincipal): {
+        const QUrl location = reply->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
+        if (location.isValid()) {
+            /* Case where the user principal request redirects to
+               another [sub]domain, or server path. For instance:
+               PROPFIND at https://user:pass@calendar.domain.fi/
+               returns a 301 response with
+               Location : https://calendar.domain.fi/SOGo. */
+            mSettings->setServerAddress(QString::fromLatin1("%1://%2").arg(location.scheme(), location.host()));
+            qCDebug(lcDav) << "user principal redirection to" << mSettings->serverAddress()
+                           << ", restarting PROPFIND on path" << location.path();
+            listCurrentUserPrincipal(location.path());
+            return;
+        } else {
+            success = parseUserPrincipalResponse(data);
+        }
         break;
+    }
     case (UserAddresses):
         success = parseUserAddressSetResponse(data);
         break;
