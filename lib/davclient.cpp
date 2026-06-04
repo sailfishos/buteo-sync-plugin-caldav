@@ -95,7 +95,8 @@ public:
 
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
-    bool m_wellKnowRetryInProgress = false;
+    bool m_wellKnownRetryInProgress = false;
+    QString m_serverAddressBeforeWellKnown;
     QString m_userPrincipal;
     QMap<QString, PropFind::UserAddressSet> m_serviceData;
     QList<Buteo::Dav::CalendarInfo> m_calendars;
@@ -250,11 +251,11 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
                 if (!hrefsRequest->hasError()) {
                     d->m_serviceData = hrefsRequest->userAddressSets();
                 }
-                d->m_wellKnowRetryInProgress = false;
+                d->m_wellKnownRetryInProgress = false;
                 emit userPrincipalDataFinished(reply(*hrefsRequest, uri));
             });
             hrefsRequest->listUserAddressSet(userPrincipal, service);
-        } else if (!service.isEmpty() && !d->m_wellKnowRetryInProgress) {
+        } else if (!service.isEmpty() && !d->m_wellKnownRetryInProgress) {
             // Can't find a user principal, try with a .well-known redirection.
             Head *serviceRequest = new Head(d->m_networkManager, &d->m_settings, this);
             connect(serviceRequest, &Request::finished, this,
@@ -263,10 +264,12 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
 
                 if (!serviceRequest->hasError()) {
                     const QUrl url = serviceRequest->serviceUrl(service);
+                    // Save server address in case the redirection doesn't help.
+                    d->m_serverAddressBeforeWellKnown = d->m_settings.serverAddress();
                     // Redirection may point to a different [sub]domain.
                     d->m_settings.setServerAddress(QString::fromLatin1("%1://%2").arg(url.scheme()).arg(url.host()));
                     // Retry to get a user principal using the provided redirect.
-                    d->m_wellKnowRetryInProgress = true;
+                    d->m_wellKnownRetryInProgress = true;
                     requestUserPrincipalAndServiceData(service, url.path());
                 } else {
                     emit userPrincipalDataFinished(reply(*serviceRequest, uri));
@@ -274,7 +277,13 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
             });
             serviceRequest->getServiceUrl(service);
         } else {
-            d->m_wellKnowRetryInProgress = false;
+            if (!d->m_serverAddressBeforeWellKnown.isEmpty()) {
+                // The redirection didn't help to get the user principal,
+                // so restore the server address.
+                d->m_settings.setServerAddress(d->m_serverAddressBeforeWellKnown);
+                d->m_serverAddressBeforeWellKnown.clear();
+            }
+            d->m_wellKnownRetryInProgress = false;
             emit userPrincipalDataFinished(reply(*userRequest, uri));
         }
     });
