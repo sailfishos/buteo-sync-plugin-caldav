@@ -287,7 +287,14 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
             emit userPrincipalDataFinished(reply(*userRequest, uri));
         }
     });
-    userRequest->listCurrentUserPrincipal(ensureRoot(davPath));
+    if (davPath.isEmpty()) {
+        // The server address may have been given with a path,
+        // at construction time, like https://domain.org/path/to/dav.
+        QUrl url(d->m_settings.serverAddress());
+        userRequest->listCurrentUserPrincipal(ensureRoot(url.path()));
+    } else {
+        userRequest->listCurrentUserPrincipal(ensureRoot(davPath));
+    }
 }
 
 /*!
