@@ -524,7 +524,9 @@ void PropFind::handleReply(QNetworkReply *reply)
     const QString &uri = reply->property(PROP_URI).toString();
     if (reply->error() != QNetworkReply::NoError
         && (mPropFindRequestType != UserPrincipal
-            || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute) != 301)) {
+            || reply->attribute(QNetworkRequest::HttpStatusCodeAttribute) != 301)
+        && (mPropFindRequestType != UserPrincipal
+            || !reply->property("ShouldRetry").toBool())) {
         finishedWithReplyResult(uri, reply);
         return;
     }
@@ -548,6 +550,13 @@ void PropFind::handleReply(QNetworkReply *reply)
             qCDebug(lcDav) << "user principal redirection to" << mSettings->serverAddress()
                            << ", restarting PROPFIND on path" << location.path();
             listCurrentUserPrincipal(location.path());
+            return;
+        } else if (reply->property("ShouldRetry").toBool()) {
+            /* Case where the server request to re-authenticate using a
+               Basic mechanism. */
+            qCDebug(lcDav) << "user principal authentication request"
+                           << ", restarting PROPFIND on path" << reply->url().path();
+            listCurrentUserPrincipal(reply->url().path());
             return;
         } else {
             success = parseUserPrincipalResponse(data);
