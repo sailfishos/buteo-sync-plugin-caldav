@@ -23,6 +23,7 @@
 #include <QNetworkAccessManager>
 #include <QDnsLookup>
 #include <QTimer>
+#include <QAuthenticator>
 
 #include "settings_p.h"
 #include "request_p.h"
@@ -93,8 +94,24 @@ public:
         }
     }
 
+    void sendCredentials(const QString &path, QAuthenticator *authenticator)
+    {
+        qCDebug(lcDav) << path << ": authentication requested, sending credentials.";
+        if (!m_credentialsSentTo.contains(path)) {
+            // Qt implementation for basic authentication expects
+            // the username and the password to be Latin1 encoded.
+            authenticator->setUser(QString::fromLatin1(m_settings.username().toUtf8()));
+            authenticator->setPassword(QString::fromLatin1(m_settings.password().toUtf8()));
+            // Qt is caching on success, but is requesting authentication
+            // when authenticator is touched. Avoid spaming the server
+            // if the credentials are incorrect.
+            m_credentialsSentTo.insert(path);
+        }
+    }
+
     Settings m_settings;
     QNetworkAccessManager *m_networkManager;
+    QSet<QString> m_credentialsSentTo;
     bool m_wellKnownRetryInProgress = false;
     QString m_serverAddressBeforeWellKnown;
     QString m_userPrincipal;
@@ -119,6 +136,10 @@ Buteo::Dav::Client::Client(const QString &serverAddress, QObject *parent)
     : QObject(parent), d(new ClientPrivate(serverAddress))
 {
     d->m_networkManager = new QNetworkAccessManager(this);
+    connect(d->m_networkManager, &QNetworkAccessManager::authenticationRequired,
+            this, [this] (QNetworkReply *reply, QAuthenticator *authenticator) {
+                d->sendCredentials(reply->url().path(), authenticator);
+            });
 }
 
 /*!
@@ -133,6 +154,10 @@ Buteo::Dav::Client::Client(const QString &domain, const QString &service, QObjec
     : QObject(parent), d(new ClientPrivate)
 {
     d->m_networkManager = new QNetworkAccessManager(this);
+    connect(d->m_networkManager, &QNetworkAccessManager::authenticationRequired,
+            this, [this] (QNetworkReply *reply, QAuthenticator *authenticator) {
+                d->sendCredentials(reply->url().path(), authenticator);
+            });
 
     const QString dnsService = QString::fromLatin1("_%1s._tcp.%2").arg(service).arg(domain);
     QDnsLookup *dnsLookup = new QDnsLookup(QDnsLookup::SRV, dnsService, this);
