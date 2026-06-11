@@ -39,7 +39,7 @@ class Put : public Request
     Q_OBJECT
 
 public:
-    explicit Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
+    Put(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void sendIcalData(const QString &uri, const QString &icalData,
                       const QString &eTag = QString());

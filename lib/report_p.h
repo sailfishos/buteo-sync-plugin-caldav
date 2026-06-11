@@ -38,7 +38,7 @@ class Report : public Request
     Q_OBJECT
 
 public:
-    explicit Report(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
+    Report(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void getAllEvents(const QString &remoteCalendarPath,
                       const QDateTime &fromDateTime = QDateTime(),

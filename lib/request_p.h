@@ -35,10 +35,10 @@ class Request : public QObject
 {
     Q_OBJECT
 public:
-    explicit Request(QNetworkAccessManager *manager,
-                     Settings *settings,
-                     const QString &requestType,
-                     QObject *parent = 0);
+    Request(QNetworkAccessManager *manager,
+            Settings *settings,
+            const QString &requestType,
+            QObject *parent = 0);
 
     QString command() const;
     bool hasError() const;

@@ -153,7 +153,8 @@ Buteo::Dav::Client::Client(const QString &domain, const QString &service, QObjec
                     qCWarning(lcDav) << "DNS lookup failure:" << dnsLookup->errorString();
                 }
                 Reply reply(dnsService,
-                            d->m_settings.serverAddress().isEmpty() ? QNetworkReply::ContentNotFoundError : QNetworkReply::NoError,
+                            d->m_settings.serverAddress().isEmpty() ? QNetworkReply::ContentNotFoundError
+                                                                    : QNetworkReply::NoError,
                             dnsLookup->errorString(),
                             QByteArray());
                 emit dnsLookupFinished(reply);

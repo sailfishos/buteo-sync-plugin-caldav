@@ -38,7 +38,7 @@ class Delete : public Request
     Q_OBJECT
 
 public:
-    explicit Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
+    Delete(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void deleteEvent(const QString &href);
 

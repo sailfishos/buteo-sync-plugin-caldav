@@ -41,7 +41,7 @@ public:
         QString path;
     };
 
-    explicit PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
+    PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);
 
     void listCurrentUserPrincipal(const QString &rootPath = QString());
     QString userPrincipal() const;

@@ -69,6 +69,7 @@ void Put::sendIcalData(const QString &uri, const QString &icalData, const QStrin
     QNetworkReply *reply = mNAManager->put(request, data);
     reply->setProperty(PROP_INCIDENCE_URI, uri);
     debugRequest(request, data);
+
     connect(reply, &QNetworkReply::finished, this, &Put::requestFinished);
     connect(reply, &QNetworkReply::sslErrors, this, &Put::slotSslErrors);
 }
