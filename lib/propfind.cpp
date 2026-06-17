@@ -539,8 +539,10 @@ void PropFind::handleReply(QNetworkReply *reply)
                another [sub]domain, or server path. For instance:
                PROPFIND at https://user:pass@calendar.domain.fi/
                returns a 301 response with
-               Location : https://calendar.domain.fi/SOGo. */
-            mSettings->setServerAddress(QString::fromLatin1("%1://%2").arg(location.scheme(), location.host()));
+               Location : https://calendar.domain.fi/SOGo/
+               or Location : /SOGo/. */
+            if (!location.scheme().isEmpty())
+                mSettings->setServerAddress(QString::fromLatin1("%1://%2").arg(location.scheme(), location.host()));
             qCDebug(lcDav) << "user principal redirection to" << mSettings->serverAddress()
                            << ", restarting PROPFIND on path" << location.path();
             listCurrentUserPrincipal(location.path());
