@@ -215,7 +215,7 @@ QString Request::debuggingString(const QNetworkReply &reply, const QByteArray &d
     text += REQUEST_TYPE + " response status code: " + reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toString();
     const QList<QNetworkReply::RawHeaderPair> headers = reply.rawHeaderPairs();
     text += REQUEST_TYPE + " response headers:";
-    for (const QNetworkReply::RawHeaderPair header : headers) {
+    for (const QNetworkReply::RawHeaderPair &header : headers) {
         text += "\t" + header.first + " : " + header.second;
     }
     if (!data.isEmpty()) {
