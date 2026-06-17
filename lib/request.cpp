@@ -107,6 +107,19 @@ void Request::requestFinished()
 
     qCDebug(lcDav) << command() << "request finished:" << reply->error();
 
+    // Should be handled by connecting from the DAV client to
+    // QNetworkAccessManager::authenticationRequired but current Qt
+    // implementation does not support UTF-8 Basic authentication.
+    if (reply->error() == QNetworkReply::AuthenticationRequiredError) {
+        const QByteArray authChallenge = reply->rawHeader("WWW-Authenticate");
+        if (authChallenge.startsWith("Basic ") && mSettings->authBasic().isEmpty()) {
+            // RFC7617 mention that the 'charset' parameter is optional,
+            // but it's only allowed value is "UTF-8".
+            mSettings->useAuthBasic(authChallenge.contains("charset="));
+            reply->setProperty("ShouldRetry", true);
+        }
+    }
+
     handleReply(reply);
 }
 
@@ -138,14 +151,11 @@ void Request::prepareRequest(QNetworkRequest *request, const QString &requestPat
     QUrl url(mSettings->serverAddress());
 
     if (!mSettings->authToken().isEmpty()) {
-        request->setRawHeader(QString("Authorization").toLatin1(),
+        request->setRawHeader(QByteArray("Authorization"),
                               QString("Bearer " + mSettings->authToken()).toLatin1());
-    } else if (mSettings->serverAddress().endsWith(QStringLiteral(".yahoo.com"))
-               || mSettings->serverAddress().endsWith(QStringLiteral(".icloud.com"))) {
-        request->setRawHeader(QString("Authorization").toLatin1(),
-                              QByteArray("Basic ")
-                              + QString::fromLatin1("%1:%2").arg(mSettings->username())
-                                                            .arg(mSettings->password()).toLatin1().toBase64());
+    } else if (!mSettings->authBasic().isEmpty()) {
+        request->setRawHeader(QByteArray("Authorization"),
+                              QByteArray("Basic ") + mSettings->authBasic().toBase64());
     } else {
         url.setUserName(mSettings->username());
         url.setPassword(mSettings->password());
