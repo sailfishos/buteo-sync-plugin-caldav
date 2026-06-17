@@ -67,12 +67,16 @@ Report::Report(QNetworkAccessManager *manager, Settings *settings, QObject *pare
 {
 }
 
-void Report::getAllEvents(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
+void Report::getAllEvents(const QString &remoteCalendarPath,
+                          const QDateTime &fromDateTime,
+                          const QDateTime &toDateTime)
 {
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, true);
 }
 
-void Report::getAllETags(const QString &remoteCalendarPath, const QDateTime &fromDateTime, const QDateTime &toDateTime)
+void Report::getAllETags(const QString &remoteCalendarPath,
+                         const QDateTime &fromDateTime,
+                         const QDateTime &toDateTime)
 {
     sendCalendarQuery(remoteCalendarPath, fromDateTime, toDateTime, false);
 }
@@ -138,6 +142,7 @@ void Report::sendRequest(const QString &remoteCalendarPath, const QByteArray &re
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remoteCalendarPath);
     debugRequest(request, buffer->buffer());
+
     connect(reply, &QNetworkReply::finished, this, &Report::requestFinished);
     connect(reply, &QNetworkReply::sslErrors, this, &Report::slotSslErrors);
 }
@@ -157,15 +162,13 @@ void Report::handleReply(QNetworkReply *reply)
         Reader reader;
         reader.read(data);
         if (reader.hasError()) {
-            finishedWithError(uri, QString("Malformed response body for REPORT"),
-                              QByteArray());
+            finishedWithError(uri, QString("Malformed response body for REPORT"), QByteArray());
         } else {
             mResponse = reader.results();
             finishedWithSuccess(uri);
         }
     } else {
-        finishedWithError(uri, QString("Empty response body for REPORT"),
-                          QByteArray());
+        finishedWithError(uri, QString("Empty response body for REPORT"), QByteArray());
     }
 }
 

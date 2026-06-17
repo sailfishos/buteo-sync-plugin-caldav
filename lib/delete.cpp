@@ -42,7 +42,8 @@ void Delete::deleteEvent(const QString &href)
     prepareRequest(&request, href);
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1());
     reply->setProperty(PROP_INCIDENCE_URI, href);
-    debugRequest(request, QStringLiteral(""));
+    debugRequest(request, QString());
+
     connect(reply, &QNetworkReply::finished, this, &Delete::requestFinished);
     connect(reply, &QNetworkReply::sslErrors, this, &Delete::slotSslErrors);
 }

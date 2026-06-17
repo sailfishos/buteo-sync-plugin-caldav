@@ -509,10 +509,12 @@ void PropFind::sendRequest(const QString &remotePath, const QByteArray &requestD
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/xml; charset=utf-8");
     QBuffer *buffer = new QBuffer(this);
     buffer->setData(requestData);
+
     // TODO: when Qt5.8 is available, remove the use of buffer, and pass requestData directly.
     QNetworkReply *reply = mNAManager->sendCustomRequest(request, REQUEST_TYPE.toLatin1(), buffer);
     reply->setProperty(PROP_URI, remotePath);
     debugRequest(request, buffer->buffer());
+
     connect(reply, &QNetworkReply::finished, this, &PropFind::requestFinished);
     connect(reply, &QNetworkReply::sslErrors, this, &PropFind::slotSslErrors);
 }
