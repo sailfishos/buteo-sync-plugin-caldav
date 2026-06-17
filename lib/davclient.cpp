@@ -265,10 +265,12 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
 
                 if (!serviceRequest->hasError()) {
                     const QUrl url = serviceRequest->serviceUrl(service);
-                    // Save server address in case the redirection doesn't help.
-                    d->m_serverAddressBeforeWellKnown = d->m_settings.serverAddress();
                     // Redirection may point to a different [sub]domain.
-                    d->m_settings.setServerAddress(QString::fromLatin1("%1://%2").arg(url.scheme()).arg(url.host()));
+                    if (!url.scheme().isEmpty()) {
+                        // Save server address in case the redirection doesn't help.
+                        d->m_serverAddressBeforeWellKnown = d->m_settings.serverAddress();
+                        d->m_settings.setServerAddress(QString::fromLatin1("%1://%2").arg(url.scheme()).arg(url.host()));
+                    }
                     // Retry to get a user principal using the provided redirect.
                     d->m_wellKnownRetryInProgress = true;
                     requestUserPrincipalAndServiceData(service, url.path());
