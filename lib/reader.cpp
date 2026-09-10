@@ -27,7 +27,7 @@
 #include <QDebug>
 #include <QUrl>
 #include <QList>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QByteArray>
 #include <QXmlStreamReader>
 
@@ -41,17 +41,29 @@ namespace {
         QList<QByteArray> lines = data.split('\n');
         int depth = 0;
         bool inCData = false;
-        QByteArray retn;
+        QByteArray retn, trailer;
         retn.reserve(data.size());
         for (QList<QByteArray>::const_iterator it = lines.constBegin(); it != lines.constEnd(); it++) {
             QByteArray line = *it;
             if (line.contains("BEGIN:VCALENDAR")) {
+                if (depth == 0) {
+                    inCData = line.contains("<![CDATA[");
+                    int start = line.indexOf("BEGIN:VCALENDAR");
+                    retn.append(line.left(start));
+                    line = line.mid(start);
+                }
                 depth += 1;
-                inCData = line.contains("<![CDATA[");
-            } else if (line.contains("END:VCALENDAR")) {
+            }
+            if (line.contains("END:VCALENDAR")) {
                 depth -= 1;
                 inCData = false;
-            } else if (depth > 0 && !inCData) {
+                if (depth == 0) {
+                    int end = line.lastIndexOf("END:VCALENDAR");
+                    trailer = line.mid(end);
+                    line = line.left(end);
+                }
+            }
+            if (depth > 0 && !inCData) {
                 // We're inside a VCALENDAR/ics block.
                 // First, hack to turn sanitised input into malformed input:
                 line.replace("&amp;",  "&");
@@ -65,7 +77,7 @@ namespace {
                 // a valid numeric character reference (decimal or hexadecimal).
                 // Other HTLML entities like &nbsp; seems to make iCal parser
                 // fails, so we're encoding them.
-                lineStr.replace(QRegExp("&(?!#[0-9]+;|#x[0-9A-Fa-f]+;)"), "&amp;");
+                lineStr.replace(QRegularExpression("&(?!#[0-9]+;|#x[0-9A-Fa-f]+;)"), "&amp;");
                 line = lineStr.toUtf8();
                 line.replace('"',  "&quot;");
                 line.replace('\'', "&apos;");
@@ -73,6 +85,10 @@ namespace {
                 line.replace('>',  "&gt;");
             }
             retn.append(line);
+            if (!trailer.isEmpty()) {
+                retn.append(trailer);
+                trailer.clear();
+            }
             retn.append('\n');
         }
         return retn;

@@ -247,6 +247,16 @@ void tst_Reader::readICal_data()
         << QString()
         << false
         << 0;
+    QTest::newRow("one-liner with XML entities")
+        << QStringLiteral("data/reader_one_line.xml")
+        << true
+        << 2
+        << 2
+        << QStringLiteral("1E304053-B101-40AD-B34E-57FD2BE3F440")
+        << QStringLiteral("Premiera Pisma")
+        << QString()
+        << false
+        << 0;
 }
 
 void tst_Reader::readICal()
