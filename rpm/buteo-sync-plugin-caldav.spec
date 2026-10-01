@@ -1,6 +1,6 @@
 Name:       buteo-sync-plugin-caldav
 Summary:    Syncs calendar data from CalDAV services
-Version:    0.4.0
+Version:    0.4.10
 Release:    1
 License:    LGPLv2
 URL:        https://github.com/sailfishos/buteo-sync-plugin-caldav/
@@ -25,13 +25,13 @@ Requires: buteo-syncfw-qt5-msyncd
 A Buteo plugin which syncs calendar data from CalDAV services
 
 %package devel
-Summary: development files for the DAV library
+Summary: Development files for the DAV library
 Requires: %{name} = %{version}-%{release}
 %description devel
 This package contains development files to link with the DAV library.
 
 %package tools
-Summary: command line interface to perform DAV operations
+Summary: Command line interface to perform DAV operations
 Requires: %{name} = %{version}-%{release}
 %description tools
 This package contains a command-line tool to perform DAV queries.
