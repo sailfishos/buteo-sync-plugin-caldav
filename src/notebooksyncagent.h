@@ -51,7 +51,8 @@ public:
                       QObject *parent = 0);
     ~NotebookSyncAgent();
 
-    bool setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
+    bool findNotebookFromPath(const QString &accountId);
+    void setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
                              const QString &userEmail,
                              const QString &accountId,
                              const QString &pluginName,
@@ -60,6 +61,7 @@ public:
     void startSync(const QDateTime &fromDateTime,
                    const QDateTime &toDateTime,
                    bool withUpsync, bool withDownsync);
+    void markNotebookAsDeleted();
 
     void abort();
     bool applyRemoteChanges();
