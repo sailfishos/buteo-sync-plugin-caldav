@@ -153,10 +153,12 @@ private:
     bool cleanSyncRequired();
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
     QList<Buteo::Dav::CalendarInfo> loadAccountCalendars() const;
-    QList<Buteo::Dav::CalendarInfo> mergeAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &calendars) const;
+    QList<Buteo::Dav::CalendarInfo> mergeAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars) const;
+    QStringList deletedAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars) const;
     void removeAccountCalendars(const QStringList &paths);
     void listCalendars(const QString &home = QString());
-    void syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalendarInfo);
+    void syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars,
+                       const QStringList &deletedPaths);
 
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();

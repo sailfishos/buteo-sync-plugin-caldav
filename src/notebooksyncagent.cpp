@@ -430,59 +430,58 @@ static const QByteArray PATH_PROPERTY = QByteArrayLiteral("remoteCalendarPath");
 static const QByteArray EMAIL_PROPERTY = QByteArrayLiteral("userPrincipalEmail");
 static const QByteArray SERVER_COLOR_PROPERTY = QByteArrayLiteral("serverColor");
 
-bool NotebookSyncAgent::setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
-                                            const QString &userEmail,
-                                            const QString &accountId,
-                                            const QString &pluginName,
-                                            const QString &syncProfile)
+bool NotebookSyncAgent::findNotebookFromPath(const QString &accountId)
 {
-    mNotebook = static_cast<mKCal::Notebook::Ptr>(0);
+    mNotebook.clear();
     // Look for an already existing notebook in storage for this account and path.
-    const mKCal::Notebook::List notebooks = mStorage->notebooks();
-    for (mKCal::Notebook::Ptr notebook : notebooks) {
+    for (mKCal::Notebook::Ptr notebook : mStorage->notebooks()) {
         if (notebook->account() == accountId
             && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
                 || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
             qCDebug(lcCalDav) << "found notebook:" << notebook->uid()
                               << "for remote calendar:" << mRemoteCalendarPath;
             mNotebook = notebook;
-            if (!info.color.isEmpty()
-                && notebook->customProperty(SERVER_COLOR_PROPERTY) != info.color) {
-                if (!notebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
-                    // Override user-selected notebook color only on each server change
-                    // and not if there was no server color saved.
-                    mNotebook->setColor(info.color);
-                }
-                mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, info.color);
-            }
-            mNotebook->setName(info.displayName);
-            mNotebook->setDescription(info.description);
-            mNotebook->setSyncProfile(syncProfile);
-            mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-            mNotebook->setPluginName(pluginName);
-            mNotebook->setEventsAllowed(info.allowEvents);
-            mNotebook->setTodosAllowed(info.allowTodos);
-            mNotebook->setJournalsAllowed(info.allowJournals);
-            return true;
         }
     }
-    qCDebug(lcCalDav) << "no notebook exists for" << mRemoteCalendarPath;
-    // or create a new one
-    mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(info.displayName, QString()));
-    mNotebook->setAccount(accountId);
-    mNotebook->setDescription(info.description);
-    mNotebook->setPluginName(pluginName);
-    mNotebook->setSyncProfile(syncProfile);
-    mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
-    mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-    if (!info.color.isEmpty()) {
-        mNotebook->setColor(info.color);
-        mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, info.color);
+    if (mNotebook.isNull())
+        qCDebug(lcCalDav) << "no notebook exists for" << mRemoteCalendarPath;
+    return !mNotebook.isNull();
+}
+
+void NotebookSyncAgent::setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
+                                            const QString &userEmail,
+                                            const QString &accountId,
+                                            const QString &pluginName,
+                                            const QString &syncProfile)
+{
+    if (findNotebookFromPath(accountId)) {
+        mNotebook->setName(info.displayName);
+        mNotebook->setDescription(info.description);
+        if (!info.color.isEmpty()
+            && mNotebook->customProperty(SERVER_COLOR_PROPERTY) != info.color) {
+            if (!mNotebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
+                // Override user-selected notebook color only on each server change
+                // and not if there was no server color saved.
+                mNotebook->setColor(info.color);
+            }
+            mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, info.color);
+        }
+    } else {
+        mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook(info.displayName,
+                                                             info.description));
+        mNotebook->setAccount(accountId);
+        mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
+        if (!info.color.isEmpty()) {
+            mNotebook->setColor(info.color);
+            mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, info.color);
+        }
     }
+    mNotebook->setSyncProfile(syncProfile);
+    mNotebook->setPluginName(pluginName);
     mNotebook->setEventsAllowed(info.allowEvents);
     mNotebook->setTodosAllowed(info.allowTodos);
     mNotebook->setJournalsAllowed(info.allowJournals);
-    return true;
+    mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
 }
 
 void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
@@ -834,6 +833,15 @@ static KCalendarCore::Incidence::List loadAll(mKCal::ExtendedStorage::Ptr storag
         }
     }
     return out;
+}
+
+void NotebookSyncAgent::markNotebookAsDeleted()
+{
+    qCDebug(lcCalDav) << "Flag notebook for deletion:" << mNotebook->uid();
+    mNotebookNeedsDeletion = true;
+    mEnableDownsync = true;
+    mPendingActions = 0;
+    emit finished();
 }
 
 bool NotebookSyncAgent::applyRemoteChanges()

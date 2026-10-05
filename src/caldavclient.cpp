@@ -379,19 +379,21 @@ QList<Buteo::Dav::CalendarInfo> CalDavClient::loadAccountCalendars() const
     return calendarSettings.enabledCalendars(calendarSettings.toCalendars());
 }
 
-QList<Buteo::Dav::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &calendars) const
+QList<Buteo::Dav::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars) const
 {
     struct CalendarSettings calendarSettings(mService);
 
+    // Update the list in settings from the remote calendar list.
     bool modified = false;
-    for (QList<Buteo::Dav::CalendarInfo>::ConstIterator it = calendars.constBegin();
-         it != calendars.constEnd(); ++it) {
-        if (!calendarSettings.update(*it, modified)) {
-            qCDebug(lcCalDav) << "Found a new upstream calendar:" << it->remotePath << it->displayName;
-            calendarSettings.add(*it);
+    for (const Buteo::Dav::CalendarInfo &it : remoteCalendars) {
+        if (!calendarSettings.update(it, modified)) {
+            qCDebug(lcCalDav) << "Found a new upstream calendar:"
+                              << it.remotePath << it.displayName << it.color;
+            calendarSettings.add(it);
             modified = true;
         } else {
-            qCDebug(lcCalDav) << "Already existing calendar:" << it->remotePath << it->displayName << it->color;
+            qCDebug(lcCalDav) << "Already existing calendar:"
+                              << it.remotePath << it.displayName << it.color;
         }
     }
     if (modified) {
@@ -399,7 +401,28 @@ QList<Buteo::Dav::CalendarInfo> CalDavClient::mergeAccountCalendars(const QList<
         calendarSettings.store(mService->account(), mService->service());
     }
 
-    return calendarSettings.enabledCalendars(calendars);
+    return calendarSettings.enabledCalendars(remoteCalendars);
+}
+
+QStringList CalDavClient::deletedAccountCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars) const
+{
+    QStringList deletedPaths;
+
+    QSet<QString> remotePaths;
+    for (const Buteo::Dav::CalendarInfo &it : remoteCalendars) {
+        remotePaths.insert(it.remotePath);
+    }
+    // Find calendars from local settings that are not in remote list anymore.
+    struct CalendarSettings calendarSettings(mService);
+    for (const Buteo::Dav::CalendarInfo &it : calendarSettings.toCalendars()) {
+        if (!remotePaths.contains(it.remotePath)) {
+            qCDebug(lcCalDav) << "Found a deleted upstream calendar:"
+                              << it.remotePath << it.displayName << it.color;
+            deletedPaths.append(it.remotePath);
+        }
+    }
+
+    return deletedPaths;
 }
 
 void CalDavClient::removeAccountCalendars(const QStringList &paths)
@@ -602,22 +625,20 @@ void CalDavClient::listCalendars(const QString &home)
     connect(mDAV, &Buteo::Dav::Client::calendarListFinished,
             [this] (const Buteo::Dav::Client::Reply &reply) {
                 if (!reply.hasError()) {
-                    syncCalendars(mergeAccountCalendars(mDAV->calendars()));
+                    syncCalendars(mergeAccountCalendars(mDAV->calendars()),
+                                  deletedAccountCalendars(mDAV->calendars()));
                 } else {
                     qCWarning(lcCalDav) << "Cannot list calendars, fallback to stored ones in account.";
-                    syncCalendars(loadAccountCalendars());
+                    syncCalendars(loadAccountCalendars(), QStringList());
                 }
             });
     mDAV->requestCalendarList(remoteHome);
 }
 
-void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalendarInfo)
+void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars,
+                                 const QStringList &deletedPaths)
 {
-    if (allCalendarInfo.isEmpty()) {
-        syncFinished(Buteo::SyncResults::NO_ERROR,
-                     QLatin1String("No calendars for this account"));
-        return;
-    }
+    const QString accString = QString::number(mService->account()->id());
     mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
     if (!mStorage || !mStorage->open()) {
@@ -636,7 +657,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
     // for each calendar path we need to sync:
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
-    for (const Buteo::Dav::CalendarInfo &calendarInfo : allCalendarInfo) {
+    for (const Buteo::Dav::CalendarInfo &calendarInfo : remoteCalendars) {
         bool readOnly = (calendarInfo.privileges & Buteo::Dav::READ)
             && !(calendarInfo.privileges & Buteo::Dav::WRITE);
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
@@ -646,14 +667,8 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
-        if (!agent->setNotebookFromInfo(calendarInfo, email,
-                                        QString::number(mService->account()->id()),
-                                        getPluginName(),
-                                        getProfileName())) {
-            syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                         QLatin1String("unable to load calendar storage"));
-            return;
-        }
+        agent->setNotebookFromInfo(calendarInfo, email, accString,
+                                   getPluginName(), getProfileName());
         connect(agent, &NotebookSyncAgent::finished,
                 this, &CalDavClient::notebookSyncFinished);
         mNotebookSyncAgents.append(agent);
@@ -662,9 +677,31 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &allCalen
                          mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_FROM_REMOTE,
                          mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_TO_REMOTE);
     }
+    if (mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_TO_REMOTE) {
+        // Handle local copies that should be removed.
+        QStringList settingsToRemove;
+        for (const QString &path : deletedPaths) {
+            NotebookSyncAgent *agent = new NotebookSyncAgent
+                (mCalendar, mStorage, mDAV, path, false, this);
+            if (agent->findNotebookFromPath(accString)) {
+                connect(agent, &NotebookSyncAgent::finished,
+                        this, &CalDavClient::notebookSyncFinished);
+                mNotebookSyncAgents.append(agent);
+                // Need to finish appending all deleted notebooks in mNotebookSyncAgents,
+                // before actually calling the markNotebookAsDeleted() method,
+                // otherwise it will call notebookSyncFinished() too soon.
+                QTimer::singleShot(0, agent, &NotebookSyncAgent::markNotebookAsDeleted);
+            } else {
+                delete agent;
+                settingsToRemove << path;
+            }
+        }
+        if (!settingsToRemove.isEmpty())
+            removeAccountCalendars(settingsToRemove);
+    }
     if (mNotebookSyncAgents.isEmpty()) {
-        syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
-                     QLatin1String("Could not add or find existing notebooks for this account"));
+        syncFinished(Buteo::SyncResults::NO_ERROR,
+                     QLatin1String("No calendars for this account"));
     }
 }
 

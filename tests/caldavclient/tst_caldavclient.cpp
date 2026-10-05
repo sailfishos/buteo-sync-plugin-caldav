@@ -153,10 +153,10 @@ void tst_CalDavClient::initConfigWithSettingsInAccount()
 
 void tst_CalDavClient::addInitCalendars()
 {
-    mAccount->setValue("calendars", QStringList() << QLatin1String("/foo/") << QLatin1String("/bar%40plop/"));
+    mAccount->setValue("calendars", QStringList() << QLatin1String("/foo/") << QLatin1String("/bar%40plop/") << QLatin1String("/retiredCalendar/"));
     mAccount->setValue("enabled_calendars", QStringList() << QLatin1String("/bar%40plop/"));
-    mAccount->setValue("calendar_display_names", QStringList() << QLatin1String("Foo") << QLatin1String("Bar"));
-    mAccount->setValue("calendar_colors", QStringList() << QLatin1String("#FF0000") << QLatin1String("#00FF00"));
+    mAccount->setValue("calendar_display_names", QStringList() << QLatin1String("Foo") << QLatin1String("Bar") << QLatin1String("Retired"));
+    mAccount->setValue("calendar_colors", QStringList() << QLatin1String("#FF0000") << QLatin1String("#00FF00") << QLatin1String("#123456"));
     QVERIFY(mAccount->syncAndBlock());
 }
 
@@ -204,12 +204,16 @@ void tst_CalDavClient::mergeAccountCalendars()
     Accounts::Service srv = mAccount->services(QLatin1String("caldav")).first();
     mAccount->selectService(srv);
     const QStringList &allCalendars = mAccount->value("calendars").toStringList();
-    QCOMPARE(allCalendars.count(), 3);
+    QCOMPARE(allCalendars.count(), 4);
     QVERIFY(allCalendars.contains(QLatin1String("/foo/")));
     const QStringList &names = mAccount->value("calendar_display_names").toStringList();
     int at = allCalendars.indexOf(QLatin1String("/foo/"));
     QVERIFY(at < names.length());
     QCOMPARE(names[at], QLatin1String("New foo"));
+
+    const QStringList deletedPaths = client.deletedAccountCalendars(remoteCalendars);
+    QCOMPARE(deletedPaths.count(), 1);
+    QCOMPARE(deletedPaths.first(), QLatin1String("/retiredCalendar/"));
 }
 
 void tst_CalDavClient::removeAccountCalendar()
@@ -218,16 +222,16 @@ void tst_CalDavClient::removeAccountCalendar()
     client.mManager = mManager; // So we can share the same Account pointers.
     QVERIFY(client.init());
 
-    client.removeAccountCalendars(QStringList() << QLatin1String("/bar@plop/") << QLatin1String("/notStoredOne/"));
+    client.removeAccountCalendars(QStringList() << QLatin1String("/retiredCalendar/") << QLatin1String("/notStoredOne/"));
 
     Accounts::Service srv = mAccount->services(QLatin1String("caldav")).first();
     mAccount->selectService(srv);
     const QStringList &allCalendars = mAccount->value("calendars").toStringList();
-    QCOMPARE(allCalendars.count(), 2);
-    QVERIFY(!allCalendars.contains(QLatin1String("/bar@plop/")));
+    QCOMPARE(allCalendars.count(), 3);
+    QVERIFY(!allCalendars.contains(QLatin1String("/retiredCalendar/")));
     const QStringList &names = mAccount->value("calendar_display_names").toStringList();
-    QCOMPARE(names.count(), 2);
-    QVERIFY(!names.contains(QLatin1String("Bar")));
+    QCOMPARE(names.count(), 3);
+    QVERIFY(!names.contains(QLatin1String("Retired")));
 }
 
 #include "tst_caldavclient.moc"
