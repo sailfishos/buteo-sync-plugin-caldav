@@ -41,6 +41,9 @@ public:
     void setPassword(const QString &password);
     QString password() const;
 
+    QByteArray authBasic() const;
+    void useAuthBasic(bool inUtf8 = false);
+
     void setIgnoreSSLErrors(bool ignore);
     bool ignoreSSLErrors() const;
 
@@ -53,6 +56,8 @@ private:
     QString mUsername;
     QString mPassword;
     bool mIgnoreSSLErrors;
+    bool mBasicAuthLegacy = false;
+    bool mBasicAuthUtf8 = false;
 };
 
 #endif // SETTINGS_H
