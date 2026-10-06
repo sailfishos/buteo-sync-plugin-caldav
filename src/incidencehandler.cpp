@@ -115,6 +115,24 @@ KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore:
         }
     }
 
+    // An all-day series must use date-valued EXDATEs.  A date-time EXDATE (e.g. EXDATE:20261103T000000)
+    // on an all-day event (DTSTART;VALUE=DATE) is silently dropped by some servers (e.g. Open-Xchange),
+    // so the deletion of a single occurrence would not be synced and the occurrence would reappear.
+    if (incidence->allDay() && incidence->recurs()) {
+        KCalendarCore::Recurrence *recurrence = incidence->recurrence();
+        const KCalendarCore::DateTimeList exDateTimes = recurrence->exDateTimes();
+        if (!exDateTimes.isEmpty()) {
+            KCalendarCore::DateList exDates = recurrence->exDates();
+            for (const QDateTime &exDateTime : exDateTimes) {
+                if (!exDates.contains(exDateTime.date())) {
+                    exDates.append(exDateTime.date());
+                }
+            }
+            recurrence->setExDateTimes(KCalendarCore::DateTimeList());
+            recurrence->setExDates(exDates);
+        }
+    }
+
     switch (incidence->type()) {
     case KCalendarCore::IncidenceBase::TypeEvent: {
         KCalendarCore::Event::Ptr event = incidence.staticCast<KCalendarCore::Event>();
