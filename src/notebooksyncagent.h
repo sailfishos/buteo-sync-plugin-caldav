@@ -28,8 +28,6 @@
 #include <davclient.h>
 #include <davtypes.h>
 
-#include <extendedstorage.h>
-
 #include <QDateTime>
 
 #include <SyncResults.h>
@@ -48,7 +46,6 @@ public:
                       int accountId,
                       Buteo::Dav::Client *davClient,
                       const QString &remotePath,
-                      bool readOnlyFlag = false,
                       QObject *parent = 0);
     ~NotebookSyncAgent();
 
@@ -107,11 +104,10 @@ private:
     Buteo::Dav::Client *mDAV;
     int mPendingActions;
     QSharedPointer<LocalStorage> mLocalStorage;
-    mKCal::ExtendedStorage::Ptr mStorage;
-    mKCal::Notebook::Ptr mNotebook;
+    QString mNotebookUid;
+    QString mNotebookName;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
-    QDateTime mNotebookSyncedDateTime;
     QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host, percent decoded.
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second

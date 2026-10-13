@@ -34,7 +34,7 @@
 
 #include <QDebug>
 
-#define NOTEBOOK_FUNCTION_CALL_TRACE qCDebug(lcCalDavTrace) << Q_FUNC_INFO << (mNotebook ? mNotebook->account() : "")
+#define NOTEBOOK_FUNCTION_CALL_TRACE qCDebug(lcCalDavTrace) << Q_FUNC_INFO << mNotebookUid
 
 namespace {
     QString createIncidenceHrefUri(KCalendarCore::Incidence::Ptr incidence, const QString &remoteCalendarPath)
@@ -96,43 +96,24 @@ NotebookSyncAgent::NotebookSyncAgent(QSharedPointer<LocalStorage> localStorage,
                                      int accountId,
                                      Buteo::Dav::Client *davClient,
                                      const QString &remotePath,
-                                     bool readOnlyFlag,
                                      QObject *parent)
     : QObject(parent)
     , mDAV(davClient)
     , mLocalStorage(localStorage)
-    , mStorage(localStorage->storage())
     , mRemoteCalendarPath(remotePath)
     , mSyncMode(NoSyncMode)
     , mRetriedReport(false)
     , mNotebookNeedsDeletion(false)
     , mEnableUpsync(true)
     , mEnableDownsync(true)
-    , mReadOnlyFlag(readOnlyFlag)
+    , mReadOnlyFlag(false)
 {
     // Yahoo! seems to double-percent-encode for some reason
     if (mDAV->serverAddress().contains(QStringLiteral("caldav.calendar.yahoo.com"))) {
         mRemoteCalendarPath = QUrl::fromPercentEncoding(mRemoteCalendarPath.toUtf8());
     }
 
-    // Look for an already existing notebook in storage for this account and path.
-    const QString accountStr = QString::number(accountId);
-    for (mKCal::Notebook::Ptr notebook : mStorage->notebooks()) {
-        if (notebook->account() == accountStr
-            && (notebook->customProperty(PATH_PROPERTY) == mRemoteCalendarPath
-                || notebook->syncProfile().endsWith(QStringLiteral(":%1").arg(mRemoteCalendarPath)))) {
-            qCDebug(lcCalDav) << "found notebook:" << notebook->uid()
-                              << "for remote calendar:" << mRemoteCalendarPath;
-            mNotebook = notebook;
-        }
-    }
-    if (mNotebook.isNull()) {
-        qCDebug(lcCalDav) << "no notebook exists for" << mRemoteCalendarPath;
-        mNotebook = mKCal::Notebook::Ptr(new mKCal::Notebook);
-        mNotebook->setAccount(accountStr);
-        mNotebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
-        mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, QStringLiteral("undefined"));
-    }
+    mNotebookUid = mLocalStorage->notebookUidForRemotePath(accountId, mRemoteCalendarPath);
 }
 
 NotebookSyncAgent::~NotebookSyncAgent()
@@ -154,23 +135,9 @@ void NotebookSyncAgent::setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info
                                             const QString &pluginName,
                                             const QString &syncProfile)
 {
-    mNotebook->setName(info.displayName);
-    mNotebook->setDescription(info.description);
-    mNotebook->setSyncProfile(syncProfile);
-    mNotebook->setPluginName(pluginName);
-    mNotebook->setEventsAllowed(info.allowEvents);
-    mNotebook->setTodosAllowed(info.allowTodos);
-    mNotebook->setJournalsAllowed(info.allowJournals);
-    mNotebook->setCustomProperty(EMAIL_PROPERTY, userEmail);
-    if (!info.color.isEmpty()
-        && mNotebook->customProperty(SERVER_COLOR_PROPERTY) != info.color) {
-        if (!mNotebook->customProperty(SERVER_COLOR_PROPERTY).isEmpty()) {
-            // Override user-selected notebook color only on each server change
-            // and not if there was no server color saved.
-            mNotebook->setColor(info.color);
-        }
-        mNotebook->setCustomProperty(SERVER_COLOR_PROPERTY, info.color);
-    }
+    mLocalStorage->setNotebookMetadata(mNotebookUid, info, userEmail, pluginName, syncProfile);
+    mReadOnlyFlag = (info.privileges & Buteo::Dav::READ) && !(info.privileges & Buteo::Dav::WRITE);
+    mNotebookName = info.displayName.toHtmlEscaped();
 }
 
 void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
@@ -179,27 +146,18 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    if (!mNotebook) {
-        qCDebug(lcCalDav) << "no notebook to sync.";
-        return;
-    }
-
     disconnect(mDAV, 0, this, 0);
     connect(mDAV, &Buteo::Dav::Client::calendarEtagsFinished, this, &NotebookSyncAgent::processETags);
     connect(mDAV, &Buteo::Dav::Client::calendarResourcesFinished, this, &NotebookSyncAgent::reportRequestFinished);
     connect(mDAV, &Buteo::Dav::Client::sendCalendarFinished, this, &NotebookSyncAgent::resourceSent);
     connect(mDAV, &Buteo::Dav::Client::deleteFinished, this, &NotebookSyncAgent::resourceDeleted);
 
-    // Store sync time before sync is completed to avoid loosing events
-    // that may be inserted server side between now and the termination
-    // of the process.
-    mNotebookSyncedDateTime = QDateTime::currentDateTimeUtc();
     mFromDateTime = fromDateTime;
     mToDateTime = toDateTime;
     mEnableUpsync = withUpsync;
     mEnableDownsync = withDownsync;
     mPendingActions = 0;
-    if (mNotebook->syncDate().isNull()) {
+    if (mLocalStorage->lastSyncDate(mNotebookUid).isNull()) {
 /*
     Slow sync mode:
 
@@ -208,10 +166,10 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 2) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        qCDebug(lcCalDav) << "Start slow sync for notebook:" << mNotebook->name()
-                          << "for account" << mNotebook->account()
+        qCDebug(lcCalDav) << "Start slow sync for remote path:" << mRemoteCalendarPath
                           << "between" << fromDateTime << "to" << toDateTime;
         mSyncMode = SlowSync;
+        mEnableDownsync = true;
 
         // Even if down sync is disabled in profile, we down sync the
         // remote calendar the first time, by design.
@@ -229,9 +187,9 @@ void NotebookSyncAgent::startSync(const QDateTime &fromDateTime,
 
     Step 5) is triggered by CalDavClient once *all* notebook syncs have finished.
  */
-        qCDebug(lcCalDav) << "Start quick sync for notebook:" << mNotebook->uid()
+        qCDebug(lcCalDav) << "Start quick sync for notebook:" << mNotebookUid
                   << "between" << fromDateTime << "to" << toDateTime
-                  << ", sync changes since" << mNotebook->syncDate();
+                  << ", sync changes since" << mLocalStorage->lastSyncDate(mNotebookUid);
         mSyncMode = QuickSync;
 
         fetchRemoteChanges();
@@ -352,7 +310,7 @@ void NotebookSyncAgent::processETags(const Buteo::Dav::Client::Reply &reply, con
         // In this situation, we need to delete the local calendar.
         mNotebookNeedsDeletion = true;
         qCDebug(lcCalDav) << "calendar" << reply.uri << "was deleted remotely, marking for deletion locally:"
-                          << mNotebook->name();
+                          << mNotebookUid;
     } else {
         setFatal(reply.uri, reply.errorData);
         return;
@@ -370,7 +328,7 @@ void NotebookSyncAgent::sendLocalChanges()
     if (!mLocalAdditions.count() && !mLocalModifications.count() && !mLocalDeletions.count()) {
         // no local changes to upsync.
         // we're finished syncing.
-        qCDebug(lcCalDav) << "no local changes to upsync - finished with notebook" << mNotebook->name()
+        qCDebug(lcCalDav) << "no local changes to upsync - finished with notebook" << mNotebookUid
                           << mRemoteCalendarPath;
         return;
     } else if (!mEnableUpsync) {
@@ -454,7 +412,7 @@ void NotebookSyncAgent::resourceDeleted(const Buteo::Dav::Client::Reply &reply)
 
 void NotebookSyncAgent::markNotebookAsDeleted()
 {
-    qCDebug(lcCalDav) << "Flag notebook for deletion:" << mNotebook->uid();
+    qCDebug(lcCalDav) << "Flag notebook for deletion:" << mNotebookUid;
     mNotebookNeedsDeletion = true;
     mEnableDownsync = true;
     mPendingActions = 0;
@@ -465,61 +423,26 @@ bool NotebookSyncAgent::applyRemoteChanges()
 {
     NOTEBOOK_FUNCTION_CALL_TRACE;
 
-    if (!mNotebook) {
-        qCDebug(lcCalDav) << "Missing notebook in apply changes.";
-        return false;
-    }
-    // mNotebook may not exist in mStorage, because it is new, or
-    // database has been modified and notebooks been reloaded.
-    mKCal::Notebook::Ptr notebook(mStorage->notebook(mNotebook->uid()));
     if (mEnableDownsync && mNotebookNeedsDeletion) {
-        // delete the notebook from local database
-        if (notebook && !mStorage->deleteNotebook(notebook)) {
-            qCWarning(lcCalDav) << "Cannot delete notebook" << notebook->name() << "from storage.";
-            mNotebookNeedsDeletion = false;
-        }
-        return mNotebookNeedsDeletion;
-    }
-
-    // If current notebook is not already in storage, we add it.
-    if (!notebook) {
-        if (!mStorage->addNotebook(mNotebook)) {
-            qCDebug(lcCalDav) << "Unable to (re)create notebook" << mNotebook->name()
-                              << "for account" << mNotebook->account() << ":" << mRemoteCalendarPath;
+        if (!mLocalStorage->deleteNotebook(mNotebookUid)) {
+            qCWarning(lcCalDav) << "Cannot delete notebook" << mNotebookUid << "from storage.";
             return false;
         }
-        notebook = mNotebook;
+        return true;
     }
 
+    if (!mLocalStorage->ensureNotebook(mNotebookUid)) {
+        qCWarning(lcCalDav) << "Cannot create notebook" << mNotebookUid << "in storage.";
+        return false;
+    }
     bool success = true;
-    if ((mEnableDownsync || mSyncMode == SlowSync)
-        && !updateIncidences(mReceivedCalendarResources)) {
-        success = false;
+    if (mEnableDownsync) {
+        success = updateIncidences(mReceivedCalendarResources) && success;
+        success = deleteIncidences(mRemoteDeletions) && success;
     }
-    if (mEnableDownsync && !deleteIncidences(mRemoteDeletions)) {
-        success = false;
-    }
-    // Update storage, before possibly changing readOnly flag for this notebook.
-    if (!mStorage->save(mKCal::ExtendedStorage::PurgeDeleted)) {
-        success = false;
-    }
-    if (!mPurgeList.isEmpty() && !mStorage->purgeDeletedIncidences(mPurgeList,
-                                                                   notebook->uid())) {
-        // Silently ignore failed purge action in database.
-        qCWarning(lcCalDav) << "Cannot purge from database the marked as deleted incidences.";
-    }
-
-    notebook->setIsReadOnly(mReadOnlyFlag);
-    notebook->setSyncDate(mNotebookSyncedDateTime);
-    notebook->setName(mNotebook->name());
-    notebook->setDescription(mNotebook->description());
-    notebook->setColor(mNotebook->color());
-    notebook->setSyncProfile(mNotebook->syncProfile());
-    notebook->setCustomProperty(PATH_PROPERTY, mRemoteCalendarPath);
-    if (!mStorage->updateNotebook(notebook)) {
-        qCWarning(lcCalDav) << "Cannot update notebook" << notebook->name() << "in storage.";
-        success = false;
-    }
+    success = mLocalStorage->save() && success;
+    // Silently ignore failed purge action in database.
+    mLocalStorage->purgeDeleted(mNotebookUid, mPurgeList);
 
     return success;
 }
@@ -527,11 +450,11 @@ bool NotebookSyncAgent::applyRemoteChanges()
 Buteo::TargetResults NotebookSyncAgent::result() const
 {
     if (mSyncMode == SlowSync) {
-        return Buteo::TargetResults(mNotebook->name().toHtmlEscaped(),
+        return Buteo::TargetResults(mNotebookName,
                                     Buteo::ItemCounts(mRemoteAdditions.count(), 0, 0),
                                     Buteo::ItemCounts());
     } else {
-        Buteo::TargetResults results(mNotebook->name().toHtmlEscaped());
+        Buteo::TargetResults results(mNotebookName);
 
         summarizeResults(&results, LOCAL, Buteo::TargetResults::ITEM_ADDED,
                          mFailingUpdates, mRemoteAdditions);
@@ -625,26 +548,19 @@ bool NotebookSyncAgent::calculateDelta(
         QSet<QString> *remoteChanges,
         KCalendarCore::Incidence::List *remoteDeletions)
 {
-    // Note that the mKCal API doesn't provide a way to get all deleted/modified incidences
-    // for a notebook, as it implements the SQL query using an inequality on both modifiedAfter
-    // and createdBefore; so instead we have to build a datetime which "should" satisfy
-    // the inequality for all possible local modifications detectable since the last sync.
-    QDateTime syncDateTime = mNotebook->syncDate().addSecs(1); // deleted after, created before...
-
-    // load all local incidences
-    KCalendarCore::Incidence::List localIncidences;
-    if (!mStorage->allIncidences(&localIncidences, mNotebook->uid())) {
-        qCWarning(lcCalDav) << "Unable to load notebook incidences, aborting sync of notebook:" << mRemoteCalendarPath
-                            << ":" << mNotebook->uid();
+    KCalendarCore::Incidence::List localIncidences, deletedIncidences;
+    QSet<QString> modifiedInstances;
+    if (!mLocalStorage->snapshot(mNotebookUid, &localIncidences, &modifiedInstances, &deletedIncidences)) {
+        qCWarning(lcCalDav) << "aborting sync for path:" << mRemoteCalendarPath;
         return false;
     }
-
+    
     // separate them into buckets.
     // note that each remote URI can be associated with multiple local incidences (due recurrenceId incidences)
     // Here we can determine local additions, modifications and remote modifications, deletions.
     QSet<QString> localUris;
     for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(localIncidences)) {
-        bool modified = (incidence->created() < syncDateTime && incidence->lastModified() >= syncDateTime);
+        bool modified = modifiedInstances.contains(incidence->instanceIdentifier());
         QString remoteUri = IncidenceHandler::uri(incidence);
         if (remoteUri.isEmpty()) {
             remoteUri = createIncidenceHrefUri(incidence, mRemoteCalendarPath);
@@ -736,12 +652,7 @@ bool NotebookSyncAgent::calculateDelta(
     }
 
     // List all local deletions reported by mkcal.
-    KCalendarCore::Incidence::List deleted;
-    if (!mStorage->deletedIncidences(&deleted, QDateTime(), mNotebook->uid())) {
-        qCWarning(lcCalDav) << "mKCal::ExtendedStorage::deletedIncidences() failed";
-        return false;
-    }
-    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(deleted)) {
+    for (KCalendarCore::Incidence::Ptr incidence : const_cast<const KCalendarCore::Incidence::List&>(deletedIncidences)) {
         QString remoteUri = IncidenceHandler::uri(incidence);
         if (remoteUri.isEmpty()) {
             remoteUri = createIncidenceHrefUri(incidence, mRemoteCalendarPath);
@@ -807,8 +718,7 @@ bool NotebookSyncAgent::updateIncidences(const QList<Buteo::Dav::Resource> &reso
     for (const Buteo::Dav::Resource &resource : resources) {
         QByteArray errorMessage;
         KCalendarCore::Incidence::List modifications;
-        if (!mLocalStorage->syncFromResource(mNotebook->uid(), resource,
-                                             mNotebookSyncedDateTime,
+        if (!mLocalStorage->syncFromResource(mNotebookUid, resource,
                                              &mRemoteAdditions, &modifications,
                                              &errorMessage)) {
             mFailingUpdates.insert(resource.href, errorMessage);

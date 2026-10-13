@@ -74,6 +74,7 @@ private slots:
 private:
     Buteo::Dav::Client *m_dav = nullptr;
     NotebookSyncAgent *m_agent;
+    KCalendarCore::Calendar::Ptr m_calendar;
 
     typedef QMap<QString, QString> IncidenceDescr;
 };
@@ -106,24 +107,21 @@ void tst_NotebookSyncAgent::init()
 
     m_dav = new Buteo::Dav::Client(QString());
     m_agent = new NotebookSyncAgent(storage, 42, m_dav, QLatin1String("/testCal/"));
-    mKCal::Notebook *notebook = new mKCal::Notebook("123456789", "test1", "test 1", "red", true, false, false, false, false);
 
-    m_agent->mNotebook = mKCal::Notebook::Ptr(notebook);
-    m_agent->mStorage->addNotebook(m_agent->mNotebook);
-    QVERIFY(m_agent->mStorage->calendar()->setDefaultNotebook(m_agent->mNotebook->uid()));
+    Buteo::Dav::CalendarInfo info(m_agent->mRemoteCalendarPath, "test1", "test 1", "red");
+    m_agent->setNotebookFromInfo(info, QString(), QStringLiteral("caldav-test"), QStringLiteral("caldav-sync"));
+    QVERIFY(m_agent->mLocalStorage->ensureNotebook(m_agent->mNotebookUid));
+
+    m_calendar = m_agent->mLocalStorage->mStorage->calendar();
 }
 
 void tst_NotebookSyncAgent::cleanup()
 {
-    m_agent->mStorage->save();
-
-    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook("123456789");
-    m_agent->mStorage->deleteNotebook(notebook);
-
-    m_agent->mStorage->close();
-
+    m_calendar.clear();
+    m_agent->mLocalStorage->deleteNotebook(m_agent->mNotebookUid);
     delete m_agent;
     m_agent = nullptr;
+
     delete m_dav;
     m_dav = nullptr;
 }
@@ -138,25 +136,25 @@ void tst_NotebookSyncAgent::insertEvent_data()
     
     QTest::newRow("simple event response")
         << "data/notebooksyncagent_simple.xml"
-        << QStringLiteral("NBUID:123456789:972a7c13-bbd6-4fce-9ebb-03a808111828")
+        << QStringLiteral("NBUID:%1:972a7c13-bbd6-4fce-9ebb-03a808111828")
         << QStringLiteral("Test")
         << QString()
         << 1;
     QTest::newRow("recurring event response")
         << "data/notebooksyncagent_recurring.xml"
-        << QStringLiteral("NBUID:123456789:7d145c8e-0f34-45a0-b8ca-d9c86093bc11")
+        << QStringLiteral("NBUID:%1:7d145c8e-0f34-45a0-b8ca-d9c86093bc11")
         << QStringLiteral("My Event")
         << QStringLiteral("2012-11-09T10:00:00Z")
         << 0;
     QTest::newRow("insert and update event response")
         << "data/notebooksyncagent_insert_and_update.xml"
-        << QStringLiteral("NBUID:123456789:7d145c8e-0f34-45a0-b8ca-d9c86093bc12")
+        << QStringLiteral("NBUID:%1:7d145c8e-0f34-45a0-b8ca-d9c86093bc12")
         << QStringLiteral("My Event 2")
         << QString()
         << 0;
     QTest::newRow("insert an exception at an EXDATE")
         << "data/notebooksyncagent_insert_exdate.xml"
-        << QStringLiteral("NBUID:123456789:9e3e9495-7fca-46b1-9ae4-207f3a1a9148")
+        << QStringLiteral("NBUID:%1:9e3e9495-7fca-46b1-9ae4-207f3a1a9148")
         << QStringLiteral("EXAMPLE")
         << QStringLiteral("2019-07-24")
         << 0;
@@ -178,13 +176,14 @@ void tst_NotebookSyncAgent::insertEvent()
     QVERIFY(m_agent->updateIncidences(Buteo::Dav::Resource::fromData(f.readAll())));
 
     KCalendarCore::Incidence::Ptr ev;
+    const QString nbuid = expectedUID.arg(m_agent->mNotebookUid);
     if (expectedRecurrenceID.isEmpty())
-        ev = m_agent->mStorage->calendar()->event(expectedUID);
+        ev = m_agent->mLocalStorage->mStorage->calendar()->event(nbuid);
     else
-        ev = m_agent->mStorage->calendar()->event(expectedUID, QDateTime::fromString(expectedRecurrenceID, Qt::ISODate));
+        ev = m_agent->mLocalStorage->mStorage->calendar()->event(nbuid, QDateTime::fromString(expectedRecurrenceID, Qt::ISODate));
     QVERIFY(ev);
     
-    QCOMPARE(ev->uid(), expectedUID);
+    QCOMPARE(ev->uid(), nbuid);
     QCOMPARE(ev->summary(), expectedSummary);
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
@@ -199,10 +198,10 @@ void tst_NotebookSyncAgent::insertMultipleEvents_data()
 
     QTest::newRow("singleA, orphan1, singleB, orphan2")
         << "data/notebooksyncagent_orphanexceptions.xml"
-        << (QStringList() << QStringLiteral("NBUID:123456789:aaaaaaaaaa")
-                          << QStringLiteral("NBUID:123456789:d1158dac-5a63-49d5-83b8-176bb792a088")
-                          << QStringLiteral("NBUID:123456789:bbbbbbbbbb")
-                          << QStringLiteral("NBUID:123456789:d1158dac-5a63-49d5-83b8-176bb792a088"))
+        << (QStringList() << QStringLiteral("NBUID:%1:aaaaaaaaaa")
+                          << QStringLiteral("NBUID:%1:d1158dac-5a63-49d5-83b8-176bb792a088")
+                          << QStringLiteral("NBUID:%1:bbbbbbbbbb")
+                          << QStringLiteral("NBUID:%1:d1158dac-5a63-49d5-83b8-176bb792a088"))
         << (QStringList() << QStringLiteral("Test a")
                           << QStringLiteral("Test orphan one")
                           << QStringLiteral("Test b")
@@ -229,18 +228,19 @@ void tst_NotebookSyncAgent::insertMultipleEvents()
     }
 
     QVERIFY(m_agent->updateIncidences(Buteo::Dav::Resource::fromData(f.readAll())));
-    KCalendarCore::Incidence::List incidences = m_agent->mStorage->calendar()->incidences();
+    KCalendarCore::Incidence::List incidences = m_calendar->incidences();
     for (int i = 0; i < expectedUIDs.size(); ++i) {
+        const QString nbuid = expectedUIDs[i].arg(m_agent->mNotebookUid);
         KCalendarCore::Incidence::Ptr ev;
         if (expectedRecurrenceIDs[i].isEmpty()) {
-            ev = m_agent->mStorage->calendar()->event(expectedUIDs[i]);
+            ev = m_calendar->event(nbuid);
         } else {
             QDateTime recId = QDateTime::fromString(expectedRecurrenceIDs[i], Qt::ISODate);
-            ev = m_agent->mStorage->calendar()->event(expectedUIDs[i], recId);
+            ev = m_calendar->event(nbuid, recId);
         }
-        qCDebug(lcCalDav) << "Trying to find event:" << expectedUIDs[i] << expectedRecurrenceIDs[i];
+        qCDebug(lcCalDav) << "Trying to find event:" << nbuid << expectedRecurrenceIDs[i];
         QVERIFY(ev);
-        QCOMPARE(ev->uid(), expectedUIDs[i]);
+        QCOMPARE(ev->uid(), nbuid);
         QCOMPARE(ev->summary(), expectedSummaries[i]);
     }
 }
@@ -254,11 +254,11 @@ void tst_NotebookSyncAgent::updateEvent()
     incidence->setCreated(QDateTime(QDate(2019, 03, 28), QTime(), Qt::UTC));
     QCOMPARE(incidence->created().date(), QDate(2019, 03, 28));
 
-    QVERIFY(m_agent->mStorage->calendar()->addEvent(incidence.staticCast<KCalendarCore::Event>()));
-    m_agent->mStorage->save();
+    QVERIFY(m_calendar->addEvent(incidence.staticCast<KCalendarCore::Event>()));
+    m_agent->mLocalStorage->save();
 
     // Test that event exists.
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-moz"));
+    incidence = m_calendar->event(QStringLiteral("123456-moz"));
     QVERIFY(incidence);
     QCOMPARE(incidence->customProperties().count(), 1);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
@@ -276,7 +276,7 @@ void tst_NotebookSyncAgent::updateEvent()
     QVERIFY(m_agent->updateIncidences(QList<Buteo::Dav::Resource>() << resource));
 
     // Check that custom property is updated as well.
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-moz"));
+    incidence = m_calendar->event(QStringLiteral("123456-moz"));
     QVERIFY(incidence);
     QCOMPARE(incidence->customProperties().count(), 1);
     QCOMPARE(incidence->nonKDECustomProperty("X-MOZ-LASTACK"),
@@ -288,27 +288,27 @@ void tst_NotebookSyncAgent::updateHrefETag()
     // Populate the database.
     KCalendarCore::Incidence::Ptr incidence = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
     incidence->setUid("123456-single");
-    m_agent->mStorage->calendar()->addEvent(incidence.staticCast<KCalendarCore::Event>());
+    m_calendar->addEvent(incidence.staticCast<KCalendarCore::Event>());
     incidence = KCalendarCore::Incidence::Ptr(new KCalendarCore::Event);
     incidence->setUid("123456-recurs");
     incidence->setDtStart(QDateTime::currentDateTimeUtc());
     incidence->recurrence()->setDaily(1);
     incidence->recurrence()->setDuration(28);
-    m_agent->mStorage->calendar()->addEvent(incidence.staticCast<KCalendarCore::Event>());
+    m_calendar->addEvent(incidence.staticCast<KCalendarCore::Event>());
     QDateTime refId = incidence->recurrence()->getNextDateTime(incidence->dtStart().addDays(4));
     refId.setTime(QTime(refId.time().hour(),
                         refId.time().minute(),
                         refId.time().second()));
     incidence = KCalendarCore::Calendar::createException(incidence, refId);
-    m_agent->mStorage->calendar()->addEvent(incidence.staticCast<KCalendarCore::Event>());
-    m_agent->mStorage->save();
+    m_calendar->addEvent(incidence.staticCast<KCalendarCore::Event>());
+    m_agent->mLocalStorage->save();
 
     // Simple case.
     m_agent->mLocalStorage->resourceIsSynced(QStringLiteral("/testCal/123456-single.ics"),
                                              QStringLiteral("\"123456\""),
                                              QStringLiteral("123456-single"));
 
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-single"));
+    incidence = m_calendar->event(QStringLiteral("123456-single"));
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-single.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"123456\""));
 
@@ -317,7 +317,7 @@ void tst_NotebookSyncAgent::updateHrefETag()
                                              QStringLiteral("\"456789\""),
                                              QStringLiteral("123456-single"));
 
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-single"));
+    incidence = m_calendar->event(QStringLiteral("123456-single"));
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-single.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"456789\""));
 
@@ -326,10 +326,10 @@ void tst_NotebookSyncAgent::updateHrefETag()
                                              QStringLiteral("\"123456\""),
                                              QStringLiteral("123456-recurs"));
 
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-recurs"));
+    incidence = m_calendar->event(QStringLiteral("123456-recurs"));
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"123456\""));
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-recurs"), refId);
+    incidence = m_calendar->event(QStringLiteral("123456-recurs"), refId);
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"123456\""));
 
@@ -338,10 +338,10 @@ void tst_NotebookSyncAgent::updateHrefETag()
                                              QStringLiteral("\"456789\""),
                                              QStringLiteral("123456-recurs"));
 
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-recurs"));
+    incidence = m_calendar->event(QStringLiteral("123456-recurs"));
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"456789\""));
-    incidence = m_agent->mStorage->calendar()->event(QStringLiteral("123456-recurs"), refId);
+    incidence = m_calendar->event(QStringLiteral("123456-recurs"), refId);
     QCOMPARE(IncidenceHandler::uri(incidence), QStringLiteral("/testCal/123456-recurs.ics"));
     QCOMPARE(IncidenceHandler::etag(incidence), QStringLiteral("\"456789\""));
 }
@@ -365,7 +365,7 @@ void tst_NotebookSyncAgent::calculateDelta()
     mKCal::ExtendedCalendar::Ptr calendar(new mKCal::ExtendedCalendar(QTimeZone::utc()));
     mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
     QVERIFY(storage && storage->open());
-    QVERIFY(calendar->setDefaultNotebook(m_agent->mNotebook->uid()));
+    QVERIFY(calendar->setDefaultNotebook(m_agent->mNotebookUid));
 
     QHash<QString, QString> remoteUriEtags;
     QDateTime cur = QDateTime::currentDateTimeUtc();
@@ -447,7 +447,8 @@ void tst_NotebookSyncAgent::calculateDelta()
 
     storage->save();
     QDateTime lastSync = QDateTime::currentDateTimeUtc();
-    m_agent->mNotebook->setSyncDate(lastSync.addSecs(1));
+    mKCal::Notebook::Ptr nb = m_agent->mLocalStorage->mNotebooks.value(m_agent->mNotebookUid);
+    nb->setSyncDate(lastSync.addSecs(1));
 
     // Sleep a bit to ensure that modification done after the sleep will have
     // dates that are later than creation ones, so inquiring the local database
@@ -534,7 +535,7 @@ void tst_NotebookSyncAgent::calculateDelta()
 Q_DECLARE_METATYPE(KCalendarCore::Incidence::Ptr)
 void tst_NotebookSyncAgent::oneDownSyncCycle_data()
 {
-    QTest::addColumn<QString>("notebookId");
+    QTest::addColumn<QString>("path");
     QTest::addColumn<QString>("uid");
     QTest::addColumn<KCalendarCore::Incidence::List>("events");
     KCalendarCore::Incidence::Ptr ev;
@@ -575,20 +576,17 @@ void tst_NotebookSyncAgent::oneDownSyncCycle_data()
 
 void tst_NotebookSyncAgent::oneDownSyncCycle()
 {
-    QFETCH(QString, notebookId);
+    QFETCH(QString, path);
     QFETCH(QString, uid);
     QFETCH(KCalendarCore::Incidence::List, events);
     QHash<QString, QString> remoteUriEtags;
 
     /* We read or create a notebook for this test. */
-    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(notebookId);
-    if (notebook) {
-        QVERIFY(m_agent->mStorage->loadNotebookIncidences(notebook->uid()));
-    } else {
-        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookId, "test1", "test 1", "red", true, false, false, false, false));
-        m_agent->mStorage->addNotebook(notebook);
-    }
-    m_agent->mNotebook = notebook;
+    m_agent->mNotebookUid = m_agent->mLocalStorage->notebookUidForRemotePath(0, path);
+    QVERIFY(m_agent->mLocalStorage->ensureNotebook(m_agent->mNotebookUid));
+    mKCal::Notebook::Ptr nb = m_agent->mLocalStorage->mNotebooks.value(m_agent->mNotebookUid);
+    QVERIFY(nb);
+
     KCalendarCore::MemoryCalendar::Ptr memoryCalendar(new KCalendarCore::MemoryCalendar(QTimeZone::utc()));
     for (KCalendarCore::Incidence::List::Iterator it = events.begin();
          it != events.end(); it++) {
@@ -607,7 +605,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
     // The sync date is the one at the start of the process. Due to network
     // latencies, the actual updateIncidences() call may happen some seconds
     // after the stored sync date. We simulate this here with a -2 time shift.
-    m_agent->mNotebookSyncedDateTime = QDateTime::currentDateTimeUtc().addSecs(-2);
+    nb->setSyncDate(QDateTime::currentDateTimeUtc().addSecs(-2));
 
     KCalendarCore::ICalFormat icalFormat;
     QString uri(QStringLiteral("/testCal/%1.ics").arg(uid));
@@ -636,8 +634,7 @@ void tst_NotebookSyncAgent::oneDownSyncCycle()
     m_agent->mRemoteChanges.insert(uri);
     QVERIFY(m_agent->updateIncidences(results));
     QCOMPARE(m_agent->mRemoteAdditions.count() + m_agent->mRemoteModifications.count(), events.count());
-    m_agent->mStorage->save();
-    m_agent->mNotebook->setSyncDate(m_agent->mNotebookSyncedDateTime);
+    m_agent->mLocalStorage->save();
     m_agent->mRemoteChanges.clear();
 
     // Compute delta and check that nothing has changed indeed.
@@ -688,26 +685,24 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     static int id = 0;
 
     /* We create a notebook for this test. */
-    const QString nbook = QStringLiteral("notebook-up-%1").arg(id++);
-    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(nbook);
-    if (!notebook) {
-        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(nbook, "test1", "test 1", "red", true, false, false, false, false));
-        m_agent->mStorage->addNotebook(notebook);
-    }
-    m_agent->mNotebook = notebook;
-    QVERIFY(m_agent->mStorage->calendar()->setDefaultNotebook(m_agent->mNotebook->uid()));
+    const QString path = QStringLiteral("notebook-up-%1").arg(id++);
+    m_agent->mNotebookUid = m_agent->mLocalStorage->notebookUidForRemotePath(0, path);
+    QVERIFY(m_agent->mLocalStorage->ensureNotebook(m_agent->mNotebookUid));
+    mKCal::Notebook::Ptr nb = m_agent->mLocalStorage->mNotebooks.value(m_agent->mNotebookUid);
+    QVERIFY(nb);
+    QVERIFY(m_calendar->setDefaultNotebook(m_agent->mNotebookUid));
 
-    const QString nbuid = QStringLiteral("NBUID:%1:%2").arg(nbook).arg(uid);
+    const QString nbuid = QStringLiteral("NBUID:%1:%2").arg(m_agent->mNotebookUid).arg(uid);
     const QString uri = QStringLiteral("/testCal/%1.ics").arg(nbuid);
     const QString etag = QStringLiteral("\"etag-%1\"").arg(uid);
 
     for (KCalendarCore::Incidence::List::Iterator it = events.begin();
          it != events.end(); it++) {
         (*it)->setUid(nbuid);
-        QVERIFY(m_agent->mStorage->calendar()->addEvent(it->staticCast<KCalendarCore::Event>()));
+        QVERIFY(m_calendar->addEvent(it->staticCast<KCalendarCore::Event>()));
     }
-    m_agent->mStorage->save();
-    m_agent->mNotebook->setSyncDate(QDateTime::currentDateTimeUtc());
+    m_agent->mLocalStorage->save();
+    nb->setSyncDate(QDateTime::currentDateTimeUtc());
 
     // Compute delta and check that nothing has changed indeed.
     QVERIFY(m_agent->calculateDelta(remoteUriEtags,
@@ -725,8 +720,8 @@ void tst_NotebookSyncAgent::oneUpSyncCycle()
     // Simulate reception of etags for each event.
     remoteUriEtags.insert(uri, etag);
     m_agent->mLocalStorage->resourceIsSynced(uri, etag, nbuid);
-    m_agent->mStorage->save();
-    m_agent->mNotebook->setSyncDate(QDateTime::currentDateTimeUtc());
+    m_agent->mLocalStorage->save();
+    nb->setSyncDate(QDateTime::currentDateTimeUtc());
 
     // TODO: move these clear statements inside delta ?
     m_agent->mLocalAdditions.clear();
@@ -821,13 +816,11 @@ void tst_NotebookSyncAgent::updateIncidence()
     QFETCH(KCalendarCore::Incidence::Ptr, incidence);
 
     /* We create a notebook for this test. */
-    const QString notebookId = QStringLiteral("26b24ae3-ab05-4892-ac36-632183113e2d");
-    mKCal::Notebook::Ptr notebook = m_agent->mStorage->notebook(notebookId);
-    if (!notebook) {
-        notebook = mKCal::Notebook::Ptr(new mKCal::Notebook(notebookId, "test1", "test 1", "red", true, false, false, false, false));
-        m_agent->mStorage->addNotebook(notebook);
-    }
-    m_agent->mNotebook = notebook;
+    const QString path = QStringLiteral("26b24ae3-ab05-4892-ac36-632183113e2d");
+    m_agent->mNotebookUid = m_agent->mLocalStorage->notebookUidForRemotePath(0, path);
+    QVERIFY(m_agent->mLocalStorage->ensureNotebook(m_agent->mNotebookUid));
+    mKCal::Notebook::Ptr nb = m_agent->mLocalStorage->mNotebooks.value(m_agent->mNotebookUid);
+    QVERIFY(nb);
 
     Buteo::Dav::Resource resource;
     resource.href = QStringLiteral("uri.ics");
@@ -835,9 +828,9 @@ void tst_NotebookSyncAgent::updateIncidence()
     resource.data = IncidenceHandler::toIcs(incidence);
     QVERIFY(m_agent->updateIncidences(QList<Buteo::Dav::Resource>() << resource));
 
-    const QString localUid = LocalStorage::nbUid(notebook->uid(), incidence->uid());
+    const QString localUid = LocalStorage::nbUid(m_agent->mNotebookUid, incidence->uid());
     KCalendarCore::Incidence::Ptr fetched =
-        m_agent->mStorage->calendar()->incidence(localUid, incidence->recurrenceId());
+        m_calendar->incidence(localUid, incidence->recurrenceId());
     QVERIFY(fetched);
     // Created date may differ on dissociated occurrences, artificially set it.
     incidence->setCreated(fetched->created());

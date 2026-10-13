@@ -608,11 +608,9 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
     for (const Buteo::Dav::CalendarInfo &calendarInfo : remoteCalendars) {
-        bool readOnly = (calendarInfo.privileges & Buteo::Dav::READ)
-            && !(calendarInfo.privileges & Buteo::Dav::WRITE);
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
-            (localStorage, mService->account()->id(), mDAV, calendarInfo.remotePath, readOnly, this);
+            (localStorage, mService->account()->id(), mDAV, calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
@@ -629,7 +627,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
         // Handle local copies that should be removed.
         for (const QString &path : deletedPaths) {
             NotebookSyncAgent *agent = new NotebookSyncAgent
-                (localStorage, mService->account()->id(), mDAV, path, false, this);
+                (localStorage, mService->account()->id(), mDAV, path, this);
             connect(agent, &NotebookSyncAgent::finished,
                     this, &CalDavClient::notebookSyncFinished);
             mNotebookSyncAgents.append(agent);
