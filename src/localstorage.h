@@ -32,34 +32,26 @@
 class LocalStorage
 {
 public:
+    LocalStorage(int accountId, const QString &remotePath);
     ~LocalStorage();
 
-    bool isOpened() const;
-
-    static QSharedPointer<LocalStorage> instance();
-
-    QSet<int> notebookAccountIds(const QString &service);
-    void deleteNotebooksForAccount(int accountId);
-
-    QString notebookUidForRemotePath(int accountId, const QString &remotePath);
-    QDateTime lastSyncDate(const QString &notebookUid);
-    bool ensureNotebook(const QString &notebookUid);
-    bool deleteNotebook(const QString &notebookUid);
-    void setNotebookMetadata(const QString &notebookUid,
-                             const Buteo::Dav::CalendarInfo &info,
+    QDateTime lastSyncDate() const;
+    bool ensureNotebook();
+    bool deleteNotebook();
+    void setNotebookMetadata(const Buteo::Dav::CalendarInfo &info,
                              const QString &userEmail,
                              const QString &pluginName,
                              const QString &syncProfile);
-    bool snapshot(const QString &notebookUid, KCalendarCore::Incidence::List *allIncidences,
-                  QSet<QString> *modifiedInstances, KCalendarCore::Incidence::List *deletedIncidences);
+    bool snapshot(KCalendarCore::Incidence::List *allIncidences,
+                  QSet<QString> *modifiedInstances,
+                  KCalendarCore::Incidence::List *deletedIncidences);
 
     Buteo::Dav::Resource toResource(KCalendarCore::Incidence::Ptr incidence);
     QSet<QString> toDeletedResources(KCalendarCore::Incidence::List deletedIncidences,
                                      KCalendarCore::Incidence::List *modifiedIncidences);
     void resourceIsSynced(const QString &uri, const QString &etag, const QString &uid);
 
-    bool syncFromResource(const QString &notebookUid,
-                          const Buteo::Dav::Resource &resource,
+    bool syncFromResource(const Buteo::Dav::Resource &resource,
                           KCalendarCore::Incidence::List *additions,
                           KCalendarCore::Incidence::List *modifications,
                           QByteArray *errorMessage);
@@ -67,18 +59,20 @@ public:
     void flagUploadFailures(const QStringList &uids);
 
     bool deleteInstance(const QString &uid, const QDateTime &recurrenceId);
-    bool purgeDeleted(const QString &notebookUid, const KCalendarCore::Incidence::List &incidences);
+    bool purgeDeleted(const KCalendarCore::Incidence::List &incidences);
 
     bool save();
 
+    static bool deleteNotebooksForAccount(unsigned int accountId);
+    static bool deleteOrphanedNotebooks(const QList<unsigned int> &knownAccountIds,
+                                        const QString &service);
+
 private:
-    LocalStorage();
     static QString nbUid(const QString &notebookId, const QString &uid);
     static KCalendarCore::Incidence::List parseICSData(const QString &data);
 
-    bool mOpened;
     mKCal::ExtendedStorage::Ptr mStorage;
-    QHash<QString, mKCal::Notebook::Ptr> mNotebooks;
+    mKCal::Notebook mNotebook;
 
     friend class tst_Reader;
     friend class tst_NotebookSyncAgent;

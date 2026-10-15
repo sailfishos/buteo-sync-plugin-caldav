@@ -42,8 +42,7 @@ public:
         QuickSync   // updates only
     };
 
-    NotebookSyncAgent(QSharedPointer<LocalStorage> localStorage,
-                      int accountId,
+    NotebookSyncAgent(int accountId,
                       Buteo::Dav::Client *davClient,
                       const QString &remotePath,
                       QObject *parent = 0);
@@ -103,8 +102,7 @@ private:
 
     Buteo::Dav::Client *mDAV;
     int mPendingActions;
-    QSharedPointer<LocalStorage> mLocalStorage;
-    QString mNotebookUid;
+    LocalStorage *mLocalStorage = nullptr;
     QString mNotebookName;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;

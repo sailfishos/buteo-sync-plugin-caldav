@@ -138,21 +138,7 @@ bool CalDavClient::cleanUp()
         return false;
     }
 
-    deleteNotebooksForAccount(accountId);
-    return true;
-}
-
-void CalDavClient::deleteNotebooksForAccount(int accountId)
-{
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
-    QSharedPointer<LocalStorage> storage = LocalStorage::instance();
-    if (!storage->isOpened()) {
-        qCWarning(lcCalDav) << "unable to open calendar storage";
-        return;
-    }
-
-    storage->deleteNotebooksForAccount(accountId);
+    return LocalStorage::deleteNotebooksForAccount(accountId);
 }
 
 bool CalDavClient::cleanSyncRequired()
@@ -165,55 +151,33 @@ bool CalDavClient::cleanSyncRequired()
     // so use a process mutex to ensure that only one will access the clean sync marker file at any time.
     processMutex.lock();
 
-    char *cleaned_value = SailfishKeyProvider_ini_read(
-            iniFile.constData(),
-            "General",
-            QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1());
-    bool alreadyClean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
+    const QByteArray key = QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1();
+    char *cleaned_value
+        = SailfishKeyProvider_ini_read(iniFile.constData(), "General", key);
+    bool clean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
     free(cleaned_value);
 
-    if (!alreadyClean) {
-        QSharedPointer<LocalStorage> storage = LocalStorage::instance();
-        if (!storage->isOpened()) {
-            qCWarning(lcCalDav) << "unable to open calendar storage";
-            return false;
-        }
-
-        // first, delete any data associated with this account, so this sync will be a clean sync.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << mService->account()->id()
-                            << "due to clean sync";
-        storage->deleteNotebooksForAccount(mService->account()->id());
-        // now delete notebooks for non-existent accounts.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
-        // a) find out which accounts are associated with each of our notebooks.
-        const QSet<int> notebookAccountIds = storage->notebookAccountIds(QStringLiteral("caldav"));
-        // b) find out if any of those accounts don't exist - if not,
-        Accounts::AccountIdList accountIdList = mManager->accountList();
-        for (int notebookAccountId : notebookAccountIds) {
-            if (!accountIdList.contains(notebookAccountId)) {
-                qCWarning(lcCalDav) << "purging notebooks for deleted caldav account" << notebookAccountId;
-                storage->deleteNotebooksForAccount(notebookAccountId);
+    if (!clean) {
+        if (!LocalStorage::deleteNotebooksForAccount(mService->account()->id())
+            || !LocalStorage::deleteOrphanedNotebooks(mManager->accountList(),
+                                                      QStringLiteral("caldav"))) {
+            qCWarning(lcCalDav) << "Failed to clean database!";
+        } else {
+            // mark this account as having been cleaned.
+            if (SailfishKeyProvider_ini_write(
+                    iniFileDir.constData(), iniFile.constData(),
+                    "General", key, "true") != 0) {
+                qCWarning(lcCalDav) << "Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!";
+            } else {
+                // finished; return true because this will be a clean sync.
+                qCDebug(lcCalDav) << "Finished pre-sync cleanup with caldav account" << mService->account()->id();
+                clean = true;
             }
         }
-
-        // mark this account as having been cleaned.
-        if (SailfishKeyProvider_ini_write(
-                iniFileDir.constData(),
-                iniFile.constData(),
-                "General",
-                QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1(),
-                "true") != 0) {
-            qCWarning(lcCalDav) << "Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!";
-        }
-
-        // finished; return true because this will be a clean sync.
-        qCWarning(lcCalDav) << "Finished pre-sync cleanup with caldav account" << mService->account()->id();
-        processMutex.unlock();
-        return true;
     }
 
     processMutex.unlock();
-    return false;
+    return clean;
 }
 
 void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool aState)
@@ -593,13 +557,6 @@ void CalDavClient::listCalendars(const QString &home)
 void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars,
                                  const QStringList &deletedPaths)
 {
-    QSharedPointer<LocalStorage> localStorage = LocalStorage::instance();
-    if (!localStorage->isOpened()) {
-        syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                     QLatin1String("unable to open calendar storage"));
-        return;
-    }
-
     QDateTime fromDateTime;
     QDateTime toDateTime;
     getSyncDateRange(QDateTime::currentDateTime().toUTC(), &fromDateTime, &toDateTime);
@@ -610,7 +567,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
     for (const Buteo::Dav::CalendarInfo &calendarInfo : remoteCalendars) {
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
-            (localStorage, mService->account()->id(), mDAV, calendarInfo.remotePath, this);
+            (mService->account()->id(), mDAV, calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
@@ -627,7 +584,7 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
         // Handle local copies that should be removed.
         for (const QString &path : deletedPaths) {
             NotebookSyncAgent *agent = new NotebookSyncAgent
-                (localStorage, mService->account()->id(), mDAV, path, this);
+                (mService->account()->id(), mDAV, path, this);
             connect(agent, &NotebookSyncAgent::finished,
                     this, &CalDavClient::notebookSyncFinished);
             mNotebookSyncAgents.append(agent);
