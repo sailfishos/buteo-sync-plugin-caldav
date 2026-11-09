@@ -14,6 +14,7 @@ SOURCES += \
         $$PWD/authhandler.cpp \
         $$PWD/incidencehandler.cpp \
         $$PWD/notebooksyncagent.cpp \
+        $$PWD/localstorage.cpp \
         $$PWD/logging.cpp
 
 HEADERS += \
@@ -22,6 +23,7 @@ HEADERS += \
         $$PWD/authhandler.h \
         $$PWD/incidencehandler.h \
         $$PWD/notebooksyncagent.h \
+        $$PWD/localstorage.h \
         $$PWD/logging.h
 
 OTHER_FILES += \

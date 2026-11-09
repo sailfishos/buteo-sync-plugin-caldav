@@ -147,3 +147,171 @@ KCalendarCore::Incidence::Ptr IncidenceHandler::incidenceToExport(KCalendarCore:
 
     return incidence;
 }
+
+QString IncidenceHandler::etag(KCalendarCore::Incidence::Ptr incidence)
+{
+    const QStringList &comments(incidence->comments());
+    for (const QString &comment : comments) {
+        if (comment.startsWith("buteo:caldav:etag:")) {
+            return comment.mid(18);
+        }
+    }
+    return QString();
+}
+
+// mKCal deleted custom properties of deleted incidences.
+// This was problematic for sync, as we need some fields
+// (resource URI and ETAG) in order to sync properly.
+// Hence, we abuse the COMMENTS field of the incidence.
+QString IncidenceHandler::uri(KCalendarCore::Incidence::Ptr incidence)
+{
+    const QStringList &comments(incidence->comments());
+    for (const QString &comment : comments) {
+        if (comment.startsWith("buteo:caldav:uri:")) {
+            QString uri = comment.mid(17);
+            if (uri.contains('%')) {
+                // if it contained a % or a space character, we percent-encoded
+                // the uri before storing it, because otherwise kcal doesn't
+                // split the comments properly.
+                uri = QUrl::fromPercentEncoding(uri.toUtf8());
+                qCDebug(lcCalDav) << "URI comment was percent encoded:" << comment << ", returning uri:" << uri;
+            }
+            if (uri.isEmpty()) {
+                qCWarning(lcCalDav) << "Stored uri was empty for:" << incidence->uid()
+                                    << incidence->recurrenceId().toString();
+            }
+            return uri;
+        }
+    }
+    // qCWarning(lcCalDav) << "Returning empty uri for:" << incidence->uid() << incidence->recurrenceId().toString();
+    return QString();
+}
+
+void IncidenceHandler::setUri(KCalendarCore::Incidence::Ptr incidence,
+                              const QString &uri)
+{
+    const QStringList &comments(incidence->comments());
+    for (const QString &comment : comments) {
+        if (comment.startsWith("buteo:caldav:uri:")
+            && incidence->removeComment(comment)) {
+            break;
+        }
+    }
+    if (uri.contains('%') || uri.contains(' ')) {
+        // need to percent-encode the uri before storing it,
+        // otherwise mkcal doesn't split the comments correctly.
+        incidence->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(uri))));
+    } else {
+        incidence->addComment(QStringLiteral("buteo:caldav:uri:%1").arg(uri));
+    }
+}
+void IncidenceHandler::setEtag(KCalendarCore::Incidence::Ptr incidence,
+                               const QString &etag)
+{
+    const QStringList &comments(incidence->comments());
+    for (const QString &comment : comments) {
+        if (comment.startsWith("buteo:caldav:etag:")
+            && incidence->removeComment(comment)) {
+            break;
+        }
+    }
+    incidence->addComment(QStringLiteral("buteo:caldav:etag:%1").arg(etag));
+}
+
+void IncidenceHandler::setSyncedException(KCalendarCore::Incidence::Ptr incidence)
+{
+    // Add a flag to distinguish persistent exceptions that have
+    // been detached during the sync process (with the flag)
+    // or by a call to dissociateSingleOccurrence() outside
+    // of the sync process (in that later case, the incidence
+    // will have to be treated as a local addition of a persistent
+    // exception, see the NotebookSyncAgent::calculateDelta() function).
+    incidence->removeComment("buteo:caldav:detached-and-synced");
+    incidence->addComment("buteo:caldav:detached-and-synced");
+}
+
+bool IncidenceHandler::isLocalException(KCalendarCore::Incidence::Ptr incidence)
+{
+    if (incidence->recurrenceId().isNull())
+        return false;
+
+    const QStringList &comments(incidence->comments());
+    for (const QString &comment : comments) {
+        if (comment == "buteo:caldav:detached-and-synced") {
+            return false;
+        }
+    }
+    return true;
+}
+
+const QByteArray APP = QByteArrayLiteral("VOLATILE");
+const QByteArray FAILURE = QByteArrayLiteral("SYNC-FAILURE");
+const QByteArray RESOLUTION = QByteArrayLiteral("SYNC-FAILURE-RESOLUTION");
+
+void IncidenceHandler::flagSuccess(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    incidence->removeCustomProperty(APP, FAILURE);
+    incidence->removeCustomProperty(APP, RESOLUTION);
+}
+
+void IncidenceHandler::flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    incidence->setCustomProperty(APP, FAILURE, QStringLiteral("update"));
+}
+
+bool IncidenceHandler::updateIsAllowed(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    return incidence->customProperty(APP, FAILURE).isEmpty()
+        || (incidence->customProperty(APP, FAILURE).startsWith(QStringLiteral("update"))
+            && incidence->customProperty(APP, RESOLUTION).isEmpty());
+}
+
+bool IncidenceHandler::resetUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    return incidence->customProperty(APP, FAILURE) == QStringLiteral("update")
+        && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("device-reset");
+}
+
+void IncidenceHandler::flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    incidence->setCustomProperty(APP, FAILURE, QStringLiteral("delete"));
+}
+
+bool IncidenceHandler::deleteIsAllowed(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    return incidence->customProperty(APP, FAILURE).isEmpty()
+        || (incidence->customProperty(APP, FAILURE).startsWith(QStringLiteral("delete"))
+            && incidence->customProperty(APP, RESOLUTION).isEmpty());
+}
+
+bool IncidenceHandler::resetDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    return incidence->customProperty(APP, FAILURE) == QStringLiteral("delete")
+        && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("device-reset");
+}
+
+void IncidenceHandler::flagUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    if (etag(incidence).isEmpty())
+        incidence->setCustomProperty(APP, FAILURE, QStringLiteral("upload-new"));
+    else
+        incidence->setCustomProperty(APP, FAILURE, QStringLiteral("upload"));
+}
+
+bool IncidenceHandler::uploadIsAllowed(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    if (etag(incidence).isEmpty()) {
+        return incidence->customProperty(APP, FAILURE).isEmpty()
+            || (incidence->customProperty(APP, FAILURE).startsWith(QStringLiteral("upload"))
+                && incidence->customProperty(APP, RESOLUTION).isEmpty());
+    } else {
+        return incidence->customProperty(APP, FAILURE).startsWith(QStringLiteral("upload"))
+            && incidence->customProperty(APP, RESOLUTION).isEmpty();
+    }
+}
+
+bool IncidenceHandler::resetUploadFailure(const KCalendarCore::Incidence::Ptr &incidence)
+{
+    return incidence->customProperty(APP, FAILURE) == QStringLiteral("upload")
+        && incidence->customProperty(APP, RESOLUTION) == QStringLiteral("server-reset");
+}

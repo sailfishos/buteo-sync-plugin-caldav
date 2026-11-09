@@ -23,11 +23,10 @@
 #ifndef NOTEBOOKSYNCAGENT_P_H
 #define NOTEBOOKSYNCAGENT_P_H
 
+#include "localstorage.h"
+
 #include <davclient.h>
 #include <davtypes.h>
-
-#include <extendedcalendar.h>
-#include <extendedstorage.h>
 
 #include <QDateTime>
 
@@ -43,18 +42,14 @@ public:
         QuickSync   // updates only
     };
 
-    NotebookSyncAgent(mKCal::ExtendedCalendar::Ptr calendar,
-                      mKCal::ExtendedStorage::Ptr storage,
+    NotebookSyncAgent(int accountId,
                       Buteo::Dav::Client *davClient,
                       const QString &remotePath,
-                      bool readOnlyFlag = false,
                       QObject *parent = 0);
     ~NotebookSyncAgent();
 
-    bool findNotebookFromPath(const QString &accountId);
     void setNotebookFromInfo(const Buteo::Dav::CalendarInfo &info,
                              const QString &userEmail,
-                             const QString &accountId,
                              const QString &pluginName,
                              const QString &syncProfile);
 
@@ -66,7 +61,6 @@ public:
     void abort();
     bool applyRemoteChanges();
     Buteo::TargetResults result() const;
-    void finalize();
 
     bool isFinished() const;
     bool isCompleted() const;
@@ -80,17 +74,6 @@ signals:
     void finished();
 
 private:
-    struct CalendarResource {
-        QString href;
-        QString etag;
-        KCalendarCore::Incidence::List incidences;
-
-        CalendarResource(const Buteo::Dav::Resource &dav);
-        CalendarResource(const QString &uri, const QString &tag,
-                         const KCalendarCore::Incidence::List &list)
-            : href(uri), etag(tag), incidences(list) {}
-    };
-    
     void reportRequestFinished(const Buteo::Dav::Client::Reply &reply,
                                const QList<Buteo::Dav::Resource> &resources);
     void resourceSent(const Buteo::Dav::Client::Reply &reply, const QString &etag);
@@ -103,18 +86,10 @@ private:
     void setFatal(const QString &uri, const QByteArray &errorData);
 
     void fetchRemoteChanges();
-    bool updateIncidences(const QList<CalendarResource> &resources);
+    bool updateIncidences(const QList<Buteo::Dav::Resource> &resources);
     bool deleteIncidences(const KCalendarCore::Incidence::List deletedIncidences);
-    void updateIncidence(KCalendarCore::Incidence::Ptr incidence,
-                         KCalendarCore::Incidence::Ptr storedIncidence);
-    bool addIncidence(KCalendarCore::Incidence::Ptr incidence);
-    bool addException(KCalendarCore::Incidence::Ptr incidence,
-                      KCalendarCore::Incidence::Ptr recurringIncidence,
-                      bool ensureRDate = false);
-    void updateHrefETag(const QString &uid, const QString &href, const QString &etag) const;
 
     void sendLocalChanges();
-    QString constructLocalChangeIcs(KCalendarCore::Incidence::Ptr updatedIncidence);
 
     bool calculateDelta(const QHash<QString, QString> &remoteUriEtags,
                         KCalendarCore::Incidence::List *localAdditions,
@@ -127,12 +102,10 @@ private:
 
     Buteo::Dav::Client *mDAV;
     int mPendingActions;
-    mKCal::ExtendedCalendar::Ptr mCalendar;
-    mKCal::ExtendedStorage::Ptr mStorage;
-    mKCal::Notebook::Ptr mNotebook;
+    LocalStorage *mLocalStorage = nullptr;
+    QString mNotebookName;
     QDateTime mFromDateTime;
     QDateTime mToDateTime;
-    QDateTime mNotebookSyncedDateTime;
     QString mRemoteCalendarPath; // contains calendar path.  resource prefix.  doesn't include host, percent decoded.
     SyncMode mSyncMode;          // quick (etag-based delta detection) or slow (full report) sync
     bool mRetriedReport;         // some servers will fail the first request but succeed on second
@@ -150,7 +123,7 @@ private:
     KCalendarCore::Incidence::List mRemoteAdditions;
     KCalendarCore::Incidence::List mRemoteModifications;
     KCalendarCore::Incidence::List mPurgeList;
-    KCalendarCore::Incidence::List mUpdatingList; // Incidences corresponding to mRemoteModifications
+    QHash<QString, QString> mPulledUids; // Dictionnary of pulled (href, uid) from server
     QHash<QString, QString> mSentUids; // Dictionnary of sent (href, uid) made from
                                        // local additions, modifications.
     QHash<QString, QByteArray> mFailingUploads; // List of hrefs with upload errors, with the server response.
@@ -158,10 +131,9 @@ private:
     QString mFatalUri; // A key from mFailingUpdates that prevents the sync to complete.
 
     // received remote incidence resource data
-    QList<CalendarResource> mReceivedCalendarResources;
+    QList<Buteo::Dav::Resource> mReceivedCalendarResources;
 
     friend class tst_NotebookSyncAgent;
-    friend class tst_Reader;
 };
 
 #endif // NOTEBOOKSYNCAGENT_P_H

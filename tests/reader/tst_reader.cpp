@@ -23,7 +23,7 @@
 #include <QFile>
 
 #include <davtypes.h>
-#include <notebooksyncagent.h>
+#include <localstorage.h>
 #include <KCalendarCore/Event>
 
 class tst_Reader : public QObject
@@ -286,8 +286,9 @@ void tst_Reader::readICal()
 
     if (!expectedNIncidences)
         return;
-    NotebookSyncAgent::CalendarResource resource(resources.first());
-    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(resource.incidences[0]);
+    KCalendarCore::Incidence::List lst(LocalStorage::parseICSData(resources.first().data));
+    QVERIFY(!lst.isEmpty());
+    KCalendarCore::Incidence::Ptr ev = lst.first();
     
     QCOMPARE(ev->uid(), expectedUID);
     QCOMPARE(ev->summary(), expectedSummary);
@@ -346,8 +347,9 @@ void tst_Reader::readDate()
 
     if (!expectedNIncidences)
         return;
-    NotebookSyncAgent::CalendarResource resource(resources.first());
-    KCalendarCore::Event::Ptr ev = resource.incidences[0].staticCast<KCalendarCore::Event>();
+    KCalendarCore::Incidence::List lst(LocalStorage::parseICSData(resources.first().data));
+    QVERIFY(!lst.isEmpty());
+    KCalendarCore::Event::Ptr ev = lst.first().staticCast<KCalendarCore::Event>();
 
     QCOMPARE(ev->dtStart().date(), expectedStartDate);
     QCOMPARE(ev->dtEnd().date(), expectedEndDate);
@@ -381,10 +383,11 @@ void tst_Reader::readAlarm()
 
     QList<Buteo::Dav::Resource> resources = Buteo::Dav::Resource::fromData(f.readAll());
     QCOMPARE(resources.size(), 1);
-    NotebookSyncAgent::CalendarResource resource(resources.first());
-    QCOMPARE(resource.incidences.length(), 1);
+    KCalendarCore::Incidence::List lst(LocalStorage::parseICSData(resources.first().data));
+    QVERIFY(!lst.isEmpty());
+    QCOMPARE(lst.length(), 1);
 
-    KCalendarCore::Incidence::Ptr ev = KCalendarCore::Incidence::Ptr(resource.incidences[0]);
+    KCalendarCore::Incidence::Ptr ev = lst.first();
 
     QCOMPARE(ev->alarms().length(), expectedNAlarms);
     KCalendarCore::Alarm::Ptr alarm(ev->alarms().at(0));

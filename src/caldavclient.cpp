@@ -24,12 +24,10 @@
 
 #include "caldavclient.h"
 #include "notebooksyncagent.h"
+#include "localstorage.h"
 
+#include <sailfishkeyprovider_processmutex.h>
 #include <sailfishkeyprovider_iniparser.h>
-
-#include <extendedcalendar.h>
-#include <extendedstorage.h>
-#include <notebook.h>
 
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -70,8 +68,6 @@ CalDavClient::CalDavClient(const QString& aPluginName,
     : ClientPlugin(aPluginName, aProfile, aCbInterface)
     , mManager(0)
     , mAuth(0)
-    , mCalendar(0)
-    , mStorage(0)
     , mDAV(0)
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
@@ -87,6 +83,7 @@ bool CalDavClient::init()
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
     if (initConfig()) {
+        cleanSyncRequired();
         return true;
     } else {
         // Uninitialize everything that was initialized before failure.
@@ -141,121 +138,46 @@ bool CalDavClient::cleanUp()
         return false;
     }
 
-    mKCal::ExtendedCalendar::Ptr calendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
-    mKCal::ExtendedStorage::Ptr storage = mKCal::ExtendedCalendar::defaultStorage(calendar);
-    if (!storage->open()) {
-        calendar->close();
-        qCWarning(lcCalDav) << "unable to open calendar storage";
-        return false;
-    }
-
-    deleteNotebooksForAccount(accountId, calendar, storage);
-    storage->close();
-    calendar->close();
-    return true;
-}
-
-void CalDavClient::deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr,
-                                             mKCal::ExtendedStorage::Ptr storage)
-{
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
-    if (storage) {
-        QString notebookAccountPrefix = QString::number(accountId) + "-"; // for historical reasons!
-        QString accountIdStr = QString::number(accountId);
-        const mKCal::Notebook::List notebookList = storage->notebooks();
-        qCDebug(lcCalDav) << "Total Number of Notebooks in device = " << notebookList.count();
-        int deletedCount = 0;
-        for (mKCal::Notebook::Ptr notebook : notebookList) {
-            if (notebook->account() == accountIdStr || notebook->account().startsWith(notebookAccountPrefix)) {
-                if (storage->deleteNotebook(notebook)) {
-                    deletedCount++;
-                }
-            }
-        }
-        qCDebug(lcCalDav) << "Deleted" << deletedCount << "notebooks";
-    }
+    return LocalStorage::deleteNotebooksForAccount(accountId);
 }
 
 bool CalDavClient::cleanSyncRequired()
 {
     static const QByteArray iniFileDir = cleanSyncMarkersFileDir.toUtf8();
     static const QByteArray iniFile = cleanSyncMarkersFile.toUtf8();
+    Sailfish::KeyProvider::ProcessMutex processMutex(iniFile.constData());
 
     // multiple CalDavClient processes might be spawned (e.g. sync with different accounts)
     // so use a process mutex to ensure that only one will access the clean sync marker file at any time.
-    if (!mProcessMutex) {
-        mProcessMutex.reset(new Sailfish::KeyProvider::ProcessMutex(iniFile.constData()));
-    }
-    mProcessMutex->lock();
+    processMutex.lock();
 
-    char *cleaned_value = SailfishKeyProvider_ini_read(
-            iniFile.constData(),
-            "General",
-            QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1());
-    bool alreadyClean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
+    const QByteArray key = QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1();
+    char *cleaned_value
+        = SailfishKeyProvider_ini_read(iniFile.constData(), "General", key);
+    bool clean = cleaned_value != 0 && strncmp(cleaned_value, "true", 4) == 0;
     free(cleaned_value);
 
-    if (!alreadyClean) {
-        // first, delete any data associated with this account, so this sync will be a clean sync.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with this account:" << mService->account()->id()
-                            << "due to clean sync";
-        deleteNotebooksForAccount(mService->account()->id(), mCalendar, mStorage);
-        // now delete notebooks for non-existent accounts.
-        qCWarning(lcCalDav) << "Deleting caldav notebooks associated with nonexistent accounts due to clean sync";
-        // a) find out which accounts are associated with each of our notebooks.
-        QList<int> notebookAccountIds;
-        const mKCal::Notebook::List allNotebooks = mStorage->notebooks();
-        for (mKCal::Notebook::Ptr nb : allNotebooks) {
-            QString nbAccount = nb->account();
-            if (!nbAccount.isEmpty() && nb->pluginName().contains(QStringLiteral("caldav"))) {
-                // caldav notebook->account() values used to be like: "55-/user/calendars/someCalendar"
-                int indexOfHyphen = nbAccount.indexOf('-');
-                if (indexOfHyphen > 0) {
-                    // this is an old caldav notebook which used "accountId-remoteServerPath" form
-                    nbAccount.chop(nbAccount.length() - indexOfHyphen);
-                }
-                bool ok = true;
-                int notebookAccountId = nbAccount.toInt(&ok);
-                if (!ok) {
-                    qCWarning(lcCalDav) << "notebook account value was strange:" << nb->account()
-                                        << "->" << nbAccount << "->" << "not ok";
-                } else {
-                    qCWarning(lcCalDav) << "found account id:" << notebookAccountId << "for" << nb->account()
-                                        << "->" << nbAccount;
-                    if (!notebookAccountIds.contains(notebookAccountId)) {
-                        notebookAccountIds.append(notebookAccountId);
-                    }
-                }
+    if (!clean) {
+        if (!LocalStorage::deleteNotebooksForAccount(mService->account()->id())
+            || !LocalStorage::deleteOrphanedNotebooks(mManager->accountList(),
+                                                      QStringLiteral("caldav"))) {
+            qCWarning(lcCalDav) << "Failed to clean database!";
+        } else {
+            // mark this account as having been cleaned.
+            if (SailfishKeyProvider_ini_write(
+                    iniFileDir.constData(), iniFile.constData(),
+                    "General", key, "true") != 0) {
+                qCWarning(lcCalDav) << "Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!";
+            } else {
+                // finished; return true because this will be a clean sync.
+                qCDebug(lcCalDav) << "Finished pre-sync cleanup with caldav account" << mService->account()->id();
+                clean = true;
             }
         }
-        // b) find out if any of those accounts don't exist - if not,
-        Accounts::AccountIdList accountIdList = mManager->accountList();
-        for (int notebookAccountId : const_cast<const QList<int>&>(notebookAccountIds)) {
-            if (!accountIdList.contains(notebookAccountId)) {
-                qCWarning(lcCalDav) << "purging notebooks for deleted caldav account" << notebookAccountId;
-                deleteNotebooksForAccount(notebookAccountId, mCalendar, mStorage);
-            }
-        }
-
-        // mark this account as having been cleaned.
-        if (SailfishKeyProvider_ini_write(
-                iniFileDir.constData(),
-                iniFile.constData(),
-                "General",
-                QStringLiteral("%1-cleaned").arg(mService->account()->id()).toLatin1(),
-                "true") != 0) {
-            qCWarning(lcCalDav) << "Failed to mark account as clean!  Next sync will be unnecessarily cleaned also!";
-        }
-
-        // finished; return true because this will be a clean sync.
-        qCWarning(lcCalDav) << "Finished pre-sync cleanup with caldav account" << mService->account()->id();
-        mProcessMutex->unlock();
-        return true;
     }
 
-    mProcessMutex->unlock();
-    return false;
+    processMutex.unlock();
+    return clean;
 }
 
 void CalDavClient::connectivityStateChanged(Sync::ConnectivityType aType, bool aState)
@@ -484,18 +406,6 @@ bool CalDavClient::initConfig()
         return false;
     }
 
-    Accounts::AccountService global(mService->account(), Accounts::Service());
-    const QString serverAddress = mService->value("server_address",
-                                                  global.value("server_address")).toString();
-    if (serverAddress.isEmpty()) {
-        qCWarning(lcCalDav) << "remote_address not found in service settings";
-        return false;
-    }
-
-    mDAV = new Buteo::Dav::Client(serverAddress);
-    mDAV->setIgnoreSSLErrors(mService->value("ignore_ssl_errors",
-                                             global.value("ignore_ssl_errors")).toBool());
-
     mAuth = new AuthHandler(mService, this);
     if (!mAuth->init()) {
         return false;
@@ -514,15 +424,10 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
-    clearAgents();
-
-    if (mCalendar) {
-        mCalendar->close();
+    for (int i=0; i<mNotebookSyncAgents.count(); i++) {
+        mNotebookSyncAgents[i]->deleteLater();
     }
-    if (mStorage) {
-        mStorage->close();
-        mStorage.clear();
-    }
+    mNotebookSyncAgents.clear();
 
     if (minorErrorCode == Buteo::SyncResults::NO_ERROR
         || minorErrorCode == Buteo::SyncResults::ITEM_FAILURES) {
@@ -536,17 +441,18 @@ void CalDavClient::syncFinished(Buteo::SyncResults::MinorCode minorErrorCode,
                               ? Buteo::SyncResults::SYNC_RESULT_CANCELLED
                               : Buteo::SyncResults::SYNC_RESULT_FAILED);
         mResults.setMinorCode(minorErrorCode);
-
-        if (minorErrorCode == Buteo::SyncResults::AUTHENTICATION_FAILURE) {
-            setCredentialsNeedUpdate();
-        }
-
         emit error(getProfileName(), message, minorErrorCode);
     }
 }
 
 void CalDavClient::authenticationError()
 {
+    mService->setValue(QStringLiteral("CredentialsNeedUpdate"),
+                       QVariant::fromValue<bool>(true));
+    mService->setValue(QStringLiteral("CredentialsNeedUpdateFrom"),
+                       QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
+    mService->account()->syncAndBlock();
+
     syncFinished(Buteo::SyncResults::AUTHENTICATION_FAILURE,
                  QLatin1String("Authentication failed"));
 }
@@ -588,6 +494,20 @@ void CalDavClient::start()
 {
     FUNCTION_CALL_TRACE(lcCalDavTrace);
 
+    Accounts::AccountService global(mService->account(), Accounts::Service());
+    const QString serverAddress = mService->value("server_address",
+                                                  global.value("server_address")).toString();
+    if (serverAddress.isEmpty()) {
+        qCWarning(lcCalDav) << "server_address not found in service settings";
+        syncFinished(Buteo::SyncResults::INTERNAL_ERROR,
+                     QLatin1String("no server address for CalDAV service"));
+        return;
+    }
+
+    mDAV = new Buteo::Dav::Client(serverAddress, this);
+    mDAV->setIgnoreSSLErrors(mService->value("ignore_ssl_errors",
+                                             global.value("ignore_ssl_errors")).toBool());
+
     if (!mAuth->username().isEmpty() && !mAuth->password().isEmpty()) {
         mDAV->setAuthLogin(mAuth->username(), mAuth->password());
     }
@@ -599,7 +519,6 @@ void CalDavClient::start()
                 // Ignore user principal errors, continue anyhow.
                 listCalendars(mDAV->servicePath(service));
             });
-    Accounts::AccountService global(mService->account(), Accounts::Service());
     const QString davPath = mService->value("webdav_path",
                                             global.value("webdav_path")).toString();
     mDAV->requestUserPrincipalAndServiceData(service, davPath);
@@ -638,18 +557,6 @@ void CalDavClient::listCalendars(const QString &home)
 void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCalendars,
                                  const QStringList &deletedPaths)
 {
-    const QString accString = QString::number(mService->account()->id());
-    mCalendar = mKCal::ExtendedCalendar::Ptr(new mKCal::ExtendedCalendar(QTimeZone::utc()));
-    mStorage = mKCal::ExtendedCalendar::defaultStorage(mCalendar);
-    if (!mStorage || !mStorage->open()) {
-        syncFinished(Buteo::SyncResults::DATABASE_FAILURE,
-                     QLatin1String("unable to open calendar storage"));
-        return;
-    }
-    mCalendar->setUpdateLastModifiedOnChange(false);
-
-    cleanSyncRequired();
-
     QDateTime fromDateTime;
     QDateTime toDateTime;
     getSyncDateRange(QDateTime::currentDateTime().toUTC(), &fromDateTime, &toDateTime);
@@ -658,17 +565,13 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
     //  - if it is mapped to a known notebook, we need to perform quick sync
     //  - if no known notebook exists for it, we need to create one and perform clean sync
     for (const Buteo::Dav::CalendarInfo &calendarInfo : remoteCalendars) {
-        bool readOnly = (calendarInfo.privileges & Buteo::Dav::READ)
-            && !(calendarInfo.privileges & Buteo::Dav::WRITE);
         // TODO: could use some unused field from Notebook to store "need clean sync" flag?
         NotebookSyncAgent *agent = new NotebookSyncAgent
-            (mCalendar, mStorage, mDAV,
-             calendarInfo.remotePath, readOnly, this);
+            (mService->account()->id(), mDAV, calendarInfo.remotePath, this);
         const QString &email = (calendarInfo.userPrincipal == mDAV->userPrincipal()
                                 || calendarInfo.userPrincipal.isEmpty())
             ? mDAV->serviceMailto(QStringLiteral("caldav")) : QString();
-        agent->setNotebookFromInfo(calendarInfo, email, accString,
-                                   getPluginName(), getProfileName());
+        agent->setNotebookFromInfo(calendarInfo, email, getPluginName(), getProfileName());
         connect(agent, &NotebookSyncAgent::finished,
                 this, &CalDavClient::notebookSyncFinished);
         mNotebookSyncAgents.append(agent);
@@ -679,40 +582,22 @@ void CalDavClient::syncCalendars(const QList<Buteo::Dav::CalendarInfo> &remoteCa
     }
     if (mSyncDirection != Buteo::SyncProfile::SYNC_DIRECTION_TO_REMOTE) {
         // Handle local copies that should be removed.
-        QStringList settingsToRemove;
         for (const QString &path : deletedPaths) {
             NotebookSyncAgent *agent = new NotebookSyncAgent
-                (mCalendar, mStorage, mDAV, path, false, this);
-            if (agent->findNotebookFromPath(accString)) {
-                connect(agent, &NotebookSyncAgent::finished,
-                        this, &CalDavClient::notebookSyncFinished);
-                mNotebookSyncAgents.append(agent);
-                // Need to finish appending all deleted notebooks in mNotebookSyncAgents,
-                // before actually calling the markNotebookAsDeleted() method,
-                // otherwise it will call notebookSyncFinished() too soon.
-                QTimer::singleShot(0, agent, &NotebookSyncAgent::markNotebookAsDeleted);
-            } else {
-                delete agent;
-                settingsToRemove << path;
-            }
+                (mService->account()->id(), mDAV, path, this);
+            connect(agent, &NotebookSyncAgent::finished,
+                    this, &CalDavClient::notebookSyncFinished);
+            mNotebookSyncAgents.append(agent);
+            // Need to finish appending all deleted notebooks in mNotebookSyncAgents,
+            // before actually calling the markNotebookAsDeleted() method,
+            // otherwise it will call notebookSyncFinished() too soon.
+            QTimer::singleShot(0, agent, &NotebookSyncAgent::markNotebookAsDeleted);
         }
-        if (!settingsToRemove.isEmpty())
-            removeAccountCalendars(settingsToRemove);
     }
     if (mNotebookSyncAgents.isEmpty()) {
         syncFinished(Buteo::SyncResults::NO_ERROR,
                      QLatin1String("No calendars for this account"));
     }
-}
-
-void CalDavClient::clearAgents()
-{
-    FUNCTION_CALL_TRACE(lcCalDavTrace);
-
-    for (int i=0; i<mNotebookSyncAgents.count(); i++) {
-        mNotebookSyncAgents[i]->deleteLater();
-    }
-    mNotebookSyncAgents.clear();
 }
 
 void CalDavClient::notebookSyncFinished()
@@ -754,7 +639,6 @@ void CalDavClient::notebookSyncFinished()
             } else {
                 mResults.addTargetResults(mNotebookSyncAgents[i]->result());
             }
-            mNotebookSyncAgents[i]->finalize();
         }
         removeAccountCalendars(deletedNotebooks);
         if (hasFatalError) {
@@ -773,16 +657,5 @@ void CalDavClient::notebookSyncFinished()
             qCDebug(lcCalDav) << "Calendar storage saved successfully after writing notebook changes!";
             syncFinished(Buteo::SyncResults::NO_ERROR);
         }
-    }
-}
-
-void CalDavClient::setCredentialsNeedUpdate()
-{
-    if (mService) {
-        mService->setValue(QStringLiteral("CredentialsNeedUpdate"),
-                           QVariant::fromValue<bool>(true));
-        mService->setValue(QStringLiteral("CredentialsNeedUpdateFrom"),
-                           QVariant::fromValue<QString>(QString::fromLatin1("caldav-sync")));
-        mService->account()->syncAndBlock();
     }
 }

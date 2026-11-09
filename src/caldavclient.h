@@ -36,16 +36,12 @@
 #include <davclient.h>
 #include <davtypes.h>
 
-#include <extendedstorage.h>
-
 #include <ClientPlugin.h>
 #include <SyncResults.h>
 #include <SyncCommonDefs.h>
 #include <SyncPluginLoader.h>
 
 #include <Accounts/Manager>
-
-#include <sailfishkeyprovider_processmutex.h>
 
 class QNetworkAccessManager;
 class Request;
@@ -148,8 +144,6 @@ private:
     bool initConfig();
     void closeConfig();
     void syncFinished(Buteo::SyncResults::MinorCode minorErrorCode, const QString &message = QString());
-    void clearAgents();
-    void deleteNotebooksForAccount(int accountId, mKCal::ExtendedCalendar::Ptr calendar, mKCal::ExtendedStorage::Ptr storage);
     bool cleanSyncRequired();
     void getSyncDateRange(const QDateTime &sourceDate, QDateTime *fromDateTime, QDateTime *toDateTime);
     QList<Buteo::Dav::CalendarInfo> loadAccountCalendars() const;
@@ -163,15 +157,10 @@ private:
     Buteo::SyncProfile::SyncDirection syncDirection();
     Buteo::SyncProfile::ConflictResolutionPolicy conflictResolutionPolicy();
 
-    void setCredentialsNeedUpdate();
-
-    mutable QScopedPointer<Sailfish::KeyProvider::ProcessMutex> mProcessMutex;
     QList<NotebookSyncAgent *> mNotebookSyncAgents;
     Accounts::Manager* mManager;
     QSharedPointer<Accounts::AccountService> mService;
     AuthHandler* mAuth;
-    mKCal::ExtendedCalendar::Ptr mCalendar;
-    mKCal::ExtendedStorage::Ptr mStorage;
     Buteo::SyncResults mResults;
     Sync::SyncStatus mSyncStatus;
     Buteo::SyncProfile::SyncDirection mSyncDirection;

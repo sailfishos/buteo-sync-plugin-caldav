@@ -22,6 +22,5 @@
 #include "logging.h"
 
 Q_LOGGING_CATEGORY(lcCalDav, "buteo.plugin.caldav", QtWarningMsg)
-Q_LOGGING_CATEGORY(lcCalDavProtocol, "buteo.plugin.caldav.protocol", QtWarningMsg)
 Q_LOGGING_CATEGORY(lcCalDavTrace, "buteo.plugin.caldav.trace", QtWarningMsg)
 

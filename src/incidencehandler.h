@@ -34,6 +34,26 @@ class IncidenceHandler
 public:
     static QString toIcs(const KCalendarCore::Incidence::Ptr incidence,
                          const KCalendarCore::Incidence::List instances = KCalendarCore::Incidence::List());
+    static QString etag(KCalendarCore::Incidence::Ptr incidence);
+    static QString uri(KCalendarCore::Incidence::Ptr incidence);
+    static bool isLocalException(KCalendarCore::Incidence::Ptr incidence);
+
+    static void setEtag(KCalendarCore::Incidence::Ptr incidence, const QString &etag);
+    static void setUri(KCalendarCore::Incidence::Ptr incidence, const QString &uri);
+    static void setSyncedException(KCalendarCore::Incidence::Ptr incidence);
+
+    static void flagSuccess(const KCalendarCore::Incidence::Ptr &incidence);
+    static void flagUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence);
+    static void flagDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence);
+    static void flagUploadFailure(const KCalendarCore::Incidence::Ptr &incidence);
+
+    static bool uploadIsAllowed(const KCalendarCore::Incidence::Ptr &incidence);
+    static bool updateIsAllowed(const KCalendarCore::Incidence::Ptr &incidence);
+    static bool deleteIsAllowed(const KCalendarCore::Incidence::Ptr &incidence);
+
+    static bool resetUploadFailure(const KCalendarCore::Incidence::Ptr &incidence);
+    static bool resetUpdateFailure(const KCalendarCore::Incidence::Ptr &incidence);
+    static bool resetDeleteFailure(const KCalendarCore::Incidence::Ptr &incidence);
 
 private:
     IncidenceHandler();

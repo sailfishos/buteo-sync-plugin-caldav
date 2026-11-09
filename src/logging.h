@@ -27,7 +27,6 @@
 #include <buteosyncfw5/LogMacros.h>
 
 Q_DECLARE_LOGGING_CATEGORY(lcCalDav)
-Q_DECLARE_LOGGING_CATEGORY(lcCalDavProtocol)
 Q_DECLARE_LOGGING_CATEGORY(lcCalDavTrace)
 
 #endif
