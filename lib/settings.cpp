@@ -38,6 +38,22 @@ void Settings::setAuthToken(const QString & token)
     mOAuthToken = token;
 }
 
+QByteArray Settings::authBasic() const
+{
+    if (mBasicAuthLegacy)
+        return username().toLatin1() + ':' + password().toLatin1();
+    else if (mBasicAuthUtf8)
+        return username().toUtf8() + ':' + password().toUtf8();
+    else
+        return QByteArray();
+}
+
+void Settings::useAuthBasic(bool inUtf8)
+{
+    mBasicAuthLegacy = !inUtf8;
+    mBasicAuthUtf8 = inUtf8;
+}
+
 bool Settings::ignoreSSLErrors() const
 {
     return mIgnoreSSLErrors;
@@ -71,6 +87,9 @@ void Settings::setUsername(const QString & username)
 void Settings::setServerAddress(const QString &serverAddress)
 {
     mServerAddress = serverAddress;
+    if (serverAddress.endsWith(QStringLiteral(".yahoo.com"))
+        || serverAddress.endsWith(QStringLiteral(".icloud.com")))
+        useAuthBasic();
 }
 
 QString Settings::serverAddress() const
