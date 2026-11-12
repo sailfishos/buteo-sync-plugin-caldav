@@ -38,7 +38,7 @@ public:
     struct UserAddressSet
     {
         QString mailto;
-        QString path;
+        QUrl url;
     };
 
     PropFind(QNetworkAccessManager *manager, Settings *settings, QObject *parent = 0);

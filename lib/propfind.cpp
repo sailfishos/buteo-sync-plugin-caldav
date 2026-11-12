@@ -340,7 +340,7 @@ static bool readUserAddressSetResponse(QXmlStreamReader *reader,
         } else if (canReadHomeHref
                    && reader->name() == "href" && reader->isStartElement()) {
             valid = true;
-            set->path = QUrl::fromPercentEncoding(reader->readElementText().toUtf8());
+            set->url = QUrl::fromEncoded(reader->readElementText().toUtf8());
         } else if (reader->name() == "propstat" && reader->isEndElement()) {
             return valid;
         }
