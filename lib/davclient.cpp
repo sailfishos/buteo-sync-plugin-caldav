@@ -246,11 +246,17 @@ void Buteo::Dav::Client::requestUserPrincipalAndServiceData(const QString &servi
             // determine the mailto href for this user.
             PropFind *hrefsRequest = new PropFind(d->m_networkManager, &d->m_settings, this);
             connect(hrefsRequest, &Request::finished, this,
-                    [this, hrefsRequest] (const QString &uri) {
+                    [this, hrefsRequest, service] (const QString &uri) {
                 hrefsRequest->deleteLater();
 
                 if (!hrefsRequest->hasError()) {
                     d->m_serviceData = hrefsRequest->userAddressSets();
+                    if (!service.isEmpty()) {
+                        const QUrl url = d->m_serviceData[service].url;
+                        if (!url.isRelative()) {
+                            d->m_settings.setServerAddress(QString::fromLatin1("%1://%2").arg(url.scheme()).arg(url.host()));
+                        }
+                    }
                 }
                 d->m_wellKnownRetryInProgress = false;
                 emit userPrincipalDataFinished(reply(*hrefsRequest, uri));
@@ -342,7 +348,7 @@ QString Buteo::Dav::Client::serviceMailto(const QString &service) const
 */
 QString Buteo::Dav::Client::servicePath(const QString &service) const
 {
-    return d->m_serviceData[service].path;
+    return d->m_serviceData[service].url.path();
 }
 
 /*!
@@ -387,7 +393,7 @@ QList<Buteo::Dav::CalendarInfo> Buteo::Dav::Client::calendars() const
   calendarEtagsFinished() signal, as a map between resource path and etag.
 */
 void Buteo::Dav::Client::getCalendarEtags(const QString &path,
-                                   const QDateTime &from, const QDateTime &to)
+                                          const QDateTime &from, const QDateTime &to)
 {
     Report *report = new Report(d->m_networkManager, &d->m_settings);
     connect(report, &Report::finished, this,
